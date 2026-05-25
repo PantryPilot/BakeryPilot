@@ -1,6 +1,6 @@
 [project]
 name = "bakery-pilot-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "LangGraph multi-agent orchestrator for BakeryPilot"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,6 +16,8 @@ dependencies = [
     "pymongo>=4.7.0",
     "motor>=3.4.0",
     "python-dotenv>=1.0.0",
+    "deepgram-sdk>=3.7.0",
+    "websockets>=12.0",
 ]
 
 [dependency-groups]

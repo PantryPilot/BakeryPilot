@@ -19,6 +19,9 @@ LANGCHAIN_API_KEY: str = os.getenv("LANGCHAIN_API_KEY", "")
 OPIK_API_KEY: str = os.getenv("OPIK_API_KEY", "")
 OPIK_PROJECT: str = os.getenv("OPIK_PROJECT", "bakery-pilot")
 
+DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
+DEEPGRAM_MODEL: str = os.getenv("DEEPGRAM_MODEL", "nova-3")
+
 PROMPT_CACHE_TTL_SECONDS: int = int(os.getenv("PROMPT_CACHE_TTL_SECONDS", "60"))
 
 _MODEL_MAP: dict[str, str] = {
