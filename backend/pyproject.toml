@@ -1,6 +1,6 @@
 [project]
 name = "bakery-pilot-backend"
-version = "0.0.1"
+version = "0.1.0"
 description = "FastAPI backend for BakeryPilot"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,7 +10,11 @@ dependencies = [
     "pydantic-settings>=2.6",
     "sse-starlette>=2.1",
     "python-multipart>=0.0.12",
+    "bakery-pilot-agent",
 ]
+
+[tool.uv.sources]
+bakery-pilot-agent = { path = "../agent" }
 
 [dependency-groups]
 dev = [
