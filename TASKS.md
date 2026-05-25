@@ -153,6 +153,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.16 [M2] LangGraph orchestrator skeleton
 
+**Status:** done
 **What:** Implement `agent/agent/graph.py` with a stateful graph -- nodes = `{router, inventory_agent, procurement_agent, respond}`. `AgentState` in `state.py` carries chat history + tool results.
 **Files:** `agent/agent/graph.py`, `agent/agent/state.py`, `agent/agent/agents/orchestrator.py`
 **Acceptance:**
@@ -161,6 +162,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.17 [M2] InventoryAgent with 2 tools
 
+**Status:** done
 **What:** Implement `query_lots(facility_id?)` and `substitution_candidates(blocked_sku)` as thin HTTP wrappers over backend endpoints.
 **Files:** `agent/agent/agents/inventory.py`, `agent/agent/tools/inventory_tools.py`
 **Acceptance:**
@@ -169,6 +171,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.18 [M2] ProcurementAgent with 2 tools
 
+**Status:** done
 **What:** Implement `compute_landed_cost(supplier_id, items)` and `build_order_draft(supplier_id, items, delivery_date)` as wrappers over backend.
 **Files:** `agent/agent/agents/procurement.py`, `agent/agent/tools/procurement_tools.py`
 **Acceptance:**
@@ -991,6 +994,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.P.4 [M2] LLM model selection via config
 
+**Status:** done
 **What:** `agent/agent/config.py` (NEW): `default_model = 'claude-sonnet-4-6'`, `negotiation_model = 'claude-opus-4-7'`. All Claude calls go through a `get_model(purpose)` helper.
 **Files:** `agent/agent/config.py`
 **Acceptance:**
@@ -1189,6 +1193,145 @@ F5.1 unblocks F5.2 unblocks F5.3 etc -- so M5 should start FlowSight infrastruct
 prep (canvas mount research, PixiJS familiarization) in parallel with their Phase 1-3
 tasks rather than blocking on those phases completing.
 
+## Agent Phase Implementation (Phase 1 breakdown)
+
+Granular sub-tasks for F1.16–F1.19 + NF.P.4. Each fits in one commit.
+Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
+
+### AG.1 [M2] Agent dependencies
+
+**Status:** done
+**What:** Pin `langgraph`, `langmem`, `langsmith`, `langchain-anthropic`, `httpx`, `opik`, `pydantic`, `python-dotenv`, `pymongo`, `motor` in `agent/pyproject.toml`. Bump version to `0.1.0`.
+**Files:** `agent/pyproject.toml`
+**Acceptance:**
+- [ ] `uv sync` completes without error
+- [ ] `python -c "import langgraph, langmem, opik, motor"` succeeds
+
+### AG.2 [M2] Agent config module
+
+**Status:** done
+**What:** Implement `agent/agent/config.py` with `BACKEND_URL`, `get_model(purpose)` (`claude-sonnet-4-6` default, `claude-opus-4-7` for negotiation), LangSmith env wiring, MongoDB URL, and Opik project name.
+**Files:** `agent/agent/config.py`
+**Acceptance:**
+- [ ] `get_model("default")` → `"claude-sonnet-4-6"`
+- [ ] `get_model("negotiation")` → `"claude-opus-4-7"`
+- [ ] All values overridable via env vars
+
+### AG.3 [M2] AgentState definition
+
+**Status:** done
+**What:** Implement `agent/agent/state.py`. `AgentState` extends `MessagesState` with: `intent: str | None`, `tool_results: list[dict]`, `action_cards: list[dict]`, `facility_id: str | None`, `langsmith_run_id: str | None`.
+**Files:** `agent/agent/state.py`
+**Acceptance:**
+- [ ] All fields default to `None` / empty list
+- [ ] `langsmith_run_id` flows through the graph for audit-trail linkage
+
+### AG.4 [M2] MongoDB prompt store
+
+**Status:** done
+**What:** Implement `agent/agent/prompts/store.py`. `PromptStore` loads prompts from MongoDB collection `prompts` by `name` field. TTL-based in-process cache (default 60 s). Falls back to the `.md` file in `agent/agent/prompts/` on first write if the document is missing.
+**Files:** `agent/agent/prompts/store.py`
+**Acceptance:**
+- [ ] `PromptStore().get("orchestrator")` returns the prompt string
+- [ ] Updating the MongoDB document is reflected within TTL seconds without restart
+- [ ] If Mongo is unreachable, falls back to local `.md` file (no crash)
+
+### AG.5 [M2] Seed default prompts to MongoDB
+
+**Status:** done
+**What:** Script `agent/agent/prompts/seed.py` reads every `.md` file in `agent/agent/prompts/` and upserts it into the `prompts` collection keyed by filename stem. Also adds `version` (int, default 1) and `updated_at` fields.
+**Files:** `agent/agent/prompts/seed.py`
+**Acceptance:**
+- [ ] `python -m agent.prompts.seed` idempotent — re-running does not clobber manual edits (only inserts if missing)
+- [ ] Each document has `name`, `body`, `version`, `updated_at`
+
+### AG.6 [M2] Orchestrator system prompt
+
+**Status:** done
+**What:** Write production content for `agent/agent/prompts/orchestrator.md`. Cover role (BakeryPilot copilot), five specialist domains, HITL contract (never commit without action_card confirm), output format (JSON-fenced for action cards, plain markdown for narration).
+**Files:** `agent/agent/prompts/orchestrator.md`
+**Acceptance:**
+- [ ] Mentions all five specialist domains by name
+- [ ] Contains explicit HITL rule
+- [ ] Under 600 tokens
+
+### AG.7 [M2] Intent classifier prompt
+
+**Status:** done
+**What:** Write `agent/agent/prompts/intent_classifier.md`. Output must be exactly one of: `inventory`, `procurement`, `scheduler`, `yield`, `esg`, `general`. Include 2 few-shot examples per label.
+**Files:** `agent/agent/prompts/intent_classifier.md`
+**Acceptance:**
+- [ ] 12 few-shot examples total (2 per class)
+- [ ] Prompt instructs output to be the bare label with no surrounding text
+
+### AG.8 [M2] Inventory tools
+
+**Status:** done
+**What:** Implement `query_lots(facility_id: str | None)` and `substitution_candidates(blocked_sku: str)` in `agent/agent/tools/inventory_tools.py` as `@tool`-decorated functions backed by `httpx`. Wrap each in `@opik.track`.
+**Files:** `agent/agent/tools/inventory_tools.py`
+**Acceptance:**
+- [ ] Both tools appear as Opik spans when called
+- [ ] Non-200 backend response raises `ToolException` with the HTTP status
+
+### AG.9 [M2] Procurement tools
+
+**Status:** done
+**What:** Implement `compute_landed_cost(supplier_id, items)` and `build_order_draft(supplier_id, items, delivery_date)` in `agent/agent/tools/procurement_tools.py`. `build_order_draft` must return `{"action_card_id": str, "landed_cost_breakdown": dict}`. Wrap in `@opik.track`.
+**Files:** `agent/agent/tools/procurement_tools.py`
+**Acceptance:**
+- [ ] `action_card_id` returned from the backend and surfaced to the caller
+- [ ] Both appear as Opik spans
+
+### AG.10 [M2] InventoryAgent subgraph
+
+**Status:** done
+**What:** Implement `InventoryAgent` in `agent/agent/agents/inventory.py` using `create_react_agent` bound to the two inventory tools. System prompt loaded from `PromptStore` at agent init.
+**Files:** `agent/agent/agents/inventory.py`
+**Acceptance:**
+- [ ] `InventoryAgent().graph` is a compiled LangGraph runnable
+- [ ] Zero-result lots return an empty list with a natural-language explanation, no exception
+
+### AG.11 [M2] ProcurementAgent subgraph
+
+**Status:** done
+**What:** Implement `ProcurementAgent` in `agent/agent/agents/procurement.py`. After `build_order_draft` succeeds, appends the `action_card_id` to `state.action_cards` and includes the landed cost breakdown in the final message.
+**Files:** `agent/agent/agents/procurement.py`
+**Acceptance:**
+- [ ] `state.action_cards` updated after a successful draft
+- [ ] Landed cost breakdown rendered in assistant reply
+
+### AG.12 [M2] OrchestratorAgent (intent node)
+
+**Status:** done
+**What:** Implement `classify_intent(state: AgentState) -> AgentState` in `agent/agent/agents/orchestrator.py`. Calls Claude with the intent-classifier prompt (fetched from `PromptStore`), parses the label, falls back to `"general"` on parse error.
+**Files:** `agent/agent/agents/orchestrator.py`
+**Acceptance:**
+- [ ] Never raises — always returns a valid label
+- [ ] Label is stored in `state.intent`
+
+### AG.13 [M2] LangGraph main graph + LangMem
+
+**Status:** done
+**What:** Implement `agent/agent/graph.py`. Four nodes: `classify_intent`, `inventory_agent`, `procurement_agent`, `respond`. Wire `MemorySaver` (per-thread checkpointing) and `InMemoryStore` for LangMem cross-turn facility context. Expose `create_graph()` and `stream(message, thread_id, facility_id)` helpers.
+**Files:** `agent/agent/graph.py`
+**Acceptance:**
+- [ ] `python -m agent.graph` sends a test message and prints the reply
+- [ ] `"what can we bake?"` routes to `inventory` (assert in smoke test)
+- [ ] LangSmith trace visible when `LANGCHAIN_TRACING_V2=true`
+- [ ] LangMem retains `facility_id` across turns in the same thread
+
+### AG.14 [M2] Opik tracing + evaluation
+
+**Status:** done
+**What:** Create `agent/agent/evaluation/opik_eval.py`. Register an Opik experiment with ≥5 test cases covering the six intent classes. Use `AnswerRelevance` and `Hallucination` scorers. Add `@opik.track` to `classify_intent` and each agent node in `graph.py`.
+**Files:** `agent/agent/evaluation/__init__.py`, `agent/agent/evaluation/opik_eval.py`
+**Acceptance:**
+- [ ] `python -m agent.evaluation.opik_eval` runs and prints a score summary
+- [ ] Opik dashboard shows traces with tool spans nested under agent spans
+- [ ] Test dataset covers: inventory query, substitution, order draft, general, esg, scheduler
+
+---
+
 # Cut order if behind schedule
 
 (Mirrors MERGED_PLAN.md lines 720-727.)
@@ -1227,9 +1370,9 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F1.13 | M3 | Landed cost service | todo |
 | F1.14 | M3 | `POST /api/orders/draft` endpoint | in_progress |
 | F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | in_progress |
-| F1.16 | M2 | LangGraph orchestrator skeleton | todo |
-| F1.17 | M2 | InventoryAgent with 2 tools | todo |
-| F1.18 | M2 | ProcurementAgent with 2 tools | todo |
+| F1.16 | M2 | LangGraph orchestrator skeleton | done |
+| F1.17 | M2 | InventoryAgent with 2 tools | done |
+| F1.18 | M2 | ProcurementAgent with 2 tools | done |
 | F1.19 | M2 | SSE chat endpoint | in_progress |
 | F1.20 | M2+M3 | Fill in `action_card.schema.json` | todo |
 | F1.21 | M3 | Fill in `ingredient_lot.schema.json` | todo |
@@ -1326,7 +1469,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.P.1 | M1 | Pin ML deps to CPU-only | todo |
 | NF.P.2 | M1 | faster-whisper small model only | todo |
 | NF.P.3 | M3 | FastAPI async throughout | todo |
-| NF.P.4 | M2 | LLM model selection via config | todo |
+| NF.P.4 | M2 | LLM model selection via config | done |
 | NF.U.1 | M4 | SSE client with auto-reconnect | todo |
 | NF.U.2 | M4 | Action card no-Enter-confirm | todo |
 | NF.U.3 | M4 | Locale-aware number formatting | todo |
@@ -1341,6 +1484,25 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.C.2 | M5 | Agent CI (ruff + pytest) | todo |
 | NF.C.3 | M5 | Frontend CI (lint + build) | todo |
 | NF.C.4 | M5 | PR template with walking-skeleton checkbox | todo |
+
+## Agent Phase (AG series)
+
+| ID | Owner | Title | Status |
+| :--- | :---: | :--- | :---: |
+| AG.1 | M2 | Agent dependencies + pyproject.toml | done |
+| AG.2 | M2 | Agent config module | done |
+| AG.3 | M2 | AgentState definition | done |
+| AG.4 | M2 | MongoDB prompt store | done |
+| AG.5 | M2 | Seed default prompts to MongoDB | done |
+| AG.6 | M2 | Orchestrator system prompt | done |
+| AG.7 | M2 | Intent classifier prompt | done |
+| AG.8 | M2 | Inventory tools | done |
+| AG.9 | M2 | Procurement tools | done |
+| AG.10 | M2 | InventoryAgent subgraph | done |
+| AG.11 | M2 | ProcurementAgent subgraph | done |
+| AG.12 | M2 | OrchestratorAgent intent classifier | done |
+| AG.13 | M2 | LangGraph main graph + LangMem | done |
+| AG.14 | M2 | Opik tracing + evaluation | done |
 
 ## Stretch goals
 
