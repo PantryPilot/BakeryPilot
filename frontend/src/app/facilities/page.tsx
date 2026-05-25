@@ -1,4 +1,12 @@
-// /facilities -- FlowSight + FactoryView strategy-game cockpit (PixiJS canvas).
+"use client";
+import { useApp } from "../../lib/context";
+import { FlowSightCanvas } from "../../components/FlowSightCanvas";
+
 export default function FacilitiesPage() {
-  return null;
+  const { openChatContext } = useApp();
+  return (
+    <div className="h-full">
+      <FlowSightCanvas openChatContext={openChatContext}/>
+    </div>
+  );
 }

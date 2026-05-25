@@ -1,3 +1,105 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0a0d14;
+  color: #e2e8f0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-feature-settings: "tnum" 1, "cv11" 1, "ss03" 1;
+  overflow: hidden;
+}
+
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbars */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Pulsing red badge */
+@keyframes pulseRed {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+}
+.pulse-red {
+  animation: pulseRed 1.4s ease-out infinite;
+}
+
+/* Marquee ticker */
+.ticker-wrap {
+  overflow: hidden;
+  position: relative;
+}
+.ticker {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  animation: scroll-left 60s linear infinite;
+  padding-left: 100%;
+}
+@keyframes scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* SVG node glow */
+svg [stroke="#22c55e"],
+svg [stroke="#f59e0b"],
+svg [stroke="#ef4444"] {
+  filter: drop-shadow(0 0 2px currentColor);
+}
+
+/* Selection */
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+  color: #fff;
+}
+
+/* Focus rings */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.55);
+  outline-offset: 1px;
+}
+button:focus {
+  outline: none;
+}
+
+main {
+  overflow: hidden;
+}
