@@ -17,6 +17,16 @@ from app.models.orders import (
 router = APIRouter(prefix="/api", tags=["orders"])
 
 
+@router.post("/orders/cost_estimate", response_model=LandedCostBreakdown)
+async def cost_estimate(req: SupplierOrderDraftRequest) -> LandedCostBreakdown:
+    """Compute landed cost without creating an action card or writing any state."""
+    if not any(s["supplier_id"] == req.supplier_id for s in mock_data.SUPPLIERS):
+        raise HTTPException(404, f"supplier {req.supplier_id} not found")
+    items_dicts = [i.model_dump() for i in req.items]
+    breakdown = mock_data.compute_landed_cost(items_dicts, req.supplier_id)
+    return LandedCostBreakdown(**breakdown)
+
+
 @router.post("/orders/draft", response_model=SupplierOrderDraftResponse)
 async def draft_supplier_order(req: SupplierOrderDraftRequest) -> SupplierOrderDraftResponse:
     """Compute landed cost + create a pending action card. Does NOT write the order."""
