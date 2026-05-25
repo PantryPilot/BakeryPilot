@@ -9,9 +9,9 @@ from langgraph.prebuilt import create_react_agent
 
 from agent.config import get_model
 from agent.prompts.store import get_prompt_store
-from agent.tools.procurement_tools import build_order_draft, compute_landed_cost
+from agent.tools.procurement_tools import build_order_draft, preview_landed_cost
 
-_TOOLS = [compute_landed_cost, build_order_draft]
+_TOOLS = [preview_landed_cost, build_order_draft]
 
 _SYSTEM_SUFFIX = """
 You are the ProcurementAgent. Your scope is landed cost, supplier orders, and MOQ analysis.
