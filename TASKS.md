@@ -149,6 +149,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.16 [M2] LangGraph orchestrator skeleton
 
+**Status:** done
 **What:** Implement `agent/agent/graph.py` with a stateful graph -- nodes = `{router, inventory_agent, procurement_agent, respond}`. `AgentState` in `state.py` carries chat history + tool results.
 **Files:** `agent/agent/graph.py`, `agent/agent/state.py`, `agent/agent/agents/orchestrator.py`
 **Acceptance:**
@@ -157,6 +158,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.17 [M2] InventoryAgent with 2 tools
 
+**Status:** done
 **What:** Implement `query_lots(facility_id?)` and `substitution_candidates(blocked_sku)` as thin HTTP wrappers over backend endpoints.
 **Files:** `agent/agent/agents/inventory.py`, `agent/agent/tools/inventory_tools.py`
 **Acceptance:**
@@ -165,6 +167,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.18 [M2] ProcurementAgent with 2 tools
 
+**Status:** done
 **What:** Implement `compute_landed_cost(supplier_id, items)` and `build_order_draft(supplier_id, items, delivery_date)` as wrappers over backend.
 **Files:** `agent/agent/agents/procurement.py`, `agent/agent/tools/procurement_tools.py`
 **Acceptance:**
@@ -986,6 +989,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.P.4 [M2] LLM model selection via config
 
+**Status:** done
 **What:** `agent/agent/config.py` (NEW): `default_model = 'claude-sonnet-4-6'`, `negotiation_model = 'claude-opus-4-7'`. All Claude calls go through a `get_model(purpose)` helper.
 **Files:** `agent/agent/config.py`
 **Acceptance:**
@@ -1191,6 +1195,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.1 [M2] Agent dependencies
 
+**Status:** done
 **What:** Pin `langgraph`, `langmem`, `langsmith`, `langchain-anthropic`, `httpx`, `opik`, `pydantic`, `python-dotenv`, `pymongo`, `motor` in `agent/pyproject.toml`. Bump version to `0.1.0`.
 **Files:** `agent/pyproject.toml`
 **Acceptance:**
@@ -1199,6 +1204,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.2 [M2] Agent config module
 
+**Status:** done
 **What:** Implement `agent/agent/config.py` with `BACKEND_URL`, `get_model(purpose)` (`claude-sonnet-4-6` default, `claude-opus-4-7` for negotiation), LangSmith env wiring, MongoDB URL, and Opik project name.
 **Files:** `agent/agent/config.py`
 **Acceptance:**
@@ -1208,6 +1214,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.3 [M2] AgentState definition
 
+**Status:** done
 **What:** Implement `agent/agent/state.py`. `AgentState` extends `MessagesState` with: `intent: str | None`, `tool_results: list[dict]`, `action_cards: list[dict]`, `facility_id: str | None`, `langsmith_run_id: str | None`.
 **Files:** `agent/agent/state.py`
 **Acceptance:**
@@ -1216,6 +1223,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.4 [M2] MongoDB prompt store
 
+**Status:** done
 **What:** Implement `agent/agent/prompts/store.py`. `PromptStore` loads prompts from MongoDB collection `prompts` by `name` field. TTL-based in-process cache (default 60 s). Falls back to the `.md` file in `agent/agent/prompts/` on first write if the document is missing.
 **Files:** `agent/agent/prompts/store.py`
 **Acceptance:**
@@ -1225,6 +1233,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.5 [M2] Seed default prompts to MongoDB
 
+**Status:** done
 **What:** Script `agent/agent/prompts/seed.py` reads every `.md` file in `agent/agent/prompts/` and upserts it into the `prompts` collection keyed by filename stem. Also adds `version` (int, default 1) and `updated_at` fields.
 **Files:** `agent/agent/prompts/seed.py`
 **Acceptance:**
@@ -1233,6 +1242,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.6 [M2] Orchestrator system prompt
 
+**Status:** done
 **What:** Write production content for `agent/agent/prompts/orchestrator.md`. Cover role (BakeryPilot copilot), five specialist domains, HITL contract (never commit without action_card confirm), output format (JSON-fenced for action cards, plain markdown for narration).
 **Files:** `agent/agent/prompts/orchestrator.md`
 **Acceptance:**
@@ -1242,6 +1252,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.7 [M2] Intent classifier prompt
 
+**Status:** done
 **What:** Write `agent/agent/prompts/intent_classifier.md`. Output must be exactly one of: `inventory`, `procurement`, `scheduler`, `yield`, `esg`, `general`. Include 2 few-shot examples per label.
 **Files:** `agent/agent/prompts/intent_classifier.md`
 **Acceptance:**
@@ -1250,6 +1261,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.8 [M2] Inventory tools
 
+**Status:** done
 **What:** Implement `query_lots(facility_id: str | None)` and `substitution_candidates(blocked_sku: str)` in `agent/agent/tools/inventory_tools.py` as `@tool`-decorated functions backed by `httpx`. Wrap each in `@opik.track`.
 **Files:** `agent/agent/tools/inventory_tools.py`
 **Acceptance:**
@@ -1258,6 +1270,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.9 [M2] Procurement tools
 
+**Status:** done
 **What:** Implement `compute_landed_cost(supplier_id, items)` and `build_order_draft(supplier_id, items, delivery_date)` in `agent/agent/tools/procurement_tools.py`. `build_order_draft` must return `{"action_card_id": str, "landed_cost_breakdown": dict}`. Wrap in `@opik.track`.
 **Files:** `agent/agent/tools/procurement_tools.py`
 **Acceptance:**
@@ -1266,6 +1279,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.10 [M2] InventoryAgent subgraph
 
+**Status:** done
 **What:** Implement `InventoryAgent` in `agent/agent/agents/inventory.py` using `create_react_agent` bound to the two inventory tools. System prompt loaded from `PromptStore` at agent init.
 **Files:** `agent/agent/agents/inventory.py`
 **Acceptance:**
@@ -1274,6 +1288,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.11 [M2] ProcurementAgent subgraph
 
+**Status:** done
 **What:** Implement `ProcurementAgent` in `agent/agent/agents/procurement.py`. After `build_order_draft` succeeds, appends the `action_card_id` to `state.action_cards` and includes the landed cost breakdown in the final message.
 **Files:** `agent/agent/agents/procurement.py`
 **Acceptance:**
@@ -1282,6 +1297,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.12 [M2] OrchestratorAgent (intent node)
 
+**Status:** done
 **What:** Implement `classify_intent(state: AgentState) -> AgentState` in `agent/agent/agents/orchestrator.py`. Calls Claude with the intent-classifier prompt (fetched from `PromptStore`), parses the label, falls back to `"general"` on parse error.
 **Files:** `agent/agent/agents/orchestrator.py`
 **Acceptance:**
@@ -1290,6 +1306,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.13 [M2] LangGraph main graph + LangMem
 
+**Status:** done
 **What:** Implement `agent/agent/graph.py`. Four nodes: `classify_intent`, `inventory_agent`, `procurement_agent`, `respond`. Wire `MemorySaver` (per-thread checkpointing) and `InMemoryStore` for LangMem cross-turn facility context. Expose `create_graph()` and `stream(message, thread_id, facility_id)` helpers.
 **Files:** `agent/agent/graph.py`
 **Acceptance:**
@@ -1300,6 +1317,7 @@ Owner is M2. Prefix `AG`. Backend API is assumed available at `BACKEND_URL`.
 
 ### AG.14 [M2] Opik tracing + evaluation
 
+**Status:** done
 **What:** Create `agent/agent/evaluation/opik_eval.py`. Register an Opik experiment with ≥5 test cases covering the six intent classes. Use `AnswerRelevance` and `Hallucination` scorers. Add `@opik.track` to `classify_intent` and each agent node in `graph.py`.
 **Files:** `agent/agent/evaluation/__init__.py`, `agent/agent/evaluation/opik_eval.py`
 **Acceptance:**
@@ -1330,156 +1348,156 @@ cut feature.
 
 Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 
-| ID | Owner | Title |
-| :--- | :---: | :--- |
-| F1.1 | M3 | Define `ingredient_lots` table |
-| F1.2 | M3 | Define `suppliers` table (Phase 1 columns) |
-| F1.3 | M3 | Define `warehouse_costs` table |
-| F1.4 | M3 | Define `supplier_orders` + `supplier_order_items` |
-| F1.5 | M3 | Define `action_cards` table |
-| F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` |
-| F1.7 | M5 | Seed 150+ ingredient lots |
-| F1.8 | M3 | FastAPI app entrypoint |
-| F1.9 | M3 | SQLAlchemy session + base |
-| F1.10 | M3 | `GET /api/lots` endpoint |
-| F1.11 | M1 | Spoilage risk score service |
-| F1.12 | M1 | Substitution candidates service |
-| F1.13 | M3 | Landed cost service |
-| F1.14 | M3 | `POST /api/orders/draft` endpoint |
-| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint |
-| F1.16 | M2 | LangGraph orchestrator skeleton |
-| F1.17 | M2 | InventoryAgent with 2 tools |
-| F1.18 | M2 | ProcurementAgent with 2 tools |
-| F1.19 | M2 | SSE chat endpoint |
-| F1.20 | M2+M3 | Fill in `action_card.schema.json` |
-| F1.21 | M3 | Fill in `ingredient_lot.schema.json` |
-| F1.22 | M4 | Next.js layout + globals.css |
-| F1.23 | M4 | `/materials` page with risk badges |
-| F1.24 | M4 | `ChatBox` + `ActionCard` components |
-| F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` |
-| F1.26 | M4 | Typed API client `lib/api.ts` |
-| F1.27 | M5 | Walking-skeleton e2e test |
-| F2.1 | M3 | Define `production_formulas` table |
-| F2.2 | M3 | Define `production_schedules` table |
-| F2.3 | M3 | Define `retailer_orders` table |
-| F2.4 | M3 | Define `demand_forecasts` table |
-| F2.5 | M1 | OR-Tools scheduler service: base structure |
-| F2.6 | M1 | Allergen changeover constraint |
-| F2.7 | M1 | Waste-first objective term |
-| F2.8 | M1 | Demand forecasting service (LightGBM/Prophet) |
-| F2.9 | M2 | SchedulerAgent with 3 tools |
-| F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule |
-| F2.11 | M3 | `GET /api/schedules/diff` endpoint |
-| F2.12 | M4 | `/schedule` page with diff view |
-| F2.13 | M4 | `ScheduleDiff` component |
-| F2.14 | M4 | Forecast bands chart on `/scorecard` |
-| F2.15 | M3 | Fill in `schedule_diff.schema.json` |
-| F2.16 | M3 | `mes_mock.py`: POST approved schedule |
-| F2.17 | M5 | Update walking-skeleton test for Phase 2 |
-| F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers |
-| F3.2 | M3 | Define `dock_schedules` table |
-| F3.3 | M3 | Define `moq_tax_ledger` table (append-only) |
-| F3.4 | M3 | Define `disruption_signals` table |
-| F3.5 | M3 | Define `negotiation_drafts` table |
-| F3.6 | M3 | MOQ engine service |
-| F3.7 | M3 | Delivery window optimizer (OR-Tools) |
-| F3.8 | M3 | Dock schedule checker service |
-| F3.9 | M3 | Stock horizon service |
-| F3.10 | M3 | Disruption risk scoring service |
-| F3.11 | M3 | Contract lifecycle service (60/30-day) |
-| F3.12 | M3 | Payment terms optimizer |
-| F3.13 | M2 | Negotiation draft generation (Claude Opus) |
-| F3.14 | M3 | `commodity_feed.py` + `news_feed.py` mocks |
-| F3.15 | M5 | Redis event stream publisher |
-| F3.16 | M4 | `MOQTaxBadge` component |
-| F3.17 | M4 | `SupplierCard` with window + MOQ-tax indicators |
-| F3.18 | M3 | `sap_mock.py`: POST PO + confirmation |
-| F3.19 | M3 | Fill `supplier_order` + `negotiation_draft` schemas |
-| F4.1 | M3 | Define `production_runs` table |
-| F4.2 | M3 | Define `waste_events` table (append-only) |
-| F4.3 | M3 | Define `finished_goods_pallets` table |
-| F4.4 | M1 | Yield variance service |
-| F4.5 | M1 | Yield anomaly diagnosis service |
-| F4.6 | M3 | `cmms_mock.py`: stub work-order creation |
-| F4.7 | M2 | YieldAgent with 3 tools |
-| F4.8 | M3 | ESG aggregation (waste counter) service |
-| F4.9 | M3 | ESG pattern analysis |
-| F4.10 | M3 | Scope 3 PDF generation |
-| F4.11 | M2 | ESGAgent with 3 tools |
-| F4.12 | M3 | FEFO routing service |
-| F4.13 | M4 | `YieldCounter` component |
-| F4.14 | M4 | `/scorecard` page (full ESG view) |
-| F4.15 | M4 | `LotGenealogyGraph` component (react-flow) |
-| F5.1 | M5 | PixiJS canvas mount + pan/zoom |
-| F5.2 | M5 | Plant + supplier + retailer node rendering |
-| F5.3 | M5 | Animated truck units along edges |
-| F5.4 | M5 | `LayerToggle` component |
-| F5.5 | M5 | Risk layer (supplier halos) |
-| F5.6 | M5 | Yield layer (per-plant counter overlay) |
-| F5.7 | M5 | Shelf-life layer (pallet color overlay) |
-| F5.8 | M5 | Forecast layer (retailer demand) |
-| F5.9 | M5 | `TimeScrubber` component |
-| F5.10 | M5 | SSE event channel for live overlays |
-| F5.11 | M5 | `/facilities` page wires canvas + all layers |
-| F5.12 | M5 | `FactoryView` (plant-floor) variant |
-| F5.13 | M5 | 5-minute scripted demo runs end-to-end |
-| NF.S.1 | M3 | Lock JSON Schema 2020-12 across `shared/schemas/` |
-| NF.S.2 | M3 | Document schema-freeze policy in CONTRIBUTING.md |
-| NF.S.3 | M3 | Pydantic v2 strict mode for backend models |
-| NF.S.4 | M4 | Generate TS types from JSON Schemas |
-| NF.R.1 | M3 | Append-only convention triggers |
-| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) |
-| NF.R.3 | M3 | Action card confirm idempotency |
-| NF.R.4 | M5 | Nightly green-build gate |
-| NF.R.5 | M3 | Gmail draft integration (no auto-send) |
-| NF.R.6 | M3 | `notification_drafts` audit table + endpoint |
-| NF.R.7 | M3 | `stakeholders` table + seed |
-| NF.R.8 | M2 | Stakeholder identification tool |
-| NF.R.9 | M2 | `notify` action card kind |
-| NF.R.10 | M4 | `StakeholderSelector` component |
-| NF.R.11 | M5 | No-direct-send lint rule |
-| NF.O.1 | M3 | Weekly activity aggregation service |
-| NF.O.2 | M2 | Weekly summary narration via Claude |
-| NF.O.3 | M3 | Monday scheduled job |
-| NF.O.4 | M3 | `weekly_summaries` table |
-| NF.O.5 | M4 | `/summaries` archive page |
-| NF.P.1 | M1 | Pin ML deps to CPU-only |
-| NF.P.2 | M1 | faster-whisper small model only |
-| NF.P.3 | M3 | FastAPI async throughout |
-| NF.P.4 | M2 | LLM model selection via config |
-| NF.U.1 | M4 | SSE client with auto-reconnect |
-| NF.U.2 | M4 | Action card no-Enter-confirm |
-| NF.U.3 | M4 | Locale-aware number formatting |
-| NF.U.4 | M4 | Loading + empty states everywhere |
-| NF.D.1 | M5 | docker-compose healthchecks |
-| NF.D.2 | M5 | `make up.full` correct startup ordering |
-| NF.D.3 | M5 | Vercel deploy config for frontend |
-| NF.D.4 | M5 | Render deploy config for backend + agent |
-| NF.D.5 | M5 | Single env-var swap to real integrations |
-| NF.D.6 | M5 | `.env.example` covers every env var read |
-| NF.C.1 | M5 | Backend CI (ruff + pytest) |
-| NF.C.2 | M5 | Agent CI (ruff + pytest) |
-| NF.C.3 | M5 | Frontend CI (lint + build) |
-| NF.C.4 | M5 | PR template with walking-skeleton checkbox |
+| ID | Owner | Title | Status |
+| :--- | :---: | :--- | :--- |
+| F1.1 | M3 | Define `ingredient_lots` table | todo |
+| F1.2 | M3 | Define `suppliers` table (Phase 1 columns) | todo |
+| F1.3 | M3 | Define `warehouse_costs` table | todo |
+| F1.4 | M3 | Define `supplier_orders` + `supplier_order_items` | todo |
+| F1.5 | M3 | Define `action_cards` table | todo |
+| F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` | todo |
+| F1.7 | M5 | Seed 150+ ingredient lots | todo |
+| F1.8 | M3 | FastAPI app entrypoint | todo |
+| F1.9 | M3 | SQLAlchemy session + base | todo |
+| F1.10 | M3 | `GET /api/lots` endpoint | todo |
+| F1.11 | M1 | Spoilage risk score service | todo |
+| F1.12 | M1 | Substitution candidates service | todo |
+| F1.13 | M3 | Landed cost service | todo |
+| F1.14 | M3 | `POST /api/orders/draft` endpoint | todo |
+| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | todo |
+| F1.16 | M2 | LangGraph orchestrator skeleton | done |
+| F1.17 | M2 | InventoryAgent with 2 tools | done |
+| F1.18 | M2 | ProcurementAgent with 2 tools | done |
+| F1.19 | M2 | SSE chat endpoint | todo |
+| F1.20 | M2+M3 | Fill in `action_card.schema.json` | todo |
+| F1.21 | M3 | Fill in `ingredient_lot.schema.json` | todo |
+| F1.22 | M4 | Next.js layout + globals.css | todo |
+| F1.23 | M4 | `/materials` page with risk badges | todo |
+| F1.24 | M4 | `ChatBox` + `ActionCard` components | todo |
+| F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` | todo |
+| F1.26 | M4 | Typed API client `lib/api.ts` | todo |
+| F1.27 | M5 | Walking-skeleton e2e test | todo |
+| F2.1 | M3 | Define `production_formulas` table | todo |
+| F2.2 | M3 | Define `production_schedules` table | todo |
+| F2.3 | M3 | Define `retailer_orders` table | todo |
+| F2.4 | M3 | Define `demand_forecasts` table | todo |
+| F2.5 | M1 | OR-Tools scheduler service: base structure | todo |
+| F2.6 | M1 | Allergen changeover constraint | todo |
+| F2.7 | M1 | Waste-first objective term | todo |
+| F2.8 | M1 | Demand forecasting service (LightGBM/Prophet) | todo |
+| F2.9 | M2 | SchedulerAgent with 3 tools | todo |
+| F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule | todo |
+| F2.11 | M3 | `GET /api/schedules/diff` endpoint | todo |
+| F2.12 | M4 | `/schedule` page with diff view | todo |
+| F2.13 | M4 | `ScheduleDiff` component | todo |
+| F2.14 | M4 | Forecast bands chart on `/scorecard` | todo |
+| F2.15 | M3 | Fill in `schedule_diff.schema.json` | todo |
+| F2.16 | M3 | `mes_mock.py`: POST approved schedule | todo |
+| F2.17 | M5 | Update walking-skeleton test for Phase 2 | todo |
+| F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers | todo |
+| F3.2 | M3 | Define `dock_schedules` table | todo |
+| F3.3 | M3 | Define `moq_tax_ledger` table (append-only) | todo |
+| F3.4 | M3 | Define `disruption_signals` table | todo |
+| F3.5 | M3 | Define `negotiation_drafts` table | todo |
+| F3.6 | M3 | MOQ engine service | todo |
+| F3.7 | M3 | Delivery window optimizer (OR-Tools) | todo |
+| F3.8 | M3 | Dock schedule checker service | todo |
+| F3.9 | M3 | Stock horizon service | todo |
+| F3.10 | M3 | Disruption risk scoring service | todo |
+| F3.11 | M3 | Contract lifecycle service (60/30-day) | todo |
+| F3.12 | M3 | Payment terms optimizer | todo |
+| F3.13 | M2 | Negotiation draft generation (Claude Opus) | todo |
+| F3.14 | M3 | `commodity_feed.py` + `news_feed.py` mocks | todo |
+| F3.15 | M5 | Redis event stream publisher | todo |
+| F3.16 | M4 | `MOQTaxBadge` component | todo |
+| F3.17 | M4 | `SupplierCard` with window + MOQ-tax indicators | todo |
+| F3.18 | M3 | `sap_mock.py`: POST PO + confirmation | todo |
+| F3.19 | M3 | Fill `supplier_order` + `negotiation_draft` schemas | todo |
+| F4.1 | M3 | Define `production_runs` table | todo |
+| F4.2 | M3 | Define `waste_events` table (append-only) | todo |
+| F4.3 | M3 | Define `finished_goods_pallets` table | todo |
+| F4.4 | M1 | Yield variance service | todo |
+| F4.5 | M1 | Yield anomaly diagnosis service | todo |
+| F4.6 | M3 | `cmms_mock.py`: stub work-order creation | todo |
+| F4.7 | M2 | YieldAgent with 3 tools | todo |
+| F4.8 | M3 | ESG aggregation (waste counter) service | todo |
+| F4.9 | M3 | ESG pattern analysis | todo |
+| F4.10 | M3 | Scope 3 PDF generation | todo |
+| F4.11 | M2 | ESGAgent with 3 tools | todo |
+| F4.12 | M3 | FEFO routing service | todo |
+| F4.13 | M4 | `YieldCounter` component | todo |
+| F4.14 | M4 | `/scorecard` page (full ESG view) | todo |
+| F4.15 | M4 | `LotGenealogyGraph` component (react-flow) | todo |
+| F5.1 | M5 | PixiJS canvas mount + pan/zoom | todo |
+| F5.2 | M5 | Plant + supplier + retailer node rendering | todo |
+| F5.3 | M5 | Animated truck units along edges | todo |
+| F5.4 | M5 | `LayerToggle` component | todo |
+| F5.5 | M5 | Risk layer (supplier halos) | todo |
+| F5.6 | M5 | Yield layer (per-plant counter overlay) | todo |
+| F5.7 | M5 | Shelf-life layer (pallet color overlay) | todo |
+| F5.8 | M5 | Forecast layer (retailer demand) | todo |
+| F5.9 | M5 | `TimeScrubber` component | todo |
+| F5.10 | M5 | SSE event channel for live overlays | todo |
+| F5.11 | M5 | `/facilities` page wires canvas + all layers | todo |
+| F5.12 | M5 | `FactoryView` (plant-floor) variant | todo |
+| F5.13 | M5 | 5-minute scripted demo runs end-to-end | todo |
+| NF.S.1 | M3 | Lock JSON Schema 2020-12 across `shared/schemas/` | todo |
+| NF.S.2 | M3 | Document schema-freeze policy in CONTRIBUTING.md | todo |
+| NF.S.3 | M3 | Pydantic v2 strict mode for backend models | todo |
+| NF.S.4 | M4 | Generate TS types from JSON Schemas | todo |
+| NF.R.1 | M3 | Append-only convention triggers | todo |
+| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | todo |
+| NF.R.3 | M3 | Action card confirm idempotency | todo |
+| NF.R.4 | M5 | Nightly green-build gate | todo |
+| NF.R.5 | M3 | Gmail draft integration (no auto-send) | todo |
+| NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
+| NF.R.7 | M3 | `stakeholders` table + seed | todo |
+| NF.R.8 | M2 | Stakeholder identification tool | todo |
+| NF.R.9 | M2 | `notify` action card kind | todo |
+| NF.R.10 | M4 | `StakeholderSelector` component | todo |
+| NF.R.11 | M5 | No-direct-send lint rule | todo |
+| NF.O.1 | M3 | Weekly activity aggregation service | todo |
+| NF.O.2 | M2 | Weekly summary narration via Claude | todo |
+| NF.O.3 | M3 | Monday scheduled job | todo |
+| NF.O.4 | M3 | `weekly_summaries` table | todo |
+| NF.O.5 | M4 | `/summaries` archive page | todo |
+| NF.P.1 | M1 | Pin ML deps to CPU-only | todo |
+| NF.P.2 | M1 | faster-whisper small model only | todo |
+| NF.P.3 | M3 | FastAPI async throughout | todo |
+| NF.P.4 | M2 | LLM model selection via config | done |
+| NF.U.1 | M4 | SSE client with auto-reconnect | todo |
+| NF.U.2 | M4 | Action card no-Enter-confirm | todo |
+| NF.U.3 | M4 | Locale-aware number formatting | todo |
+| NF.U.4 | M4 | Loading + empty states everywhere | todo |
+| NF.D.1 | M5 | docker-compose healthchecks | todo |
+| NF.D.2 | M5 | `make up.full` correct startup ordering | todo |
+| NF.D.3 | M5 | Vercel deploy config for frontend | todo |
+| NF.D.4 | M5 | Render deploy config for backend + agent | todo |
+| NF.D.5 | M5 | Single env-var swap to real integrations | todo |
+| NF.D.6 | M5 | `.env.example` covers every env var read | todo |
+| NF.C.1 | M5 | Backend CI (ruff + pytest) | todo |
+| NF.C.2 | M5 | Agent CI (ruff + pytest) | todo |
+| NF.C.3 | M5 | Frontend CI (lint + build) | todo |
+| NF.C.4 | M5 | PR template with walking-skeleton checkbox | todo |
 
 ## Agent Phase (AG series)
 
-| ID | Owner | Title |
-| :--- | :---: | :--- |
-| AG.1 | M2 | Agent dependencies + pyproject.toml |
-| AG.2 | M2 | Agent config module |
-| AG.3 | M2 | AgentState definition |
-| AG.4 | M2 | MongoDB prompt store |
-| AG.5 | M2 | Seed default prompts to MongoDB |
-| AG.6 | M2 | Orchestrator system prompt |
-| AG.7 | M2 | Intent classifier prompt |
-| AG.8 | M2 | Inventory tools |
-| AG.9 | M2 | Procurement tools |
-| AG.10 | M2 | InventoryAgent subgraph |
-| AG.11 | M2 | ProcurementAgent subgraph |
-| AG.12 | M2 | OrchestratorAgent intent classifier |
-| AG.13 | M2 | LangGraph main graph + LangMem |
-| AG.14 | M2 | Opik tracing + evaluation |
+| ID | Owner | Title | Status |
+| :--- | :---: | :--- | :--- |
+| AG.1 | M2 | Agent dependencies + pyproject.toml | done |
+| AG.2 | M2 | Agent config module | done |
+| AG.3 | M2 | AgentState definition | done |
+| AG.4 | M2 | MongoDB prompt store | done |
+| AG.5 | M2 | Seed default prompts to MongoDB | done |
+| AG.6 | M2 | Orchestrator system prompt | done |
+| AG.7 | M2 | Intent classifier prompt | done |
+| AG.8 | M2 | Inventory tools | done |
+| AG.9 | M2 | Procurement tools | done |
+| AG.10 | M2 | InventoryAgent subgraph | done |
+| AG.11 | M2 | ProcurementAgent subgraph | done |
+| AG.12 | M2 | OrchestratorAgent intent classifier | done |
+| AG.13 | M2 | LangGraph main graph + LangMem | done |
+| AG.14 | M2 | Opik tracing + evaluation | done |
 
 ## Stretch goals
 
