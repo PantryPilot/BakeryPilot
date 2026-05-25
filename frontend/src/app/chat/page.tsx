@@ -148,6 +148,7 @@ export default function ChatPage() {
     },
   ]);
   const [contextItem, setContextItem] = useState("substitute");
+  const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -155,7 +156,7 @@ export default function ChatPage() {
   }, [thread]);
 
   const send = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isThinking) return;
     const u = input.trim();
     const agent = pickAgent(u);
     const tools = pickTools(u);
@@ -169,6 +170,7 @@ export default function ChatPage() {
       { role: "assistant", agent, time: "now", tools, text: "" },
     ]);
     setInput("");
+    setIsThinking(true);
 
     const history = thread.map(m => ({ role: m.role, content: m.text }));
 
@@ -212,8 +214,8 @@ export default function ChatPage() {
         const key = Object.keys(SAMPLE_CARDS).find(k => SAMPLE_CARDS[k] === card);
         if (key) setContextItem(key);
       },
-      onDone: () => { if (!received) fallback(); },
-      onError: () => { if (!received) fallback(); },
+      onDone: () => { setIsThinking(false); if (!received) fallback(); },
+      onError: () => { setIsThinking(false); if (!received) fallback(); },
     });
   };
 
@@ -232,7 +234,7 @@ export default function ChatPage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
           <div className="max-w-[760px] mx-auto space-y-5">
             {thread.map((m, i) => <ChatMessageFull key={i} m={m}/>)}
-            <ThinkingIndicator agent="ProcurementAgent"/>
+            {isThinking && <ThinkingIndicator agent="InventoryAgent"/>}
           </div>
         </div>
 
