@@ -31,8 +31,8 @@ def _post_draft(supplier_id: str, items: list[dict], delivery_date: str) -> dict
     return resp.json()
 
 
-@opik.track(name="preview_landed_cost")
 @tool
+@opik.track(name="preview_landed_cost")
 def preview_landed_cost(
     supplier_id: Annotated[str, "Supplier ID"],
     items: Annotated[list[dict], "List of {ingredient_id, quantity_kg, unit_price}"],
@@ -47,8 +47,8 @@ def preview_landed_cost(
     return data["landed_cost_breakdown"]
 
 
-@opik.track(name="build_order_draft")
 @tool
+@opik.track(name="build_order_draft")
 def build_order_draft(
     supplier_id: Annotated[str, "Supplier ID"],
     items: Annotated[list[dict], "List of {ingredient_id, quantity_kg, unit_price}"],

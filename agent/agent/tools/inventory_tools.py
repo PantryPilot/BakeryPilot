@@ -9,8 +9,8 @@ from langchain_core.tools import tool, ToolException
 from agent.config import BACKEND_URL
 
 
-@opik.track(name="query_lots")
 @tool
+@opik.track(name="query_lots")
 def query_lots(facility_id: Optional[str] = None) -> list[dict]:
     """Return ingredient lots with spoilage risk scores, optionally filtered by facility."""
     params = {}
@@ -23,8 +23,8 @@ def query_lots(facility_id: Optional[str] = None) -> list[dict]:
     return resp.json()
 
 
-@opik.track(name="substitution_candidates")
 @tool
+@opik.track(name="substitution_candidates")
 def substitution_candidates(
     ingredient_id: str,
     facility_id: Optional[str] = None,

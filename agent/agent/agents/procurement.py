@@ -47,7 +47,7 @@ class ProcurementAgent:
         self.graph = create_react_agent(
             model=llm,
             tools=_TOOLS,
-            state_modifier=system,
+            prompt=system,
         )
 
     def run(self, state: dict) -> dict:

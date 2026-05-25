@@ -28,5 +28,5 @@ class InventoryAgent:
         self.graph = create_react_agent(
             model=llm,
             tools=_TOOLS,
-            state_modifier=system,
+            prompt=system,
         )
