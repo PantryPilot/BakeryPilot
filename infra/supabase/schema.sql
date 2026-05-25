@@ -1,0 +1,7 @@
+-- BakeryPilot full DB schema.
+-- Append-only; never edit existing tables. Additive changes only.
+-- See repo README for the full table list (facilities, suppliers, ingredient_lots,
+-- warehouse_costs, moq_tax_ledger, dock_schedules, production_formulas,
+-- production_schedules, supplier_orders, retailer_orders, demand_forecasts,
+-- disruption_signals, negotiation_drafts, production_runs,
+-- finished_goods_pallets, waste_events).

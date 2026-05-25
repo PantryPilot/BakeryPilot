@@ -1,0 +1,16 @@
+[project]
+name = "bakery-pilot-agent"
+version = "0.0.1"
+description = "LangGraph multi-agent orchestrator for BakeryPilot"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]

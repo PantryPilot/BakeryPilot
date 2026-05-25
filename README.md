@@ -32,6 +32,8 @@ AI agents, and a map-style cockpit that makes every decision visible.
 Eight functional modules plus a shared UX chassis. Every module is independently
 deployable; together they form one product.
 
+### Functional features
+
 | Module | Name | Core capability |
 | :---: | :--- | :--- |
 | 1 | Ingredient and Network Intelligence | Spoilage risk index per lot; substitution engine; min-cost-flow cross-facility balancer |
@@ -43,6 +45,23 @@ deployable; together they form one product.
 | 7 | Multi-Agent Copilot and VoiceLog | LangGraph orchestrator routing to 5 specialist agents; 4-level voice verification hierarchy; RAG over SOPs |
 | 8 | Finished Goods and Outbound | Pallet shelf-life tracking; FEFO routing; stranded inventory recovery ranking |
 | 9 | FactoryView / FlowSight (UX chassis) | Live top-down strategy-game map; toggleable layers; animated truck units; time scrubber |
+
+### Non-functional features
+
+| Attribute | How it is realized |
+| :--- | :--- |
+| **Human-in-the-loop safety** | Every state-changing action (order, schedule, transfer) goes through an `action_card` confirm step; the agent never commits silently |
+| **Auditability** | Append-only `inventory_events` and `waste_events` tables; corrections are new rows, never updates -- full historical trace by design |
+| **Mock parity** | Each external integration (SAP S/4 HANA, MES, CMMS, supplier APIs, retailer EDI) has a byte-identical mock; one env-var per system swaps to the real client |
+| **Schema-first contracts** | `shared/schemas/*.schema.json` is the cross-service contract, frozen on Day 1; additive changes only, renames require team agreement |
+| **Walking-skeleton reliability** | End-to-end path (chat -> tool -> action card -> confirm -> DB) stays green every evening from Phase 1 onward; new features layer on, never replace |
+| **CPU-only inference** | LightGBM / Prophet forecasts, OR-Tools schedules, and faster-whisper STT all run on commodity CPUs -- no GPU needed for the demo or production |
+| **Streaming-first UX** | Server-Sent Events for chat responses and live FlowSight overlays; no polling, no full-page reloads |
+| **Local-first dev** | `make up` brings the full stack on Docker Compose; no cloud account required to develop or demo offline |
+| **Free-tier deployable** | Vercel (frontend) + Render (backend + agent); a single stable public demo URL with no infra commitment |
+| **Hardware-free** | No cameras, no sensors, no edge devices; intelligence layered on the data FGF already has -- nothing to install on the production floor |
+| **Provenance + recall** | Lot genealogy graph (react-flow) traces any finished-goods pallet back to its source ingredient lots through the production formula |
+| **Pluggable LLM tier** | Claude Sonnet 4.6 by default for chat and tool use; Opus 4.7 reserved for high-stakes negotiation drafts -- one config line to retune |
 
 ---
 
@@ -324,15 +343,46 @@ NEWS_API_KEY=               # supplier risk news signal; falls back to seeded ev
 
 ## Development Phases
 
-| Phase | Goal | Key deliverables |
-| :--- | :--- | :--- |
-| **1 -- MVP** | Chat answers *"what can we bake?"* and confirms a procurement order with total landed cost | `ingredient_lots` + `suppliers` schema; spoilage risk endpoint; LangGraph wired; `/materials` page with risk badges; action card |
-| **2 -- Production loop** | Retailer order in, waste-first schedule out | OR-Tools scheduler; allergen changeover matrix; demand forecasting; schedule diff view |
-| **3 -- Full procurement** | Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts | `dock_schedules`, `disruption_signals`, `negotiation_drafts` schema; event stream publisher |
-| **4 -- ESG, yield, finished goods** | Yield counter live, ESG scorecard, pallet FEFO | `production_runs`, `waste_events`, `finished_goods_pallets`; YieldAgent; ESGAgent |
-| **5 -- FlowSight** | Animated Canada-map cockpit with toggleable layers | PixiJS canvas; plant/supplier/retailer nodes; truck animations; time scrubber |
+Five phases with one hard rule: the end-to-end walking skeleton (chat -> tool call ->
+action card -> confirm -> DB write) goes green at the end of Phase 1 and stays green
+every evening after. Every later phase is depth on top of that path, never a
+replacement of it. Cut Phase 4 stretch features before cutting Phase 1 polish -- a
+judge sees one path five times, not five paths once.
 
-Full implementation detail for each phase is in [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md).
+### Phase 1 -- MVP
+
+- **Goal:** Chat answers *"what can we bake?"* and confirms a procurement order with total landed cost.
+- **Definition of done:** A user types a shortage question, the InventoryAgent ranks substitutions against expiring lots, the ProcurementAgent surfaces an action card with unit price + MOQ overage + holding cost, the user confirms, the order persists, the schedule re-tiles. Walking skeleton green.
+- **Tech pulled from the stack:** PostgreSQL 16 (`ingredient_lots`, `suppliers`, `warehouse_costs`); FastAPI routers (`inventory`, `suppliers`); LangGraph orchestrator + InventoryAgent + ProcurementAgent; Claude via langchain-anthropic; Next.js 15 chat shell + `ActionCard`; Docker Compose (postgres + redis).
+- **Lead:** M3, with M2 wiring the agent loop and M4 wiring the chat shell.
+
+### Phase 2 -- Production loop
+
+- **Goal:** Retailer order in, waste-first schedule out.
+- **Definition of done:** A retailer PO entered in `/schedule` triggers OR-Tools, which returns an allergen-aware schedule that prefers near-expiry lots. The schedule diff renders before/after; demand bands chart loads on `/scorecard`; SchedulerAgent answers *"why this schedule?"* with the binding constraints.
+- **Tech pulled from the stack:** Google OR-Tools (allergen changeover constraint + waste-first objective); LightGBM or Prophet (per-SKU daily forecast); Recharts (forecast bands, schedule diff); `production_formulas` + `production_schedules` + `demand_forecasts` tables; SchedulerAgent.
+- **Lead:** M1.
+
+### Phase 3 -- Full procurement
+
+- **Goal:** Delivery window optimizer, MOQ-tax ledger, disruption risk feed, negotiation drafts.
+- **Definition of done:** Each supplier order picks a specific delivery day within its window that minimizes holding cost; the MOQ-tax ledger accumulates per-quarter over-ordering cost; the Redis event stream flips supplier halos in the UI when risk fires; each of the three negotiation triggers (MOQ threshold crossed, late-window pattern, price drift vs. benchmark) produces a draft email pending manager send.
+- **Tech pulled from the stack:** OR-Tools (delivery window + dock scheduling); Redis 7 (disruption_signals stream); pgvector (RAG over past disruptions and SOPs); Claude (negotiation draft generation); `dock_schedules` + `moq_tax_ledger` + `disruption_signals` + `negotiation_drafts` tables; one FastAPI router per domain.
+- **Lead:** M3.
+
+### Phase 4 -- ESG, yield, finished goods
+
+- **Goal:** Yield counter live, ESG scorecard, pallet FEFO.
+- **Definition of done:** YieldWatch shows actual-vs-theoretical variance per line per shift with a live dollar waste counter and anomaly diagnosis that drafts a CMMS work order; ESG scorecard renders waste avoided + CO2e + a downloadable Scope 3 PDF; finished-goods pallets ranked FEFO with reroute / donate / write-off options on each.
+- **Tech pulled from the stack:** `production_runs` + `waste_events` + `finished_goods_pallets` tables; LightGBM (yield anomaly detection); YieldAgent + ESGAgent; ReportLab or WeasyPrint (Scope 3 PDF); CMMS mock.
+- **Lead:** M1 and M3.
+
+### Phase 5 -- FlowSight
+
+- **Goal:** Animated Canada-map cockpit with toggleable layers and a time scrubber.
+- **Definition of done:** A PixiJS canvas renders four plants, five suppliers, and four retailers as nodes; truck units animate between them on confirmed transfers; layer toggles (risk / yield / shelf-life / forecast) reveal the corresponding overlays; the time scrubber replays the last 24 hours of events; the 5-minute scripted demo runs end-to-end without manual intervention.
+- **Tech pulled from the stack:** PixiJS + @pixi/react (2D WebGL canvas); react-flow (lot genealogy graph for recall view); SSE for live updates from FastAPI; faster-whisper for in-cockpit voice.
+- **Lead:** M5.
 
 ---
 
@@ -354,18 +404,76 @@ Full implementation detail for each phase is in [`DEVELOPMENT_PLAN.md`](DEVELOPM
 
 ---
 
-## Contributors
+## Team (5 members)
 
-| Contributor | Modules owned |
-| :--- | :--- |
-| Matin | Module 1 (IngredientIQ lead), Module 5 (YieldWatch), Module 7 VoiceLog |
-| Alireza | Module 4 (Procurement lead), Module 6 (ESG), Module 1 spoilage scoring |
-| Dan | Module 2 (Scheduler lead), Module 3 OrderSense, Module 8, Module 9 FlowSight |
-| Arian | Module 3 (Demand lead), Module 7 LangGraph orchestrator, Module 7 RAG |
-| M3 | DB schema, FastAPI backend, shared schemas, seed data, Docker |
-| M4 | Next.js frontend, API client, FlowSight canvas integration |
+Roles split along the architecture's natural seams so each member builds against the
+Day-1 schema freeze in parallel. Names are placeholders -- assign based on individual
+strengths and current ownership of named modules.
 
-Full feature-to-contributor attribution is in [`Ideas/Alireza/MERGED_PLAN.md`](Ideas/Alireza/MERGED_PLAN.md).
+### Roles at a glance
+
+| Member | Role | Modules owned |
+| :--- | :--- | :--- |
+| **M1** | ML / Optimization Engineer | M1 IngredientIQ (lead), M5 YieldWatch (lead), M7 VoiceLog STT |
+| **M2** | AI / Agent Engineer | M3 Demand + OrderSense agent surface, M7 LangGraph orchestrator + RAG (lead) |
+| **M3** | Backend / Procurement Engineer | M4 Procurement (lead), M6 ESG (lead), M8 Finished Goods (lead), DB schema, integration mocks |
+| **M4** | Frontend Engineer | All UI surfaces: chat, action cards, dashboards, charts, genealogy graph |
+| **M5** | FlowSight + DevOps / PM | M2 Scheduler integration surface, M9 FlowSight (lead), Docker, deploy, demo |
+
+### M1 -- ML / Optimization Engineer
+
+- Owns Module 1 IngredientIQ: spoilage risk score per lot, substitution candidate ranking, cross-facility transfer min-cost-flow.
+- Owns Module 5 YieldWatch: actual-vs-theoretical yield variance per line/shift, real-time dollar waste counter, anomaly diagnosis that drafts a CMMS work order.
+- Owns the demand forecasting model (per-SKU daily) that M2 wraps as an OrderSense tool.
+- Owns the VoiceLog STT layer in Module 7 (custom bakery vocabulary).
+- **Tech:** Google OR-Tools (substitution, allergen scheduler, min-cost-flow, delivery window); LightGBM / Prophet (demand + anomaly); NetworkX (network balancer fallback); faster-whisper (voice STT).
+- **Hands off to:** M3 a stable `spoilage_risk_score` column and substitution-candidates endpoint; M5 the yield counter event stream and the schedule-diff payload.
+
+### M2 -- AI / Agent Engineer
+
+- Owns the LangGraph orchestrator and the five specialist agents (Inventory, Scheduler, Procurement, Yield, ESG).
+- Owns the Module 7 RAG layer: pgvector embeddings over SOPs, production formulas, and allergen matrices.
+- Owns the OrderSense agent surface (Module 3) -- turns M1's demand model into a retailer-PO reconciliation tool.
+- Defines and enforces the `action_card` contract: every write goes through human-in-the-loop confirm.
+- **Tech:** LangGraph (Python, uv); langchain-anthropic + Claude (Sonnet 4.6 default; Opus 4.7 reserved for negotiation drafts); pgvector; FastAPI streaming endpoints.
+- **Hands off to:** M4 a stable SSE chat API and `action_card` JSON shape; consumes M3's tool endpoints and M1's optimizer outputs.
+
+### M3 -- Backend / Procurement Engineer
+
+- Owns Module 4 Procurement Intelligence end-to-end -- the most differentiated module: total landed cost, MOQ engine, MOQ-tax ledger, delivery window optimizer, dock scheduling, negotiation triggers, contract lifecycle.
+- Owns Module 6 Sustainability and ESG: waste counter aggregation, root-cause patterns, retailer Scope 3 PDF.
+- Owns Module 8 Finished Goods: pallet shelf-life, FEFO routing, stranded inventory recovery.
+- Owns the DB schema (`infra/supabase/schema.sql`), the FastAPI backend skeleton, all integration mocks (SAP S/4 HANA, MES, CMMS), and `shared/schemas/*.schema.json` (the Day-1 contract freeze).
+- **Tech:** FastAPI + Pydantic v2; PostgreSQL 16 + pgvector; Redis 7; SQLAlchemy; OR-Tools (delivery window + dock scheduling); ReportLab or WeasyPrint (Scope 3 PDF).
+- **Hands off to:** everyone the API contract and schema by end of Day 1; pairs with M5 on docker-compose and seed scripts.
+
+### M4 -- Frontend Engineer
+
+- Owns the Next.js 15 + React 19 app shell, routing, and the typed API client (`src/lib/api.ts`).
+- Builds the chat UI with SSE streaming, `ActionCard`, `SupplierCard`, `YieldCounter` components.
+- Builds dashboard pages: `/materials` (risk badges), `/schedule` (diff view), `/scorecard` (ESG + waste + MOQ-tax), `/facilities`.
+- Builds the lot-genealogy graph (react-flow) and the forecast / yield charts (Recharts).
+- Coordinates with M5 on the FlowSight cockpit -- the canvas is M5's, the surrounding chrome and confirm overlays are M4's.
+- **Tech:** Next.js 15 + React 19 + Tailwind + TypeScript; react-flow; Recharts; native EventSource (SSE).
+- **Hands off to:** M5 a deployable frontend; consumes M2's chat + action_card API and M3's domain endpoints.
+
+### M5 -- FlowSight + DevOps / PM
+
+- Owns Module 9 FlowSight: PixiJS + @pixi/react top-down strategy-game canvas, plant + supplier + retailer nodes, animated truck units, pan/zoom, toggleable layers (risk / yield / shelf-life / forecast), time scrubber.
+- Owns the Module 2 Scheduler integration surface (the optimizer is M1's; the UI surface is M5's, coordinated with M4).
+- Owns deployment: Docker Compose, Vercel (frontend), Render (backend + agent), env-var management, single stable public demo URL.
+- Acts as integration owner -- keeps the walking skeleton green every evening and unblocks cross-team handoffs.
+- Runs the demo script (Scripted Demo, 5 minutes) and the 90-second pitch.
+- **Tech:** PixiJS + @pixi/react; Docker Compose; Vercel; Render; Makefile owner.
+- **Hands off to:** the team a reliable demo environment; pairs with M3 on docker-compose and M4 on the canvas-to-React layout.
+
+### Cross-team dependencies
+
+- **Day-1 contract freeze:** M3 publishes `shared/schemas/*.schema.json` (lot, action_card, order, schedule_diff, negotiation_draft) so M1, M2, M4, M5 build against stable interfaces. Additive changes allowed; renames require team agreement.
+- **Optimizer -> agent:** M1's substitution, scheduler, and forecast outputs are wrapped as M2's tool responses; the JSON shape is locked alongside the schema freeze.
+- **Agent -> UI:** M2's `action_card` JSON drives M4's `ActionCard` component and M5's confirm overlays on FlowSight nodes -- one shape, two render targets.
+- **Backend <-> FlowSight:** M3 and M5 jointly own the SSE event channel that streams supplier risk, yield deltas, and pallet shelf-life updates into the canvas.
+- **Everyone -> M5:** walking skeleton checked end-to-end every evening; nightly green-build gate is non-negotiable.
 
 ---
 
