@@ -844,6 +844,120 @@ but they're the guarantees the README's "Non-functional features" table promises
 - [ ] Job runs on schedule
 - [ ] Failure notification fires once per failure (not on every job)
 
+### NF.R.5 [M3] Gmail draft integration (no auto-send)
+
+**What:** Thin wrapper over the Gmail API `users.drafts.create` endpoint. Auth via OAuth2 refresh token from env. Returns `{draft_id, draft_url}` -- the URL the user opens in Gmail to review and send themselves. A mock variant returns a deterministic fake URL for local dev.
+**Why:** Outbound email is irreversible. Centralizing all email through a *draft-only* integration enforces that no code path can ever auto-send. The user is always the last step.
+**Files:** `backend/app/integrations/gmail_drafts.py` (NEW), `backend/app/integrations/gmail_drafts_mock.py` (NEW), `.env.example` (add `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_USE_MOCK`)
+**Acceptance:**
+- [ ] `create_draft(to, subject, body) -> {draft_id, draft_url}` works against a real Gmail test account
+- [ ] Mock variant returns a deterministic fake URL with the same shape
+- [ ] Factory in `integrations/factory.py` selects mock vs real via `GMAIL_USE_MOCK`
+- [ ] No `send` capability exposed -- only `create_draft`
+
+### NF.R.6 [M3] `notification_drafts` audit table + endpoint
+
+**What:** Append-only table tracking every draft ever created: `draft_id PK, kind, recipients[], subject, body_md, gmail_draft_url, action_card_id FK, created_at`. `GET /api/notifications/drafts` lists them in reverse-chronological order.
+**Files:** `infra/supabase/schema.sql`, `backend/app/api/notifications.py` (NEW)
+**Acceptance:**
+- [ ] Every successful `create_draft` writes one row
+- [ ] Append-only (trigger blocks UPDATE/DELETE; same convention as NF.R.1)
+- [ ] List endpoint paginates (default page size 50)
+
+### NF.R.7 [M3] `stakeholders` table + seed
+
+**What:** Stakeholder directory. Columns: `stakeholder_id, name, email, role, organization, tags[]`. Seed 10-20 sample contacts covering supplier reps, plant managers, account managers, ESG officer, retailer buyers.
+**Why:** Agent tools that propose outbound communication need a typed source of truth for "who could receive this." `tags` lets the agent filter by domain (`supplier_negotiation`, `retailer_negotiation`, `contract_lifecycle`, `weekly_summary`).
+**Files:** `infra/supabase/schema.sql`, `infra/supabase/seed.sql`
+**Acceptance:**
+- [ ] At least one stakeholder per role type
+- [ ] At least 2 stakeholders per tag (so the multi-select isn't always degenerate)
+
+### NF.R.8 [M2] Stakeholder identification tool
+
+**What:** `agent/agent/tools/notify_tools.py::identify_stakeholders(action_kind, context) -> Stakeholder[]` returns candidates relevant to the action. Each candidate has `{id, name, email, role, relevance_reason}` -- the reason is a one-sentence string the UI shows on hover.
+**Files:** `agent/agent/tools/notify_tools.py` (NEW)
+**Acceptance:**
+- [ ] Returns 0-N candidates ranked by relevance
+- [ ] Reads from `stakeholders` table; filters by `tags` matching the `action_kind`
+- [ ] Never returns a candidate without a `relevance_reason`
+
+### NF.R.9 [M2] `notify` action card kind
+
+**What:** Extend `action_card.schema.json` with `kind='notify'` payload: `{stakeholders: Stakeholder[], subject_template, body_template, render_context}`. Confirming the card POSTs to a new backend endpoint that loops over the *selected* stakeholders and calls `gmail_drafts.create_draft` for each.
+**Files:** `shared/schemas/action_card.schema.json` (extend), `agent/agent/tools/notify_tools.py` (extend), `backend/app/api/notifications.py` (extend with confirm handler)
+**Acceptance:**
+- [ ] Schema validates a sample notify payload with 3 stakeholders
+- [ ] Confirm creates one Gmail draft *per selected stakeholder* (not one combined draft)
+- [ ] Each draft is logged to `notification_drafts` with the originating `action_card_id`
+- [ ] Rejecting the card creates zero drafts and zero log rows
+
+### NF.R.10 [M4] `StakeholderSelector` component
+
+**What:** Multi-select chip UI rendered inside `ActionCard` when card kind is `notify`. Shows stakeholder name + role; hover reveals the relevance reason. All candidates preselected by default; user can deselect any.
+**Files:** `frontend/src/components/StakeholderSelector.tsx` (NEW), `frontend/src/components/ActionCard.tsx` (extend to render selector when payload contains `stakeholders[]`)
+**Acceptance:**
+- [ ] At least one stakeholder must be selected to enable the Confirm button
+- [ ] Confirm POSTs selected stakeholder ids alongside `action_card_id`
+- [ ] After confirm, the UI shows each Gmail draft URL as a clickable link (opens in new tab)
+
+### NF.R.11 [M5] No-direct-send lint rule
+
+**What:** Repo-wide CI check: no Python file may import `smtplib`, `email.mime.*` for sending, or reference Gmail API `send` endpoints. All outbound email goes through `integrations/gmail_drafts.py`. Allowlist: that file only.
+**Files:** `.github/workflows/no-direct-send.yml` (NEW), or extended into the existing backend workflow
+**Acceptance:**
+- [ ] CI fails if any non-allowlisted file imports `smtplib`
+- [ ] CI fails if any file calls a `.send()` method on a Gmail service builder
+- [ ] Documented in `CONTRIBUTING.md` alongside the schema-freeze policy
+
+## Observability and reporting
+
+### NF.O.1 [M3] Weekly activity aggregation service
+
+**What:** `backend/app/services/weekly_summary.py::aggregate(week_start, week_end)` returns structured stats from the prior week: action cards confirmed by kind, dollar waste avoided, MOQ-tax accumulated per supplier, supplier disruptions caught, top 3 yield anomalies, schedule changes confirmed, new supplier orders, new retailer orders.
+**Why:** A trustworthy weekly summary needs deterministic numbers separate from any LLM narration -- so the same input always produces the same numeric output.
+**Files:** `backend/app/services/weekly_summary.py` (NEW)
+**Acceptance:**
+- [ ] Pure function: returns a structured dict given a date range
+- [ ] Handles empty week explicitly (returns zeros + a `quiet_week: true` flag)
+- [ ] Unit test seeds fake events and asserts counts
+
+### NF.O.2 [M2] Weekly summary narration via Claude
+
+**What:** `agent/agent/tools/summary_tools.py::narrate_week(stats)` turns the raw stats into an executive-friendly markdown summary (~300-500 words). Sonnet 4.6. The prompt instructs Claude to only reference numbers from the stats input (no hallucinated metrics).
+**Files:** `agent/agent/tools/summary_tools.py` (NEW), `agent/agent/prompts/weekly_summary.md` (NEW)
+**Acceptance:**
+- [ ] Output is 300-500 words, markdown formatted
+- [ ] Every number in the prose appears in the input stats (auditable)
+- [ ] Quiet weeks get a single-paragraph "nothing notable" narration
+
+### NF.O.3 [M3] Monday scheduled job
+
+**What:** A Render cron service fires every Monday at 08:00 UTC. The job calls `aggregate` -> `narrate_week` -> `gmail_drafts.create_draft` (using NF.R.5). Recipient list from env var `WEEKLY_SUMMARY_RECIPIENTS` (comma-separated emails) or the `stakeholders` table filtered by `tags @> ARRAY['weekly_summary']`.
+**Files:** `render.yaml` (cron service block), `backend/app/jobs/weekly_summary.py` (NEW)
+**Acceptance:**
+- [ ] Cron schedule fires Monday 08:00 UTC reliably
+- [ ] Manual trigger available via `POST /api/jobs/weekly_summary/run?week_start=YYYY-MM-DD`
+- [ ] Job is idempotent: running twice for the same week returns the existing draft url
+
+### NF.O.4 [M3] `weekly_summaries` table
+
+**What:** Persist every generated summary. Columns: `summary_id PK, week_start, week_end, stats jsonb, narration_md, gmail_draft_url, created_at`. Append-only.
+**Files:** `infra/supabase/schema.sql`
+**Acceptance:**
+- [ ] One row per week generated
+- [ ] Append-only trigger; same convention as NF.R.1
+- [ ] Index on `week_start desc`
+
+### NF.O.5 [M4] `/summaries` archive page
+
+**What:** Archive of past weekly summaries. List view shows date range + a one-line headline (extracted from the narration's first sentence). Click a row to expand the full narration + a structured stats table.
+**Files:** `frontend/src/app/summaries/page.tsx` (NEW)
+**Acceptance:**
+- [ ] Lists in reverse-chronological order
+- [ ] Expanded view shows both narration (rendered markdown) and stats (rendered as a key-value table)
+- [ ] "Open Gmail draft" button visible for the current week if a draft exists
+
 ## Performance and inference
 
 ### NF.P.1 [M1] Pin ML deps to CPU-only
@@ -994,16 +1108,69 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ---
 
+# Stretch goals
+
+Not in the cut order, not in the main task list. Pick up after Phase 5 lands or
+if a phase finishes well ahead of schedule. Each is sized as a multi-day track,
+not an atomic task -- if pulled in, decompose into the same `F/NF` task format.
+
+### S.1 [M4 + M3] Slack / Teams action card push
+
+**What:** When an action card is created, optionally push it to a Slack or Teams channel as a native message with inline Confirm / Reject buttons (Slack Block Kit or Teams Adaptive Cards). Button clicks post back to the same `/api/action_cards/{id}/confirm` endpoint.
+**Why:** Plant managers and floor leads live in chat tools, not the web app. Bridging makes BakeryPilot ambient instead of yet-another-tab.
+**Files:** `backend/app/integrations/slack.py` (NEW), `backend/app/integrations/teams.py` (NEW), `backend/app/services/action_cards.py` (notify-hook extension)
+**Sizing:** ~2 days for Slack alone; Teams is a second 1-2 day pass with the same pattern.
+
+### S.2 [M4 + M2] Multi-language UI (French + Spanish)
+
+**What:** Externalize every user-facing string to a translation key; provide FR and ES translation files. Agent system prompt switches response language by user preference. Listed in MERGED_PLAN feature map (line 644) but not yet scoped.
+**Why:** FGF operates in Canada (French) and has growing US-Spanish-speaking floor staff. Tiny additional surface area once strings are externalized.
+**Files:** `frontend/src/lib/i18n.ts` (NEW), `frontend/src/locales/{en,fr,es}.json` (NEW), `agent/agent/prompts/system.md` (extend with language directive)
+**Sizing:** ~3 days end-to-end.
+
+### S.3 [M3 + M4] Supplier portal
+
+**What:** Read-only public-ish portal where suppliers view their own scorecard (on-time %, fill rate, window compliance, price vs. benchmark, MOQ-tax incurred this quarter) and any pending negotiation drafts addressed to them. SSO via Gmail magic link.
+**Why:** Transparency is a negotiation lever. "Here's exactly what we measure" preempts the supplier's surprise and shortens negotiation cycles.
+**Files:** `frontend/src/app/portal/[supplier_id]/page.tsx` (NEW), `backend/app/api/portal.py` (NEW), `backend/app/services/portal_auth.py` (NEW)
+**Sizing:** ~4-5 days; auth is the hardest part.
+
+### S.4 [M3 + M5] Real ERP integration playbook
+
+**What:** Document the end-to-end recipe for swapping `sap_mock.py` for a real SAP S/4 HANA endpoint -- required SAP modules, credentials flow, idempotency notes, and a parity test harness that proves byte-identical behavior. Same structure for MES and CMMS.
+**Why:** The mock-parity NFR is only as good as the swap path being real. A playbook turns the architectural claim into evidence.
+**Files:** `docs/integrations/sap-real.md` (NEW), `docs/integrations/mes-real.md` (NEW), `docs/integrations/cmms-real.md` (NEW), `infra/integration_parity_test.py` (NEW)
+**Sizing:** ~2 days for the playbook + ~1 day per real integration the team wires.
+
+### S.5 [M5 + M4] Floor-worker mobile PWA
+
+**What:** Mobile-first PWA wrapper of the chat + voice flow, installable to home screen. Optimized for one-handed use with gloves on (big targets, voice-first input, minimal text reading).
+**Why:** Voice input is the killer feature for the floor and only works if it's truly mobile-first. Today's `/chat` is desktop-shaped.
+**Files:** `frontend/src/app/mobile/page.tsx` (NEW), `frontend/public/manifest.json` (NEW), `frontend/src/components/VoiceButton.tsx` (NEW)
+**Sizing:** ~3-4 days.
+
+### S.6 [M3 + M2] Outbound notification analytics
+
+**What:** After NF.O / NF.R lands, layer an analytics view that tracks which drafts were actually sent (user opened Gmail and clicked send), which were edited before send, and how response times correlate with draft tone. Feeds back into the negotiation prompt.
+**Why:** Closes the loop on whether the agent's drafts are actually useful. Without this, we're flying blind on prompt quality.
+**Files:** `backend/app/services/notification_analytics.py` (NEW), `frontend/src/app/scorecard/notifications.tsx` (NEW)
+**Sizing:** ~2 days for the basic dashboard; Gmail-send-detection requires Gmail webhook setup (~1 day extra).
+
+---
+
 # Assignment summary
 
 | Member | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 | NF | **Total** |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **M1** | 2 | 4 | 0 | 2 | 0 | 2 | **10** |
-| **M2** | 4 | 1 | 1 | 2 | 0 | 2 | **10** |
-| **M3** | 14 | 8 | 15 | 8 | 0 | 6 | **51** |
-| **M4** | 5 | 3 | 2 | 3 | 0 | 5 | **18** |
-| **M5** | 2 | 1 | 1 | 0 | 13 | 11 | **28** |
-| **Total** | **27** | **17** | **19** | **15** | **13** | **26** | **117** |
+| **M2** | 4 | 1 | 1 | 2 | 0 | 5 | **13** |
+| **M3** | 14 | 8 | 15 | 8 | 0 | 12 | **57** |
+| **M4** | 5 | 3 | 2 | 3 | 0 | 7 | **20** |
+| **M5** | 2 | 1 | 1 | 0 | 13 | 12 | **29** |
+| **Total** | **27** | **17** | **19** | **15** | **13** | **38** | **129** |
+
+Stretch goals (S.1-S.6) are not in this count -- they're aspirational and unsized
+to a single owner. When pulled in, decompose into atomic `F/NF` tasks first.
 
 **Note on M3's load:** M3 owns the DB schema, FastAPI backend, all integration
 mocks, and the entire Module 4 procurement service surface (the most differentiated
@@ -1031,3 +1198,152 @@ tasks rather than blocking on those phases completing.
 
 When cutting, also drop the corresponding NF tasks that only exist to support the
 cut feature.
+
+---
+
+# Master task index
+
+Every task in one row. Use Ctrl+F by ID to jump to the full description above.
+
+| ID | Owner | Title |
+| :--- | :---: | :--- |
+| F1.1 | M3 | Define `ingredient_lots` table |
+| F1.2 | M3 | Define `suppliers` table (Phase 1 columns) |
+| F1.3 | M3 | Define `warehouse_costs` table |
+| F1.4 | M3 | Define `supplier_orders` + `supplier_order_items` |
+| F1.5 | M3 | Define `action_cards` table |
+| F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` |
+| F1.7 | M5 | Seed 150+ ingredient lots |
+| F1.8 | M3 | FastAPI app entrypoint |
+| F1.9 | M3 | SQLAlchemy session + base |
+| F1.10 | M3 | `GET /api/lots` endpoint |
+| F1.11 | M1 | Spoilage risk score service |
+| F1.12 | M1 | Substitution candidates service |
+| F1.13 | M3 | Landed cost service |
+| F1.14 | M3 | `POST /api/orders/draft` endpoint |
+| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint |
+| F1.16 | M2 | LangGraph orchestrator skeleton |
+| F1.17 | M2 | InventoryAgent with 2 tools |
+| F1.18 | M2 | ProcurementAgent with 2 tools |
+| F1.19 | M2 | SSE chat endpoint |
+| F1.20 | M2+M3 | Fill in `action_card.schema.json` |
+| F1.21 | M3 | Fill in `ingredient_lot.schema.json` |
+| F1.22 | M4 | Next.js layout + globals.css |
+| F1.23 | M4 | `/materials` page with risk badges |
+| F1.24 | M4 | `ChatBox` + `ActionCard` components |
+| F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` |
+| F1.26 | M4 | Typed API client `lib/api.ts` |
+| F1.27 | M5 | Walking-skeleton e2e test |
+| F2.1 | M3 | Define `production_formulas` table |
+| F2.2 | M3 | Define `production_schedules` table |
+| F2.3 | M3 | Define `retailer_orders` table |
+| F2.4 | M3 | Define `demand_forecasts` table |
+| F2.5 | M1 | OR-Tools scheduler service: base structure |
+| F2.6 | M1 | Allergen changeover constraint |
+| F2.7 | M1 | Waste-first objective term |
+| F2.8 | M1 | Demand forecasting service (LightGBM/Prophet) |
+| F2.9 | M2 | SchedulerAgent with 3 tools |
+| F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule |
+| F2.11 | M3 | `GET /api/schedules/diff` endpoint |
+| F2.12 | M4 | `/schedule` page with diff view |
+| F2.13 | M4 | `ScheduleDiff` component |
+| F2.14 | M4 | Forecast bands chart on `/scorecard` |
+| F2.15 | M3 | Fill in `schedule_diff.schema.json` |
+| F2.16 | M3 | `mes_mock.py`: POST approved schedule |
+| F2.17 | M5 | Update walking-skeleton test for Phase 2 |
+| F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers |
+| F3.2 | M3 | Define `dock_schedules` table |
+| F3.3 | M3 | Define `moq_tax_ledger` table (append-only) |
+| F3.4 | M3 | Define `disruption_signals` table |
+| F3.5 | M3 | Define `negotiation_drafts` table |
+| F3.6 | M3 | MOQ engine service |
+| F3.7 | M3 | Delivery window optimizer (OR-Tools) |
+| F3.8 | M3 | Dock schedule checker service |
+| F3.9 | M3 | Stock horizon service |
+| F3.10 | M3 | Disruption risk scoring service |
+| F3.11 | M3 | Contract lifecycle service (60/30-day) |
+| F3.12 | M3 | Payment terms optimizer |
+| F3.13 | M2 | Negotiation draft generation (Claude Opus) |
+| F3.14 | M3 | `commodity_feed.py` + `news_feed.py` mocks |
+| F3.15 | M5 | Redis event stream publisher |
+| F3.16 | M4 | `MOQTaxBadge` component |
+| F3.17 | M4 | `SupplierCard` with window + MOQ-tax indicators |
+| F3.18 | M3 | `sap_mock.py`: POST PO + confirmation |
+| F3.19 | M3 | Fill `supplier_order` + `negotiation_draft` schemas |
+| F4.1 | M3 | Define `production_runs` table |
+| F4.2 | M3 | Define `waste_events` table (append-only) |
+| F4.3 | M3 | Define `finished_goods_pallets` table |
+| F4.4 | M1 | Yield variance service |
+| F4.5 | M1 | Yield anomaly diagnosis service |
+| F4.6 | M3 | `cmms_mock.py`: stub work-order creation |
+| F4.7 | M2 | YieldAgent with 3 tools |
+| F4.8 | M3 | ESG aggregation (waste counter) service |
+| F4.9 | M3 | ESG pattern analysis |
+| F4.10 | M3 | Scope 3 PDF generation |
+| F4.11 | M2 | ESGAgent with 3 tools |
+| F4.12 | M3 | FEFO routing service |
+| F4.13 | M4 | `YieldCounter` component |
+| F4.14 | M4 | `/scorecard` page (full ESG view) |
+| F4.15 | M4 | `LotGenealogyGraph` component (react-flow) |
+| F5.1 | M5 | PixiJS canvas mount + pan/zoom |
+| F5.2 | M5 | Plant + supplier + retailer node rendering |
+| F5.3 | M5 | Animated truck units along edges |
+| F5.4 | M5 | `LayerToggle` component |
+| F5.5 | M5 | Risk layer (supplier halos) |
+| F5.6 | M5 | Yield layer (per-plant counter overlay) |
+| F5.7 | M5 | Shelf-life layer (pallet color overlay) |
+| F5.8 | M5 | Forecast layer (retailer demand) |
+| F5.9 | M5 | `TimeScrubber` component |
+| F5.10 | M5 | SSE event channel for live overlays |
+| F5.11 | M5 | `/facilities` page wires canvas + all layers |
+| F5.12 | M5 | `FactoryView` (plant-floor) variant |
+| F5.13 | M5 | 5-minute scripted demo runs end-to-end |
+| NF.S.1 | M3 | Lock JSON Schema 2020-12 across `shared/schemas/` |
+| NF.S.2 | M3 | Document schema-freeze policy in CONTRIBUTING.md |
+| NF.S.3 | M3 | Pydantic v2 strict mode for backend models |
+| NF.S.4 | M4 | Generate TS types from JSON Schemas |
+| NF.R.1 | M3 | Append-only convention triggers |
+| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) |
+| NF.R.3 | M3 | Action card confirm idempotency |
+| NF.R.4 | M5 | Nightly green-build gate |
+| NF.R.5 | M3 | Gmail draft integration (no auto-send) |
+| NF.R.6 | M3 | `notification_drafts` audit table + endpoint |
+| NF.R.7 | M3 | `stakeholders` table + seed |
+| NF.R.8 | M2 | Stakeholder identification tool |
+| NF.R.9 | M2 | `notify` action card kind |
+| NF.R.10 | M4 | `StakeholderSelector` component |
+| NF.R.11 | M5 | No-direct-send lint rule |
+| NF.O.1 | M3 | Weekly activity aggregation service |
+| NF.O.2 | M2 | Weekly summary narration via Claude |
+| NF.O.3 | M3 | Monday scheduled job |
+| NF.O.4 | M3 | `weekly_summaries` table |
+| NF.O.5 | M4 | `/summaries` archive page |
+| NF.P.1 | M1 | Pin ML deps to CPU-only |
+| NF.P.2 | M1 | faster-whisper small model only |
+| NF.P.3 | M3 | FastAPI async throughout |
+| NF.P.4 | M2 | LLM model selection via config |
+| NF.U.1 | M4 | SSE client with auto-reconnect |
+| NF.U.2 | M4 | Action card no-Enter-confirm |
+| NF.U.3 | M4 | Locale-aware number formatting |
+| NF.U.4 | M4 | Loading + empty states everywhere |
+| NF.D.1 | M5 | docker-compose healthchecks |
+| NF.D.2 | M5 | `make up.full` correct startup ordering |
+| NF.D.3 | M5 | Vercel deploy config for frontend |
+| NF.D.4 | M5 | Render deploy config for backend + agent |
+| NF.D.5 | M5 | Single env-var swap to real integrations |
+| NF.D.6 | M5 | `.env.example` covers every env var read |
+| NF.C.1 | M5 | Backend CI (ruff + pytest) |
+| NF.C.2 | M5 | Agent CI (ruff + pytest) |
+| NF.C.3 | M5 | Frontend CI (lint + build) |
+| NF.C.4 | M5 | PR template with walking-skeleton checkbox |
+
+## Stretch goals
+
+| ID | Owner | Title | Sizing |
+| :--- | :---: | :--- | :---: |
+| S.1 | M4+M3 | Slack / Teams action card push | ~2-4d |
+| S.2 | M4+M2 | Multi-language UI (FR + ES) | ~3d |
+| S.3 | M3+M4 | Supplier portal | ~4-5d |
+| S.4 | M3+M5 | Real ERP integration playbook | ~2d + 1d/integration |
+| S.5 | M5+M4 | Floor-worker mobile PWA | ~3-4d |
+| S.6 | M3+M2 | Outbound notification analytics | ~2-3d |
