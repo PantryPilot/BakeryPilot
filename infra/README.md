@@ -274,6 +274,153 @@ Corrections must be **new rows with the opposite delta** — never UPDATE/DELETE
 
 ---
 
+## Querying the data
+
+Open a psql shell with `make db.psql` (or use any client pointed at `postgresql://bakery:bakery@localhost:5432/bakery`). All queries below are verified against the seeded data.
+
+### Sanity check — row counts
+
+```sql
+SELECT 'facilities' AS table, count(*) FROM facilities
+UNION ALL SELECT 'suppliers',           count(*) FROM suppliers
+UNION ALL SELECT 'ingredients',         count(*) FROM ingredients
+UNION ALL SELECT 'skus',                count(*) FROM skus
+UNION ALL SELECT 'production_formulas', count(*) FROM production_formulas
+UNION ALL SELECT 'ingredient_lots',     count(*) FROM ingredient_lots;
+```
+
+Expected: 4 / 5 / 92 / 12 / 64 / 180. The full version is wired up as `make db.status`.
+
+### List the 4 plants
+
+```sql
+SELECT facility_id, name, city, province, cold_capacity_kg, dry_capacity_kg
+FROM facilities ORDER BY facility_id;
+```
+
+### Suppliers grouped by personality
+
+```sql
+SELECT supplier_id, name, personality_tag, contract_expiry_date
+FROM suppliers ORDER BY personality_tag;
+```
+
+Returns one supplier per personality: `reliable` (NorthGrain), `cheap_late` (Valley Dairy), `high_moq` (Prairie Bulk Sugar), `disrupted` (Coastal Berry), `new` (New Leaf).
+
+### Red / expired lots (drives the `/materials` red badges)
+
+```sql
+SELECT l.lot_code, i.name AS ingredient, l.facility_id,
+       l.quantity_kg, l.expiry_date,
+       (l.expiry_date - CURRENT_DATE) AS days_left
+FROM ingredient_lots l
+JOIN ingredients i USING (ingredient_id)
+WHERE l.expiry_date < CURRENT_DATE + INTERVAL '3 days'
+ORDER BY l.expiry_date;
+```
+
+By design (F1.7), the seed always includes ≥5 lots with `days_left < 3` and 3 lots already past expiry.
+
+### Bill of materials for one SKU
+
+```sql
+SELECT s.name AS sku, i.name AS ingredient, f.kg_per_unit
+FROM production_formulas f
+JOIN skus s USING (sku_id)
+JOIN ingredients i USING (ingredient_id)
+WHERE s.sku_id = 'sku-blueberry-muffin-4pk'
+ORDER BY f.kg_per_unit DESC;
+```
+
+### Warehouse cost matrix (4 facilities × 3 zones)
+
+```sql
+SELECT f.name AS facility, w.storage_type, w.cost_per_kg_per_day, w.capacity_kg
+FROM warehouse_costs w
+JOIN facilities f USING (facility_id)
+ORDER BY facility, storage_type;
+```
+
+### Open retailer POs
+
+```sql
+SELECT r.name AS retailer, s.name AS sku,
+       o.quantity_units, o.requested_delivery_date, o.status
+FROM retailer_orders o
+JOIN retailers r USING (retailer_id)
+JOIN skus s       USING (sku_id)
+ORDER BY requested_delivery_date;
+```
+
+### Top 10 ingredients by stock on hand
+
+```sql
+SELECT i.name AS ingredient,
+       COUNT(*)                          AS lots,
+       ROUND(SUM(l.quantity_kg)::numeric, 1) AS total_kg
+FROM ingredient_lots l
+JOIN ingredients i USING (ingredient_id)
+GROUP BY i.name
+ORDER BY total_kg DESC
+LIMIT 10;
+```
+
+### Allergen changeover lookup (for the scheduler)
+
+```sql
+SELECT from_allergen, to_allergen, changeover_minutes
+FROM allergen_changeovers
+WHERE from_allergen = 'peanut'
+ORDER BY changeover_minutes DESC;
+```
+
+### JSONB query against `action_cards`
+
+The `payload` column is `jsonb`, indexable with GIN. Once the agent has emitted cards:
+
+```sql
+-- All pending supplier_order cards for a specific facility
+SELECT card_id, payload->>'supplier_id' AS supplier, payload->'landed_cost'->>'total' AS total
+FROM action_cards
+WHERE state = 'pending'
+  AND kind = 'supplier_order'
+  AND payload->>'facility_id' = 'plant-toronto';
+```
+
+### Append-only audit pattern (verified)
+
+Write a consumption event:
+
+```sql
+INSERT INTO inventory_events (kind, lot_id, delta_kg, source, note)
+SELECT 'consumption', lot_id, -12.5, 'demo', 'README example'
+FROM ingredient_lots ORDER BY received_date DESC LIMIT 1
+RETURNING event_id, kind, delta_kg;
+```
+
+Try to DELETE — the trigger raises (this is the NF.R.1 guarantee):
+
+```sql
+DELETE FROM inventory_events;
+-- ERROR:  Table inventory_events is append-only;
+--         INSERT new rows for corrections instead of DELETE on row.
+```
+
+Correct by inserting an offsetting row instead of UPDATE/DELETE:
+
+```sql
+INSERT INTO inventory_events (kind, lot_id, delta_kg, source, source_ref, note)
+SELECT 'adjustment', lot_id, 12.5, 'demo', event_id::text, 'reverse README example'
+FROM inventory_events
+WHERE source = 'demo' AND kind = 'consumption';
+
+-- Net per lot is now zero, but both rows remain for audit
+SELECT lot_id, SUM(delta_kg) AS net_kg
+FROM inventory_events WHERE source = 'demo' GROUP BY lot_id;
+```
+
+---
+
 ## Troubleshooting
 
 **`make up` hangs / postgres healthcheck never goes green** — usually a stale container from a previous project on port 5432. Check with `docker ps` and `lsof -i :5432`.
