@@ -2,6 +2,70 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bakerypilot.local/schemas/ingredient_lot.schema.json",
   "title": "IngredientLot",
-  "description": "Per-lot ingredient record with expiry and computed spoilage risk.",
-  "type": "object"
+  "description": "Per-lot ingredient record. Mirrors infra/supabase/schema.sql ingredient_lots, plus a computed spoilage_risk_score from services/spoilage.py.",
+  "type": "object",
+  "required": [
+    "version",
+    "lot_id",
+    "facility_id",
+    "ingredient_id",
+    "quantity_kg",
+    "received_date",
+    "expiry_date",
+    "storage_zone"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Bump on every change per CONTRIBUTING.md schema-freeze policy."
+    },
+    "lot_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "facility_id": {
+      "type": "string"
+    },
+    "ingredient_id": {
+      "type": "string"
+    },
+    "supplier_id": {
+      "type": ["string", "null"]
+    },
+    "quantity_kg": {
+      "type": "number",
+      "minimum": 0
+    },
+    "received_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "expiry_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "storage_zone": {
+      "type": "string",
+      "enum": ["frozen", "refrigerated", "dry"]
+    },
+    "unit_cost": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "lot_code": {
+      "type": ["string", "null"]
+    },
+    "spoilage_risk_score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "kg_on_hand / max(1, kg_scheduled_before_expiry). >=1.0 red, 0.7-1.0 amber, <0.7 green. Computed by services/spoilage.py; nullable until the API joins it in."
+    },
+    "spoilage_band": {
+      "type": ["string", "null"],
+      "enum": [null, "red", "amber", "green"],
+      "description": "Convenience band derived from spoilage_risk_score; lets the frontend skip the comparison logic."
+    }
+  },
+  "additionalProperties": false
 }

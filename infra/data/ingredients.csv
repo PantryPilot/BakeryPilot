@@ -1,0 +1,93 @@
+ingredient_id,name,category,default_storage_zone,shelf_life_days_default,allergen_tags,unit_of_measure
+ing-flour-ap,All-Purpose Flour,flour,dry,365,gluten,kg
+ing-flour-bread,Bread Flour,flour,dry,365,gluten,kg
+ing-flour-cake,Cake Flour,flour,dry,365,gluten,kg
+ing-flour-pastry,Pastry Flour,flour,dry,365,gluten,kg
+ing-flour-whole-wheat,Whole Wheat Flour,flour,dry,180,gluten,kg
+ing-flour-rye,Rye Flour,flour,dry,180,gluten,kg
+ing-flour-spelt,Spelt Flour,flour,dry,180,gluten,kg
+ing-flour-almond,Almond Flour,flour,refrigerated,180,tree_nut,kg
+ing-flour-oat,Oat Flour,flour,dry,365,,kg
+ing-flour-rice,Rice Flour,flour,dry,365,,kg
+ing-flour-cornstarch,Cornstarch,flour,dry,730,,kg
+ing-sugar-granulated,Granulated Sugar,sweetener,dry,1825,,kg
+ing-sugar-brown-light,Light Brown Sugar,sweetener,dry,730,,kg
+ing-sugar-brown-dark,Dark Brown Sugar,sweetener,dry,730,,kg
+ing-sugar-powdered,Powdered Sugar,sweetener,dry,730,,kg
+ing-sugar-demerara,Demerara Sugar,sweetener,dry,1095,,kg
+ing-honey,Honey,sweetener,dry,1825,,kg
+ing-molasses,Molasses,sweetener,dry,365,,kg
+ing-maple-syrup,Maple Syrup,sweetener,refrigerated,365,,L
+ing-corn-syrup,Corn Syrup,sweetener,dry,730,,L
+ing-butter-unsalted,Unsalted Butter,dairy,refrigerated,90,dairy,kg
+ing-butter-salted,Salted Butter,dairy,refrigerated,120,dairy,kg
+ing-butter-frozen,Frozen Butter Blocks,dairy,frozen,365,dairy,kg
+ing-shortening,Vegetable Shortening,fat,dry,730,,kg
+ing-oil-vegetable,Vegetable Oil,fat,dry,365,,L
+ing-oil-coconut,Coconut Oil,fat,dry,730,,L
+ing-oil-canola,Canola Oil,fat,dry,365,,L
+ing-margarine,Bakery Margarine,fat,refrigerated,180,dairy,kg
+ing-milk-whole,Whole Milk,dairy,refrigerated,14,dairy,L
+ing-milk-skim,Skim Milk,dairy,refrigerated,14,dairy,L
+ing-milk-powder,Skim Milk Powder,dairy,dry,365,dairy,kg
+ing-cream-heavy,Heavy Cream,dairy,refrigerated,21,dairy,L
+ing-buttermilk,Buttermilk,dairy,refrigerated,14,dairy,L
+ing-sour-cream,Sour Cream,dairy,refrigerated,21,dairy,kg
+ing-cream-cheese,Cream Cheese,dairy,refrigerated,30,dairy,kg
+ing-yogurt-plain,Plain Yogurt,dairy,refrigerated,21,dairy,kg
+ing-eggs-whole,Whole Eggs (liquid),egg,refrigerated,21,egg,L
+ing-eggs-whites,Liquid Egg Whites,egg,refrigerated,28,egg,L
+ing-eggs-yolks,Liquid Egg Yolks,egg,refrigerated,21,egg,L
+ing-yeast-instant,Instant Yeast,leavener,refrigerated,365,,kg
+ing-yeast-active-dry,Active Dry Yeast,leavener,dry,365,,kg
+ing-yeast-fresh,Fresh Cake Yeast,leavener,refrigerated,21,,kg
+ing-baking-powder,Baking Powder,leavener,dry,365,,kg
+ing-baking-soda,Baking Soda,leavener,dry,1095,,kg
+ing-salt-kosher,Kosher Salt,seasoning,dry,1825,,kg
+ing-salt-sea,Sea Salt,seasoning,dry,1825,,kg
+ing-vanilla-extract,Vanilla Extract,flavoring,dry,1825,,L
+ing-almond-extract,Almond Extract,flavoring,dry,1825,tree_nut,L
+ing-cinnamon-ground,Ground Cinnamon,spice,dry,730,,kg
+ing-nutmeg-ground,Ground Nutmeg,spice,dry,730,,kg
+ing-cardamom-ground,Ground Cardamom,spice,dry,730,,kg
+ing-ginger-ground,Ground Ginger,spice,dry,730,,kg
+ing-cloves-ground,Ground Cloves,spice,dry,730,,kg
+ing-blueberry-frozen,Frozen Blueberries,fruit,frozen,365,,kg
+ing-raspberry-frozen,Frozen Raspberries,fruit,frozen,365,,kg
+ing-strawberry-frozen,Frozen Strawberries,fruit,frozen,365,,kg
+ing-cherry-frozen,Frozen Cherries,fruit,frozen,365,,kg
+ing-peach-frozen,Frozen Peaches,fruit,frozen,365,,kg
+ing-apple-diced,Diced Apples (IQF),fruit,frozen,365,,kg
+ing-cranberry-frozen,Frozen Cranberries,fruit,frozen,365,,kg
+ing-raisins,Raisins,fruit,dry,365,,kg
+ing-currants,Dried Currants,fruit,dry,365,,kg
+ing-dates-pitted,Pitted Dates,fruit,dry,365,,kg
+ing-apricot-dried,Dried Apricots,fruit,dry,365,,kg
+ing-cranberry-dried,Dried Cranberries,fruit,dry,365,,kg
+ing-lemon-fresh,Fresh Lemons,fruit,refrigerated,30,,kg
+ing-orange-fresh,Fresh Oranges,fruit,refrigerated,30,,kg
+ing-banana-fresh,Fresh Bananas,fruit,refrigerated,10,,kg
+ing-almonds-sliced,Sliced Almonds,nut,dry,365,tree_nut,kg
+ing-almonds-whole,Whole Almonds,nut,dry,365,tree_nut,kg
+ing-walnuts-halves,Walnut Halves,nut,refrigerated,180,tree_nut,kg
+ing-pecans-halves,Pecan Halves,nut,refrigerated,180,tree_nut,kg
+ing-hazelnuts,Hazelnuts,nut,refrigerated,180,tree_nut,kg
+ing-pistachios,Pistachios,nut,refrigerated,180,tree_nut,kg
+ing-peanuts,Roasted Peanuts,nut,dry,180,peanut,kg
+ing-poppy-seeds,Poppy Seeds,seed,dry,365,,kg
+ing-sesame-seeds,Sesame Seeds,seed,dry,365,sesame,kg
+ing-sunflower-seeds,Sunflower Seeds,seed,dry,180,,kg
+ing-flax-seeds,Flax Seeds,seed,dry,365,,kg
+ing-chia-seeds,Chia Seeds,seed,dry,730,,kg
+ing-pumpkin-seeds,Pumpkin Seeds,seed,dry,180,,kg
+ing-chocolate-chips-dark,Dark Chocolate Chips,chocolate,dry,365,,kg
+ing-chocolate-chips-milk,Milk Chocolate Chips,chocolate,dry,365,dairy,kg
+ing-chocolate-chips-white,White Chocolate Chips,chocolate,dry,365,dairy,kg
+ing-cocoa-powder,Cocoa Powder,chocolate,dry,730,,kg
+ing-chocolate-bar-dark,Dark Chocolate Bar 70%,chocolate,dry,365,,kg
+ing-oats-rolled,Rolled Oats,grain,dry,730,,kg
+ing-oats-quick,Quick Oats,grain,dry,730,,kg
+ing-oats-steel-cut,Steel-Cut Oats,grain,dry,730,,kg
+ing-cornmeal,Cornmeal,grain,dry,365,,kg
+ing-bran-wheat,Wheat Bran,grain,dry,180,gluten,kg
+ing-gelatin-powder,Gelatin Powder,additive,dry,1095,,kg
