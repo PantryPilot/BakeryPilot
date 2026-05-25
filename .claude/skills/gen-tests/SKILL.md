@@ -7,22 +7,28 @@ description: Scan the BakeryPilot codebase and generate a full test suite — py
 
 Generate a working, no-database-required test suite for BakeryPilot and a GitHub Actions CI workflow that runs on every push.
 
+## Branch
+
+Accept an optional branch argument (e.g. `gen-tests website-matin`). If provided, check out that branch before reading source files and generate tests against its code. If omitted, use the current branch (`git rev-parse --abbrev-ref HEAD`). The GitHub Actions workflow should target whatever branch was resolved — do not hardcode a branch name.
+
 ## Architecture context
 
 - **Backend** (`backend/`): FastAPI on port 8000. All endpoints return deterministic mock data from `backend/app/mock_data.py` — no database needed. `httpx` and `pytest` are already in dev dependencies (`backend/pyproject.toml`).
 - **Agent** (`agent/`): LangGraph stubs. `pytest` needs to be added to `agent/pyproject.toml` dev deps before tests can run.
-- **Frontend** (`frontend/`): Next.js 15 + React 19 + TypeScript 5. Zero test tooling installed — Jest, RTL, and `jest-environment-jsdom` all need to be added.
+- **Frontend** (`frontend/`): Next.js 15 + React 19 + TypeScript 5. Zero test tooling installed — Jest, RTL, and `jest-environment-jsdom` all need to be added. Key component locations: `ActionCard`, `YieldCounter`, `MOQTaxBadge`, `RiskBar`, `StatusBadge`, `Sparkline` are all exported from `src/components/atoms.tsx` (not standalone files). `ChatBox` is exported from `src/components/ChatDrawer.tsx`. API client is at `src/lib/api.ts` (fully implemented, not a stub). React hooks for backend data are in `src/lib/hooks.ts`.
 - **No real database required**: the backend runs entirely in mock mode; set `DATABASE_URL=""` or leave it unset in CI — none of the current endpoints touch it.
 
 ---
 
 ## Step 1 — Survey what already exists
 
-Before writing anything, check what's already there to avoid overwriting:
+Before writing anything, resolve the repo root and active branch, then check what's already there to avoid overwriting:
 
 ```bash
-find backend/tests agent/tests frontend/src/__tests__ -type f 2>/dev/null
-ls .github/workflows/ 2>/dev/null
+ROOT=$(git rev-parse --show-toplevel)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+find "$ROOT/backend/tests" "$ROOT/agent/tests" "$ROOT/frontend/src/__tests__" -type f 2>/dev/null
+ls "$ROOT/.github/workflows/" 2>/dev/null
 ```
 
 Read `backend/app/main.py` to get the complete list of registered routers (it changes as features grow). Read each `backend/app/api/*.py` file to extract the HTTP method + path for every `@router.get/post/delete` so your tests hit real paths.
@@ -222,13 +228,18 @@ Add `"test": "jest"` to the `scripts` block.
 
 ### Test files under `frontend/src/__tests__/`
 
-**`ActionCard.test.tsx`** — component currently returns null, but it should render without crashing:
+**`ActionCard.test.tsx`** — `ActionCard` is exported from `atoms.tsx`, not a standalone file:
 ```typescript
 import { render } from '@testing-library/react'
-import { ActionCard } from '../components/ActionCard'
+import { ActionCard } from '../components/atoms'
+
+const card = {
+  kind: 'supplier_order', agent: 'ProcurementAgent', title: 'Test PO',
+  summary: [{ label: 'Qty', value: '100 kg' }],
+}
 
 test('ActionCard renders without crashing', () => {
-  const { container } = render(<ActionCard />)
+  const { container } = render(<ActionCard card={card} />)
   expect(container).toBeInTheDocument()
 })
 ```
