@@ -4,6 +4,7 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } from "../../components/atoms";
 import { SUPPLIERS, RETAILERS, SKUS, Supplier } from "../../lib/data";
+import { useSuppliers, useEsgCounter } from "../../lib/hooks";
 
 function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
   series: { values: number[]; color: string; label: string; dashed?: boolean }[];
@@ -219,12 +220,17 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
 
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
+  const { data: suppliers, status: supplierStatus } = useSuppliers();
+  // SUPPLIERS fallback list kept available for components that haven't migrated;
+  // local rendering uses the live `suppliers` array.
+  void SUPPLIERS;
   const summary = [
-    { label: "Active suppliers", value: SUPPLIERS.length, tone: "slate" },
-    { label: "At risk",          value: SUPPLIERS.filter(s => s.status !== "ok").length, tone: "amber" },
+    { label: "Active suppliers", value: suppliers.length, tone: "slate" },
+    { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
     { label: "Pending drafts",   value: 2,  tone: "blue" },
     { label: "Expiring < 60d",   value: 3,  tone: "amber" },
   ];
+  void supplierStatus;
   return (
     <>
       <div className="grid grid-cols-4 gap-3 mb-5">
@@ -245,7 +251,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
             </tr>
           </thead>
           <tbody>
-            {SUPPLIERS.map(s => {
+            {suppliers.map(s => {
               const rowTone = s.status === "disrupt" ? "bg-red-500/[0.06]" : s.status === "warn" ? "bg-amber-500/[0.04]" : "";
               return (
                 <tr key={s.id} onClick={() => setActiveSupplier(s)} className={`border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition ${rowTone}`}>
@@ -285,7 +291,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       </div>
       <SectionHeader title="MOQ-tax ledger" sub="Per-supplier over-ordering cost · progress toward $3K negotiation threshold"/>
       <div className="rounded-lg border border-slate-800 bg-slate-900/30 divide-y divide-slate-800/60">
-        {SUPPLIERS.filter(s => s.moqTaxQtd > 0).map(s => (
+        {suppliers.filter(s => s.moqTaxQtd > 0).map(s => (
           <div key={s.id} className="p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -315,9 +321,13 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
 }
 
 function PerformanceTab() {
+  const { data: esg, status: esgStatus } = useEsgCounter();
+  const live = esgStatus === "live";
+  const wasteValue = live && esg.wasteAvoided !== undefined ? `$${esg.wasteAvoided.toLocaleString()}` : "$184,210";
+  const co2Value = live && esg.co2eSaved !== undefined ? `${esg.co2eSaved} t` : "12.4 t";
   const tiles = [
-    { label: "Waste Avoided",      value: "$184,210", sub: "this quarter",          spark: [120, 134, 142, 138, 155, 168, 175, 184], tone: "green" },
-    { label: "CO2e Saved",         value: "12.4 t",   sub: "year-to-date",          spark: [2, 4, 5, 6, 8, 9, 11, 12],              tone: "green" },
+    { label: "Waste Avoided",      value: wasteValue, sub: live ? "live · waste_events" : "this quarter", spark: [120, 134, 142, 138, 155, 168, 175, 184], tone: "green" },
+    { label: "CO2e Saved",         value: co2Value,   sub: live ? "live · waste_events" : "year-to-date", spark: [2, 4, 5, 6, 8, 9, 11, 12],              tone: "green" },
     { label: "MOQ-Tax YTD",        value: "$8,420",   sub: "across 3 suppliers",    spark: [1, 2, 3, 4, 5, 6, 7, 8],               tone: "amber" },
     { label: "Disruptions Caught", value: "47",       sub: "avg lead time 18.4 h",  spark: [3, 5, 7, 9, 12, 18, 28, 47],           tone: "blue" },
   ];

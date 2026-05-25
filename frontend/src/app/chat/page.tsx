@@ -6,6 +6,7 @@ import { ChatBox } from "../../components/ChatDrawer";
 import { SAMPLE_CARDS, pickAgent, pickTools, mockReply, pickCard } from "../../components/ChatBrain";
 import { TOOL_CHAINS } from "../../lib/data";
 import { ActionCardData } from "../../components/atoms";
+import { streamChat } from "../../lib/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -153,19 +154,67 @@ export default function ChatPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [thread]);
 
-  const send = () => {
+  const send = async () => {
     if (!input.trim()) return;
     const u = input.trim();
-    setThread(t => [...t, { role: "user", text: u, time: "now" }]);
+    const agent = pickAgent(u);
+    const tools = pickTools(u);
+
+    // Push the user message and an empty assistant placeholder we'll fill in
+    // as SSE chunks arrive. If the backend is unreachable, the fallback below
+    // replaces it with the canned mockReply.
+    setThread(t => [
+      ...t,
+      { role: "user", text: u, time: "now" },
+      { role: "assistant", agent, time: "now", tools, text: "" },
+    ]);
     setInput("");
-    setTimeout(() => {
+
+    const history = thread.map(m => ({ role: m.role, content: m.text }));
+
+    let received = false;
+    const fallback = () => {
       const card = pickCard(u);
-      setThread(t => [...t, { role: "assistant", agent: pickAgent(u), time: "now", tools: pickTools(u), text: mockReply(u), card }]);
+      setThread(t => {
+        const next = [...t];
+        next[next.length - 1] = { role: "assistant", agent, time: "now", tools, text: mockReply(u), card };
+        return next;
+      });
       if (card) {
         const key = Object.keys(SAMPLE_CARDS).find(k => SAMPLE_CARDS[k] === card);
         if (key) setContextItem(key);
       }
-    }, 600);
+    };
+
+    await streamChat(u, history, {
+      onMessage: (chunk) => {
+        received = true;
+        setThread(t => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { ...last, text: (last.text || "") + chunk };
+          }
+          return next;
+        });
+      },
+      onActionCard: () => {
+        const card = pickCard(u);
+        if (!card) return;
+        setThread(t => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { ...last, card };
+          }
+          return next;
+        });
+        const key = Object.keys(SAMPLE_CARDS).find(k => SAMPLE_CARDS[k] === card);
+        if (key) setContextItem(key);
+      },
+      onDone: () => { if (!received) fallback(); },
+      onError: () => { if (!received) fallback(); },
+    });
   };
 
   return (

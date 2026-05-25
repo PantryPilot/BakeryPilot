@@ -1,14 +1,26 @@
+name: bakery-pilot
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: bakery
-      POSTGRES_PASSWORD: bakery
-      POSTGRES_DB: bakery
+      POSTGRES_USER: ${POSTGRES_USER:-bakery}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bakery}
+      POSTGRES_DB: ${POSTGRES_DB:-bakery}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # First-boot auto-init. Files run alphabetically (schema before seed).
+      # On subsequent boots (volume already populated) this directory is ignored —
+      # use `make schema.migrate && make schema.seed` to re-apply.
+      - ./infra/supabase:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bakery} -d ${POSTGRES_DB:-bakery}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -16,6 +28,11 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   mongo:
     image: mongo:7
@@ -28,7 +45,11 @@ services:
     profiles: ["full"]
     build: ./backend
     env_file: .env
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8000:8000"
 
@@ -36,17 +57,27 @@ services:
     profiles: ["full"]
     build: ./agent
     env_file: .env
-    depends_on: [postgres, redis, backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     profiles: ["full"]
     build: ./frontend
     env_file: .env
-    depends_on: [backend]
+    depends_on:
+      backend:
+        condition: service_started
     ports:
       - "3000:3000"
 
 volumes:
   postgres-data:
+    name: bakery-pilot-postgres-data
   redis-data:
+    name: bakery-pilot-redis-data
   mongo-data:

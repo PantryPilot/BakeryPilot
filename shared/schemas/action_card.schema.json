@@ -2,6 +2,92 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bakerypilot.local/schemas/action_card.schema.json",
   "title": "ActionCard",
-  "description": "The human-in-the-loop confirm contract. Every state-changing agent action surfaces an ActionCard before commit.",
-  "type": "object"
+  "description": "The human-in-the-loop confirm contract. Every state-changing agent action surfaces an ActionCard before commit. Phase 1 supports kind=supplier_order; later phases add schedule_change, transfer, work_order, download.",
+  "type": "object",
+  "required": ["card_id", "kind", "state", "created_at", "payload", "version"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Bump on every change per CONTRIBUTING.md schema-freeze policy."
+    },
+    "card_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["supplier_order", "schedule_change", "transfer", "work_order", "download"]
+    },
+    "state": {
+      "type": "string",
+      "enum": ["pending", "confirmed", "rejected"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decided_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "decided_by": {
+      "type": ["string", "null"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "Short 1-line user-facing summary rendered above the confirm button."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Kind-specific body. Discriminated by the top-level `kind`. Only the supplier_order variant is defined in Phase 1.",
+      "oneOf": [
+        { "$ref": "#/$defs/SupplierOrderPayload" }
+      ]
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "SupplierOrderPayload": {
+      "type": "object",
+      "required": ["supplier_id", "facility_id", "items", "landed_cost"],
+      "properties": {
+        "supplier_id": { "type": "string" },
+        "facility_id": { "type": "string" },
+        "delivery_date": { "type": "string", "format": "date" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/SupplierOrderItem" }
+        },
+        "landed_cost": { "$ref": "#/$defs/LandedCostBreakdown" }
+      },
+      "additionalProperties": false
+    },
+    "SupplierOrderItem": {
+      "type": "object",
+      "required": ["ingredient_id", "quantity_kg", "unit_price"],
+      "properties": {
+        "ingredient_id": { "type": "string" },
+        "quantity_kg":   { "type": "number", "exclusiveMinimum": 0 },
+        "unit_price":    { "type": "number", "minimum": 0 },
+        "moq_overage_kg":{ "type": "number", "minimum": 0,
+                           "description": "Required-vs-MOQ overage. Drives MOQ-tax ledger in Phase 3." }
+      },
+      "additionalProperties": false
+    },
+    "LandedCostBreakdown": {
+      "type": "object",
+      "required": ["unit_cost", "overage_cost", "holding_cost", "total"],
+      "properties": {
+        "unit_cost":    { "type": "number", "minimum": 0 },
+        "overage_cost": { "type": "number", "minimum": 0 },
+        "holding_cost": { "type": "number", "minimum": 0 },
+        "total":        { "type": "number", "minimum": 0 },
+        "currency":     { "type": "string", "default": "CAD" }
+      },
+      "additionalProperties": false
+    }
+  }
 }

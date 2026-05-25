@@ -532,6 +532,9 @@ are the walking skeleton.
   action card -> confirm -> DB write) must stay green every evening from Day 1
   onward. Features are depth on top of that path, never replacements of it.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the additive-vs-breaking change rules
+that operationalize the schema freeze.
+
 ---
 
 ## Team (5 members)

@@ -3,7 +3,8 @@ import { useState, useMemo } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
-import { LOTS, FACILITIES, Lot } from "../../lib/data";
+import { FACILITIES, Lot } from "../../lib/data";
+import { useLots } from "../../lib/hooks";
 
 const FILTER_FACILITY = [
   { id: "all", label: "All" },
@@ -130,9 +131,10 @@ export default function MaterialsPage() {
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
+  const { data: lots, status: backendStatus } = useLots();
 
   const filtered = useMemo(() => {
-    let l = LOTS.slice();
+    let l = lots.slice();
     if (facility !== "all") l = l.filter(x => x.facility === facility);
     if (storage !== "All") l = l.filter(x => x.storage === storage.toLowerCase());
     if (risk !== "All") {
@@ -148,11 +150,11 @@ export default function MaterialsPage() {
     if (sort === "qty")      l.sort((a, b) => b.qty - a.qty);
     if (sort === "facility") l.sort((a, b) => a.facility.localeCompare(b.facility));
     return l;
-  }, [facility, storage, risk, sort, query]);
+  }, [lots, facility, storage, risk, sort, query]);
 
   const horizon = useMemo(() => {
     const groups: Record<string, { ingredient: string; total: number }> = {};
-    LOTS.forEach(l => {
+    lots.forEach(l => {
       if (!groups[l.ingredient]) groups[l.ingredient] = { ingredient: l.ingredient, total: 0 };
       groups[l.ingredient].total += l.qty;
     });
@@ -162,14 +164,14 @@ export default function MaterialsPage() {
       const leadTime = 5;
       return { ...g, burn, days, leadTime, needReorder: days <= leadTime + 2 };
     }).sort((a, b) => a.days - b.days).slice(0, 10);
-  }, []);
+  }, [lots]);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Inventory"
-          sub={`${LOTS.length} active lots · ${LOTS.filter(l => l.status === "critical").length} critical · ${LOTS.filter(l => l.status === "warn").length} at risk`}
+          sub={`${lots.length} active lots · ${lots.filter(l => l.status === "critical").length} critical · ${lots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`}
           right={
             <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
               <Icon name="chat" size={13}/> Ask copilot about inventory

@@ -83,6 +83,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.8 [M3] FastAPI app entrypoint
 
+**Status:** in_progress
 **What:** Wire `backend/app/main.py` with `FastAPI()` instance, CORS middleware (origin from `ALLOWED_ORIGINS` env), and router mounts for every router stubbed in `app/api/`.
 **Files:** `backend/app/main.py`
 **Acceptance:**
@@ -99,6 +100,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.10 [M3] `GET /api/lots` endpoint
 
+**Status:** in_progress
 **What:** Inventory router returns all lots with computed `spoilage_risk_score` (delegated to `services/spoilage.py`), sortable by risk desc.
 **Files:** `backend/app/api/inventory.py`
 **Acceptance:**
@@ -132,6 +134,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.14 [M3] `POST /api/orders/draft` endpoint
 
+**Status:** in_progress
 **What:** Accepts a draft PO (`supplier_id`, `items[]`, `delivery_date`), computes landed cost via the service, inserts an `action_card` with the proposed PO as payload, returns `{action_card_id, landed_cost_breakdown}`. Does NOT write to `supplier_orders` -- that's the confirm step.
 **Files:** `backend/app/api/orders.py`
 **Acceptance:**
@@ -141,6 +144,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.15 [M3] `POST /api/action_cards/{id}/confirm` endpoint
 
+**Status:** in_progress
 **What:** Marks the action_card as confirmed and applies its payload (inserts the `supplier_order` with `status='confirmed'`).
 **Files:** `backend/app/api/orders.py`
 **Acceptance:**
@@ -176,6 +180,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.19 [M2] SSE chat endpoint
 
+**Status:** in_progress
 **What:** `backend/app/api/chat.py` -- `POST /api/chat` streams the orchestrator's response chunks as Server-Sent Events. Action cards are emitted as a discrete `event: action_card` SSE event.
 **Files:** `backend/app/api/chat.py`
 **Acceptance:**
@@ -1349,7 +1354,7 @@ cut feature.
 Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 
 | ID | Owner | Title | Status |
-| :--- | :---: | :--- | :--- |
+| :--- | :---: | :--- | :---: |
 | F1.1 | M3 | Define `ingredient_lots` table | todo |
 | F1.2 | M3 | Define `suppliers` table (Phase 1 columns) | todo |
 | F1.3 | M3 | Define `warehouse_costs` table | todo |
@@ -1357,18 +1362,18 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F1.5 | M3 | Define `action_cards` table | todo |
 | F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` | todo |
 | F1.7 | M5 | Seed 150+ ingredient lots | todo |
-| F1.8 | M3 | FastAPI app entrypoint | todo |
+| F1.8 | M3 | FastAPI app entrypoint | in_progress |
 | F1.9 | M3 | SQLAlchemy session + base | todo |
-| F1.10 | M3 | `GET /api/lots` endpoint | todo |
+| F1.10 | M3 | `GET /api/lots` endpoint | in_progress |
 | F1.11 | M1 | Spoilage risk score service | todo |
 | F1.12 | M1 | Substitution candidates service | todo |
 | F1.13 | M3 | Landed cost service | todo |
-| F1.14 | M3 | `POST /api/orders/draft` endpoint | todo |
-| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | todo |
+| F1.14 | M3 | `POST /api/orders/draft` endpoint | in_progress |
+| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | in_progress |
 | F1.16 | M2 | LangGraph orchestrator skeleton | done |
 | F1.17 | M2 | InventoryAgent with 2 tools | done |
 | F1.18 | M2 | ProcurementAgent with 2 tools | done |
-| F1.19 | M2 | SSE chat endpoint | todo |
+| F1.19 | M2 | SSE chat endpoint | in_progress |
 | F1.20 | M2+M3 | Fill in `action_card.schema.json` | todo |
 | F1.21 | M3 | Fill in `ingredient_lot.schema.json` | todo |
 | F1.22 | M4 | Next.js layout + globals.css | todo |
@@ -1483,7 +1488,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 ## Agent Phase (AG series)
 
 | ID | Owner | Title | Status |
-| :--- | :---: | :--- | :--- |
+| :--- | :---: | :--- | :---: |
 | AG.1 | M2 | Agent dependencies + pyproject.toml | done |
 | AG.2 | M2 | Agent config module | done |
 | AG.3 | M2 | AgentState definition | done |
