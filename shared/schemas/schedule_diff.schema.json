@@ -2,6 +2,81 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bakerypilot.local/schemas/schedule_diff.schema.json",
   "title": "ScheduleDiff",
-  "description": "Before/after production schedule diff with per-change narration.",
-  "type": "object"
+  "description": "Before/after production schedule diff with per-change narration. Returned by GET /api/schedules/diff and rendered by ScheduleDiff.tsx.",
+  "type": "object",
+  "required": ["version", "facility_id", "before", "after", "changes"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Bump on every change per CONTRIBUTING.md schema-freeze policy."
+    },
+    "facility_id": {
+      "type": "string"
+    },
+    "computed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "before": {
+      "type": "array",
+      "description": "Currently approved schedule runs. May be empty if no approved schedule exists yet.",
+      "items": { "$ref": "#/$defs/ScheduleRun" }
+    },
+    "after": {
+      "type": "array",
+      "description": "Newly suggested schedule runs.",
+      "items": { "$ref": "#/$defs/ScheduleRun" }
+    },
+    "changes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ScheduleChange" }
+    },
+    "binding_constraints": {
+      "type": "array",
+      "description": "Top 3 binding constraints from the OR-Tools solve, in natural language (F2.9 'why this schedule?').",
+      "items": { "type": "string" },
+      "maxItems": 5
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "ScheduleRun": {
+      "type": "object",
+      "required": ["schedule_id", "line_id", "sku_id", "start_at", "end_at", "quantity_units"],
+      "properties": {
+        "schedule_id":   { "type": "string", "format": "uuid" },
+        "version":       { "type": "integer", "minimum": 1 },
+        "line_id":       { "type": "string" },
+        "sku_id":        { "type": "string" },
+        "start_at":      { "type": "string", "format": "date-time" },
+        "end_at":        { "type": "string", "format": "date-time" },
+        "quantity_units":{ "type": "integer", "minimum": 1 },
+        "status":        { "type": "string", "enum": ["suggested", "approved", "complete"] },
+        "waste_avoided_kg": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "ScheduleChange": {
+      "type": "object",
+      "required": ["kind", "narration", "affected_run_ids"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["added", "removed", "shifted", "resized", "reassigned_line"]
+        },
+        "narration": {
+          "type": "string",
+          "description": "One-sentence explanation rendered as a tooltip on the diff row."
+        },
+        "affected_run_ids": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }
