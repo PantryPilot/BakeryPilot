@@ -13,6 +13,9 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 @router.post("")
 async def chat(req: ChatRequest):
+    import os
+    from app.config import settings
+    os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
     from agent.graph import _graph
 
     async def stream():
