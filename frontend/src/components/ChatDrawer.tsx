@@ -131,7 +131,6 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
             <Icon name="zap" size={12} />
           </span>
           <span className="text-[13px] font-semibold text-slate-100">Copilot</span>
-          <span className="text-[10px] font-mono text-slate-500">claude-sonnet</span>
         </div>
         <div className="flex items-center gap-2">
           {isThinking && (
