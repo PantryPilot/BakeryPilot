@@ -12,7 +12,6 @@ const NAV = [
   { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
   { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
   { id: "scorecard",  route: "/scorecard",               label: "Scorecard",  icon: "bars"     },
-  { id: "chat",       route: "/chat",                    label: "Copilot",    icon: "chat"     },
 ];
 
 export function Sidebar() {

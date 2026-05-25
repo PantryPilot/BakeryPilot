@@ -233,7 +233,7 @@ dev = [
 
 [[package]]
 name = "bakery-pilot-backend"
-version = "0.0.1"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bakery-pilot-agent" },

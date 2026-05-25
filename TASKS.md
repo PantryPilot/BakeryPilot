@@ -233,7 +233,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.24 [M4] `ChatBox` + `ActionCard` components
 
-**Status:** in_progress
+**Status:** done
 **What:** `ChatBox.tsx` opens SSE to `/api/chat`, renders streaming response incrementally. When an `action_card` SSE event arrives, `ActionCard.tsx` renders a confirm/reject UI that POSTs to `/api/action_cards/{id}/confirm`.
 **Files:** `frontend/src/components/ChatBox.tsx`, `frontend/src/components/ActionCard.tsx`
 **Acceptance:**
@@ -1412,7 +1412,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F1.21 | M3 | Fill in `ingredient_lot.schema.json` | done |
 | F1.22 | M4 | Next.js layout + globals.css | done |
 | F1.23 | M4 | `/materials` page with risk badges | done |
-| F1.24 | M4 | `ChatBox` + `ActionCard` components | in_progress |
+| F1.24 | M4 | `ChatBox` + `ActionCard` components | done |
 | F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` | done |
 | F1.26 | M4 | Typed API client `lib/api.ts` | done |
 | F1.27 | M5 | Walking-skeleton e2e test | todo |
