@@ -11,6 +11,16 @@ from app.models.chat import ChatRequest
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
+@router.get("/ping")
+async def chat_ping():
+    async def stream():
+        for word in ["pong ", "from ", "backend!"]:
+            yield {"event": "message", "data": json.dumps({"content": word})}
+            await asyncio.sleep(0.1)
+        yield {"event": "done", "data": "{}"}
+    return EventSourceResponse(stream())
+
+
 @router.post("")
 async def chat(req: ChatRequest):
     import os

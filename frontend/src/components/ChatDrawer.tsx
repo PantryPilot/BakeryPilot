@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "./Icon";
-import { ToolBreadcrumbs, ActionCard, StreamingText } from "./atoms";
+import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { pickAgent, pickTools, pickCard } from "./ChatBrain";
-import { streamChat } from "../lib/api";
+import { BACKEND_URL } from "../lib/api";
 import { ActionCardData } from "./atoms";
 
 interface Message {
@@ -40,6 +40,7 @@ export function CopilotButton() {
   );
 }
 
+
 function CopilotPopup({ onClose }: { onClose: () => void }) {
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -73,53 +74,126 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
 
     let accumulated = "";
 
-    await streamChat(u, [], {
-      onMessage: (chunk) => {
-        accumulated += chunk;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: u, history: [] }),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let sseEvent = "message";
+      let sseData = "";
+      let finished = false;
+
+      outer: while (!finished) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+        let newline: number;
+        while ((newline = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, newline);
+          buf = buf.slice(newline + 1);
+
+          if (line === "") {
+            // blank line = end of event
+            if (sseData) {
+              if (sseEvent === "message") {
+                let payload: { content?: unknown } = {};
+                try { payload = JSON.parse(sseData); } catch {}
+                if (payload.content) {
+                  accumulated += String(payload.content);
+                  const snap = accumulated;
+                  setMessages(m => {
+                    const next = [...m];
+                    const last = next[next.length - 1];
+                    if (last?.role === "assistant") {
+                      next[next.length - 1] = { ...last, text: snap, thinking: false };
+                    }
+                    return next;
+                  });
+                }
+              } else if (sseEvent === "action_card") {
+                const card = pickCard(u);
+                if (card) {
+                  setMessages(m => {
+                    const next = [...m];
+                    const last = next[next.length - 1];
+                    if (last?.role === "assistant") next[next.length - 1] = { ...last, card };
+                    return next;
+                  });
+                }
+              } else if (sseEvent === "done") {
+                finished = true;
+                break outer;
+              }
+            }
+            sseEvent = "message";
+            sseData = "";
+          } else if (line.startsWith("event:")) {
+            sseEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            sseData = line.slice(5).trim();
+          }
+        }
+      }
+
+      if (!accumulated) {
         setMessages(m => {
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: accumulated, thinking: false };
-          }
-          return next;
-        });
-      },
-      onActionCard: () => {
-        const card = pickCard(u);
-        if (!card) return;
-        setMessages(m => {
-          const next = [...m];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, card };
-          }
-          return next;
-        });
-      },
-      onDone: () => {
-        setIsThinking(false);
-        setMessages(m => {
-          const next = [...m];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant" && !last.text) {
             next[next.length - 1] = { ...last, text: "No response received.", thinking: false };
           }
           return next;
         });
-      },
-      onError: () => {
-        setIsThinking(false);
-        setMessages(m => {
-          const next = [...m];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: "Agent unreachable — is the backend running?", thinking: false };
-          }
-          return next;
-        });
-      },
+      }
+    } catch (e) {
+      setMessages(m => {
+        const next = [...m];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant") {
+          next[next.length - 1] = { ...last, text: `Error: ${e}`, thinking: false };
+        }
+        return next;
+      });
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const testPing = () => {
+    setMessages(m => [...m, { role: "assistant", agent: "ping", text: "", time: nowTime(), thinking: true }]);
+    let text = "";
+    const es = new EventSource(`${BACKEND_URL}/api/chat/ping`);
+
+    es.addEventListener("message", (e: MessageEvent) => {
+      try {
+        const p = JSON.parse(e.data as string);
+        if (p.content) {
+          text += p.content as string;
+          const snap = text;
+          setMessages(m => { const n = [...m]; n[n.length - 1] = { ...n[n.length - 1], text: snap, thinking: false }; return n; });
+        }
+      } catch {}
     });
+
+    const finish = () => {
+      es.close();
+      if (!text) {
+        setMessages(m => { const n = [...m]; n[n.length - 1] = { ...n[n.length - 1], text: "EventSource: no content — check CORS or backend", thinking: false }; return n; });
+      }
+    };
+
+    es.addEventListener("done", finish);
+    es.onerror = () => {
+      finish();
+    };
   };
 
   return (
@@ -140,6 +214,7 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
               <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "300ms" }} />
             </span>
           )}
+          <button onClick={testPing} className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 hover:text-slate-200">ping</button>
           <button onClick={onClose} className="p-1 rounded hover:bg-slate-800 text-slate-400">
             <Icon name="x" size={15} />
           </button>
@@ -200,7 +275,7 @@ function PopupMessage({ m }: { m: Message }) {
         <span className="text-slate-700">·</span>
         <span className="font-mono">{m.time}</span>
       </div>
-      {m.tools && <div className="pl-6"><ToolBreadcrumbs tools={m.tools} /></div>}
+      {m.tools && m.tools.length > 0 && <div className="pl-6"><ToolBreadcrumbs tools={m.tools} /></div>}
       <div className="pl-6">
         {m.thinking ? (
           <span className="inline-flex gap-1 items-center text-slate-500 text-[12px]">
@@ -209,7 +284,7 @@ function PopupMessage({ m }: { m: Message }) {
             <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
           </span>
         ) : (
-          <StreamingText text={m.text} />
+          <div className="text-[13.5px] leading-relaxed text-slate-200 whitespace-pre-wrap">{m.text}</div>
         )}
       </div>
       {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
