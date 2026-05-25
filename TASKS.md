@@ -23,6 +23,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.1 [M3] Define `ingredient_lots` table
 
+**Status:** done
 **What:** Add `ingredient_lots` to `infra/supabase/schema.sql` with: `lot_id` PK, `facility_id` FK, `ingredient_id` FK, `quantity_kg numeric`, `expiry_date date`, `storage_zone` (`'frozen'|'refrigerated'|'dry'`), `received_date date`, `supplier_id` FK nullable.
 **Why:** Module 1's spoilage scoring and Module 4's procurement queries both treat this as the lot source of truth.
 **Files:** `infra/supabase/schema.sql`
@@ -33,6 +34,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.2 [M3] Define `suppliers` table (Phase 1 columns only)
 
+**Status:** done
 **What:** Create `suppliers` with `supplier_id` PK, `name`, `contact_email`, `payment_terms`, `contract_expiry_date date`. MOQ, delivery window, discount tier columns are deferred to Phase 3.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -41,6 +43,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.3 [M3] Define `warehouse_costs` table
 
+**Status:** done
 **What:** Composite PK `(facility_id, storage_type)`, columns `cost_per_kg_per_day numeric`, `capacity_kg numeric`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -49,6 +52,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.4 [M3] Define `supplier_orders` + `supplier_order_items`
 
+**Status:** done
 **What:** PO header (`order_id`, `supplier_id`, `status`, `created_at`, `confirmed_at nullable`, `action_card_id nullable`) and line items (`order_id` FK, `ingredient_id`, `quantity_kg`, `unit_price`).
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -57,6 +61,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.5 [M3] Define `action_cards` table
 
+**Status:** done
 **What:** `card_id PK`, `kind`, `payload jsonb`, `state ('pending'|'confirmed'|'rejected')`, `created_at`, `decided_at`, `decided_by`. This table is the audit trail for every HITL decision.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -65,6 +70,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.6 [M3] Seed `facilities`, `suppliers`, `warehouse_costs`
 
+**Status:** done
 **What:** Populate `infra/supabase/seed.sql` with 4 FGF plants, 5 supplier rows -- one per personality (reliable / cheap-but-late / high-MOQ / disrupted / new entrant) -- and 12 warehouse-cost rows (4 facilities x 3 storage types).
 **Files:** `infra/supabase/seed.sql`
 **Acceptance:**
@@ -73,6 +79,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.7 [M5] Seed 150+ ingredient lots
 
+**Status:** done
 **What:** Implement `infra/seed_lots.py` using Faker to generate 150+ rows with realistic expiry distributions -- most > 7 days, a tail < 3 days, a few past expiry (audit edge case).
 **Why:** The < 3 days bucket forces red-badge rendering during the demo; the past-expiry bucket verifies append-only audit handling.
 **Files:** `infra/seed_lots.py`
@@ -83,7 +90,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.8 [M3] FastAPI app entrypoint
 
-**Status:** in_progress
+**Status:** done
 **What:** Wire `backend/app/main.py` with `FastAPI()` instance, CORS middleware (origin from `ALLOWED_ORIGINS` env), and router mounts for every router stubbed in `app/api/`.
 **Files:** `backend/app/main.py`
 **Acceptance:**
@@ -180,7 +187,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.19 [M2] SSE chat endpoint
 
-**Status:** in_progress
+**Status:** done
 **What:** `backend/app/api/chat.py` -- `POST /api/chat` streams the orchestrator's response chunks as Server-Sent Events. Action cards are emitted as a discrete `event: action_card` SSE event.
 **Files:** `backend/app/api/chat.py`
 **Acceptance:**
@@ -189,6 +196,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.20 [M2 + M3] Fill in `action_card.schema.json`
 
+**Status:** done
 **What:** Define the JSON Schema for `ActionCard` with discriminator on `kind`. Phase 1 supports `kind='supplier_order'` only; later phases add `'schedule_change'`, `'transfer'`, `'work_order'`.
 **Files:** `shared/schemas/action_card.schema.json`
 **Acceptance:**
@@ -197,6 +205,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.21 [M3] Fill in `ingredient_lot.schema.json`
 
+**Status:** done
 **What:** JSON Schema mirroring the `ingredient_lots` columns + computed `spoilage_risk_score`.
 **Files:** `shared/schemas/ingredient_lot.schema.json`
 **Acceptance:**
@@ -205,6 +214,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.22 [M4] Next.js layout + globals.css
 
+**Status:** done
 **What:** Wire the root layout with Tailwind and a minimal header. Globals load Tailwind base/components/utilities.
 **Files:** `frontend/src/app/layout.tsx`, `frontend/src/app/globals.css`
 **Acceptance:**
@@ -213,6 +223,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.23 [M4] `/materials` page with risk badges
 
+**Status:** done
 **What:** Fetches `GET /api/lots` and renders a table with a red / amber / green badge per lot based on `spoilage_risk_score`.
 **Files:** `frontend/src/app/materials/page.tsx`
 **Acceptance:**
@@ -222,6 +233,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.24 [M4] `ChatBox` + `ActionCard` components
 
+**Status:** in_progress
 **What:** `ChatBox.tsx` opens SSE to `/api/chat`, renders streaming response incrementally. When an `action_card` SSE event arrives, `ActionCard.tsx` renders a confirm/reject UI that POSTs to `/api/action_cards/{id}/confirm`.
 **Files:** `frontend/src/components/ChatBox.tsx`, `frontend/src/components/ActionCard.tsx`
 **Acceptance:**
@@ -231,6 +243,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.25 [M4] `/chat` page wires `ChatBox` + `ActionCard`
 
+**Status:** done
 **What:** `app/chat/page.tsx` lays out the chat interface using the two components.
 **Files:** `frontend/src/app/chat/page.tsx`
 **Acceptance:**
@@ -238,6 +251,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.26 [M4] Typed API client (`lib/api.ts`)
 
+**Status:** done
 **What:** Replace the empty `export {}` with a typed wrapper around fetch for `/api/lots`, `/api/suppliers`, `/api/chat` (SSE), `/api/orders/draft`, and `/api/action_cards/{id}/confirm`.
 **Files:** `frontend/src/lib/api.ts`
 **Acceptance:**
@@ -261,6 +275,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.1 [M3] Define `production_formulas` table
 
+**Status:** done
 **What:** Per-SKU bill of materials: `sku_id`, `ingredient_id`, `kg_per_unit`. Used by scheduler and yield modules.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -269,6 +284,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.2 [M3] Define `production_schedules` table
 
+**Status:** done
 **What:** Approved + suggested schedules. Columns: `schedule_id`, `version`, `facility_id`, `line_id`, `sku_id`, `start_at`, `end_at`, `quantity`, `status` (`suggested|approved|complete`), `waste_avoided_kg numeric`, `action_card_id nullable`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -277,6 +293,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.3 [M3] Define `retailer_orders` table
 
+**Status:** done
 **What:** Firm POs from Costco / Walmart / Loblaws / Whole Foods. Columns: `order_id`, `retailer_id`, `sku_id`, `quantity`, `requested_delivery_date`, `received_at`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -285,6 +302,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.4 [M3] Define `demand_forecasts` table
 
+**Status:** done
 **What:** Per-SKU daily forecast output. Columns: `sku_id`, `forecast_date`, `quantity_expected`, `quantity_low`, `quantity_high`, `model_version`, `generated_at`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -333,6 +351,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.10 [M3] `POST /api/retailer_orders` -> trigger re-schedule
 
+**Status:** done
 **What:** Endpoint accepts a retailer PO, inserts row, invokes scheduler, surfaces an action_card with the new suggested schedule.
 **Files:** `backend/app/api/orders.py` (or `retailer_orders.py`)
 **Acceptance:**
@@ -340,6 +359,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.11 [M3] `GET /api/schedules/diff` endpoint
 
+**Status:** done
 **What:** Returns the diff between the current approved schedule and the latest suggested one.
 **Files:** `backend/app/api/schedules.py`
 **Acceptance:**
@@ -348,6 +368,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.12 [M4] `/schedule` page with diff view
 
+**Status:** done
 **What:** Page renders current vs suggested schedule side-by-side using the `ScheduleDiff` component.
 **Files:** `frontend/src/app/schedule/page.tsx`
 **Acceptance:**
@@ -364,6 +385,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.14 [M4] Forecast bands chart on `/scorecard`
 
+**Status:** done
 **What:** Recharts line chart with prediction interval shaded band; one chart per top-5 SKU.
 **Files:** `frontend/src/app/scorecard/page.tsx`
 **Acceptance:**
@@ -372,6 +394,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.15 [M3] Fill in `schedule_diff.schema.json`
 
+**Status:** done
 **What:** JSON Schema with `before[]`, `after[]`, `changes[]` (each change has `kind`, `narration`, `affected_run_ids`).
 **Files:** `shared/schemas/schedule_diff.schema.json`
 **Acceptance:**
@@ -657,6 +680,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.14 [M4] `/scorecard` page (full ESG view)
 
+**Status:** done
 **What:** Compose page: running waste counter (kg/$/CO2e), top-3 patterns, ESG PDF download, Phase 2 forecast bands already there.
 **Files:** `frontend/src/app/scorecard/page.tsx`
 **Acceptance:**
@@ -679,6 +703,7 @@ The strategy-game cockpit. All Phase 5 functional tasks are M5's.
 
 ### F5.1 [M5] PixiJS canvas mount + pan/zoom
 
+**Status:** in_progress
 **What:** Initialize `FlowSightCanvas.tsx` -- mount PIXI.Application via @pixi/react, implement pan + pinch/wheel zoom with bounds.
 **Files:** `frontend/src/components/FlowSightCanvas.tsx`
 **Acceptance:**
@@ -687,6 +712,7 @@ The strategy-game cockpit. All Phase 5 functional tasks are M5's.
 
 ### F5.2 [M5] Plant + supplier + retailer node rendering
 
+**Status:** in_progress
 **What:** Render 4 plant nodes on a Canada outline, 5 supplier nodes on the left rail, 4 retailer nodes on the right rail. Click a node -> show detail card.
 **Files:** `frontend/src/components/FlowSightCanvas.tsx`
 **Acceptance:**
@@ -757,6 +783,7 @@ The strategy-game cockpit. All Phase 5 functional tasks are M5's.
 
 ### F5.11 [M5] `/facilities` page wires `FlowSightCanvas` + all layers
 
+**Status:** in_progress
 **What:** Compose the cockpit page: canvas + sidebar + scrubber + chat overlay.
 **Files:** `frontend/src/app/facilities/page.tsx`
 **Acceptance:**
@@ -797,6 +824,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.S.2 [M3] Document schema-freeze policy
 
+**Status:** done
 **What:** Add `CONTRIBUTING.md` (NEW) with the Day-1 schema freeze rule: additive changes always OK, renames require team agreement, every change bumps a `version` field.
 **Files:** `CONTRIBUTING.md`
 **Acceptance:**
@@ -823,6 +851,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.1 [M3] Append-only convention enforcement
 
+**Status:** in_progress
 **What:** Add Postgres triggers on `inventory_events`, `waste_events`, `moq_tax_ledger` that raise on UPDATE or DELETE.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -839,6 +868,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.3 [M3] Action card confirm idempotency
 
+**Status:** done
 **What:** Re-confirming an already-confirmed action_card is a no-op returning the original side-effect row id. Documented + tested.
 **Files:** `backend/app/api/orders.py` (or `action_cards.py`)
 **Acceptance:**
@@ -970,6 +1000,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.P.1 [M1] Pin ML deps to CPU-only
 
+**Status:** done
 **What:** In `backend/pyproject.toml` and `agent/pyproject.toml`, pin LightGBM, NumPy, scikit-learn to wheels with no CUDA dependency. Document why.
 **Files:** `backend/pyproject.toml`, `agent/pyproject.toml`
 **Acceptance:**
@@ -1039,6 +1070,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.D.1 [M5] docker-compose healthchecks
 
+**Status:** done
 **What:** Add `healthcheck:` blocks for postgres (pg_isready) and redis (redis-cli ping). Dependent services use `depends_on: condition: service_healthy`.
 **Files:** `docker-compose.yml`
 **Acceptance:**
@@ -1047,6 +1079,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.D.2 [M5] `make up.full` brings full stack with correct ordering
 
+**Status:** in_progress
 **What:** Verify and document the full-stack startup path. Add a sanity script that hits all health endpoints after `make up.full`.
 **Files:** `Makefile`, `infra/sanity_check.sh` (NEW)
 **Acceptance:**
@@ -1078,6 +1111,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.D.6 [M5] `.env.example` covers every required var
 
+**Status:** in_progress
 **What:** Audit every `os.getenv` / `process.env.` call across the repo; ensure each has a corresponding entry in `.env.example` with a comment.
 **Files:** `.env.example`
 **Acceptance:**
@@ -1355,14 +1389,14 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 
 | ID | Owner | Title | Status |
 | :--- | :---: | :--- | :---: |
-| F1.1 | M3 | Define `ingredient_lots` table | todo |
-| F1.2 | M3 | Define `suppliers` table (Phase 1 columns) | todo |
-| F1.3 | M3 | Define `warehouse_costs` table | todo |
-| F1.4 | M3 | Define `supplier_orders` + `supplier_order_items` | todo |
-| F1.5 | M3 | Define `action_cards` table | todo |
-| F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` | todo |
-| F1.7 | M5 | Seed 150+ ingredient lots | todo |
-| F1.8 | M3 | FastAPI app entrypoint | in_progress |
+| F1.1 | M3 | Define `ingredient_lots` table | done |
+| F1.2 | M3 | Define `suppliers` table (Phase 1 columns) | done |
+| F1.3 | M3 | Define `warehouse_costs` table | done |
+| F1.4 | M3 | Define `supplier_orders` + `supplier_order_items` | done |
+| F1.5 | M3 | Define `action_cards` table | done |
+| F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` | done |
+| F1.7 | M5 | Seed 150+ ingredient lots | done |
+| F1.8 | M3 | FastAPI app entrypoint | done |
 | F1.9 | M3 | SQLAlchemy session + base | todo |
 | F1.10 | M3 | `GET /api/lots` endpoint | in_progress |
 | F1.11 | M1 | Spoilage risk score service | todo |
@@ -1373,30 +1407,30 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F1.16 | M2 | LangGraph orchestrator skeleton | done |
 | F1.17 | M2 | InventoryAgent with 2 tools | done |
 | F1.18 | M2 | ProcurementAgent with 2 tools | done |
-| F1.19 | M2 | SSE chat endpoint | in_progress |
-| F1.20 | M2+M3 | Fill in `action_card.schema.json` | todo |
-| F1.21 | M3 | Fill in `ingredient_lot.schema.json` | todo |
-| F1.22 | M4 | Next.js layout + globals.css | todo |
-| F1.23 | M4 | `/materials` page with risk badges | todo |
-| F1.24 | M4 | `ChatBox` + `ActionCard` components | todo |
-| F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` | todo |
-| F1.26 | M4 | Typed API client `lib/api.ts` | todo |
+| F1.19 | M2 | SSE chat endpoint | done |
+| F1.20 | M2+M3 | Fill in `action_card.schema.json` | done |
+| F1.21 | M3 | Fill in `ingredient_lot.schema.json` | done |
+| F1.22 | M4 | Next.js layout + globals.css | done |
+| F1.23 | M4 | `/materials` page with risk badges | done |
+| F1.24 | M4 | `ChatBox` + `ActionCard` components | in_progress |
+| F1.25 | M4 | `/chat` page wires `ChatBox` + `ActionCard` | done |
+| F1.26 | M4 | Typed API client `lib/api.ts` | done |
 | F1.27 | M5 | Walking-skeleton e2e test | todo |
-| F2.1 | M3 | Define `production_formulas` table | todo |
-| F2.2 | M3 | Define `production_schedules` table | todo |
-| F2.3 | M3 | Define `retailer_orders` table | todo |
-| F2.4 | M3 | Define `demand_forecasts` table | todo |
+| F2.1 | M3 | Define `production_formulas` table | done |
+| F2.2 | M3 | Define `production_schedules` table | done |
+| F2.3 | M3 | Define `retailer_orders` table | done |
+| F2.4 | M3 | Define `demand_forecasts` table | done |
 | F2.5 | M1 | OR-Tools scheduler service: base structure | todo |
 | F2.6 | M1 | Allergen changeover constraint | todo |
 | F2.7 | M1 | Waste-first objective term | todo |
 | F2.8 | M1 | Demand forecasting service (LightGBM/Prophet) | todo |
 | F2.9 | M2 | SchedulerAgent with 3 tools | todo |
-| F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule | todo |
-| F2.11 | M3 | `GET /api/schedules/diff` endpoint | todo |
-| F2.12 | M4 | `/schedule` page with diff view | todo |
+| F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule | done |
+| F2.11 | M3 | `GET /api/schedules/diff` endpoint | done |
+| F2.12 | M4 | `/schedule` page with diff view | done |
 | F2.13 | M4 | `ScheduleDiff` component | todo |
-| F2.14 | M4 | Forecast bands chart on `/scorecard` | todo |
-| F2.15 | M3 | Fill in `schedule_diff.schema.json` | todo |
+| F2.14 | M4 | Forecast bands chart on `/scorecard` | done |
+| F2.15 | M3 | Fill in `schedule_diff.schema.json` | done |
 | F2.16 | M3 | `mes_mock.py`: POST approved schedule | todo |
 | F2.17 | M5 | Update walking-skeleton test for Phase 2 | todo |
 | F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers | todo |
@@ -1431,10 +1465,10 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F4.11 | M2 | ESGAgent with 3 tools | todo |
 | F4.12 | M3 | FEFO routing service | todo |
 | F4.13 | M4 | `YieldCounter` component | todo |
-| F4.14 | M4 | `/scorecard` page (full ESG view) | todo |
+| F4.14 | M4 | `/scorecard` page (full ESG view) | done |
 | F4.15 | M4 | `LotGenealogyGraph` component (react-flow) | todo |
-| F5.1 | M5 | PixiJS canvas mount + pan/zoom | todo |
-| F5.2 | M5 | Plant + supplier + retailer node rendering | todo |
+| F5.1 | M5 | PixiJS canvas mount + pan/zoom | in_progress |
+| F5.2 | M5 | Plant + supplier + retailer node rendering | in_progress |
 | F5.3 | M5 | Animated truck units along edges | todo |
 | F5.4 | M5 | `LayerToggle` component | todo |
 | F5.5 | M5 | Risk layer (supplier halos) | todo |
@@ -1443,16 +1477,16 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F5.8 | M5 | Forecast layer (retailer demand) | todo |
 | F5.9 | M5 | `TimeScrubber` component | todo |
 | F5.10 | M5 | SSE event channel for live overlays | todo |
-| F5.11 | M5 | `/facilities` page wires canvas + all layers | todo |
+| F5.11 | M5 | `/facilities` page wires canvas + all layers | in_progress |
 | F5.12 | M5 | `FactoryView` (plant-floor) variant | todo |
 | F5.13 | M5 | 5-minute scripted demo runs end-to-end | todo |
 | NF.S.1 | M3 | Lock JSON Schema 2020-12 across `shared/schemas/` | todo |
-| NF.S.2 | M3 | Document schema-freeze policy in CONTRIBUTING.md | todo |
+| NF.S.2 | M3 | Document schema-freeze policy in CONTRIBUTING.md | done |
 | NF.S.3 | M3 | Pydantic v2 strict mode for backend models | todo |
 | NF.S.4 | M4 | Generate TS types from JSON Schemas | todo |
-| NF.R.1 | M3 | Append-only convention triggers | todo |
+| NF.R.1 | M3 | Append-only convention triggers | in_progress |
 | NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | todo |
-| NF.R.3 | M3 | Action card confirm idempotency | todo |
+| NF.R.3 | M3 | Action card confirm idempotency | done |
 | NF.R.4 | M5 | Nightly green-build gate | todo |
 | NF.R.5 | M3 | Gmail draft integration (no auto-send) | todo |
 | NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
@@ -1466,7 +1500,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.O.3 | M3 | Monday scheduled job | todo |
 | NF.O.4 | M3 | `weekly_summaries` table | todo |
 | NF.O.5 | M4 | `/summaries` archive page | todo |
-| NF.P.1 | M1 | Pin ML deps to CPU-only | todo |
+| NF.P.1 | M1 | Pin ML deps to CPU-only | done |
 | NF.P.2 | M1 | faster-whisper small model only | todo |
 | NF.P.3 | M3 | FastAPI async throughout | todo |
 | NF.P.4 | M2 | LLM model selection via config | done |
@@ -1474,12 +1508,12 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.U.2 | M4 | Action card no-Enter-confirm | todo |
 | NF.U.3 | M4 | Locale-aware number formatting | todo |
 | NF.U.4 | M4 | Loading + empty states everywhere | todo |
-| NF.D.1 | M5 | docker-compose healthchecks | todo |
-| NF.D.2 | M5 | `make up.full` correct startup ordering | todo |
+| NF.D.1 | M5 | docker-compose healthchecks | done |
+| NF.D.2 | M5 | `make up.full` correct startup ordering | in_progress |
 | NF.D.3 | M5 | Vercel deploy config for frontend | todo |
 | NF.D.4 | M5 | Render deploy config for backend + agent | todo |
 | NF.D.5 | M5 | Single env-var swap to real integrations | todo |
-| NF.D.6 | M5 | `.env.example` covers every env var read | todo |
+| NF.D.6 | M5 | `.env.example` covers every env var read | in_progress |
 | NF.C.1 | M5 | Backend CI (ruff + pytest) | todo |
 | NF.C.2 | M5 | Agent CI (ruff + pytest) | todo |
 | NF.C.3 | M5 | Frontend CI (lint + build) | todo |
