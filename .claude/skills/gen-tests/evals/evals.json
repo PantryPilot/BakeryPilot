@@ -1,0 +1,48 @@
+{
+  "skill_name": "gen-tests",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Generate the full test suite for BakeryPilot. Add pytest tests for the backend covering the health endpoint and all API routers, import-smoke tests for the agent, Jest + RTL tests for the frontend components, and create the GitHub Actions CI workflow at .github/workflows/ci.yml.",
+      "expected_output": "All test files written, GitHub Actions CI YAML created, frontend test tooling installed and configured. A summary listing every file created is printed at the end.",
+      "files": [],
+      "expectations": [
+        "backend/tests/conftest.py is created with a TestClient fixture",
+        "backend/tests/test_health.py tests GET /healthz returns 200 with {status: ok}",
+        "At least 5 backend test files are created (one per router domain)",
+        "agent/tests/test_imports.py is created with importable checks for tool modules",
+        "frontend/jest.config.ts is created",
+        "frontend/src/__tests__/ directory contains at least one test file",
+        ".github/workflows/ci.yml is created with 3 jobs: backend-tests, agent-tests, frontend-tests",
+        "The CI workflow triggers on push and pull_request",
+        "DATABASE_URL is set to empty string or omitted in CI to avoid needing a real database",
+        "A summary of created files is printed at the end"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We just added a new API router for /api/pallets in backend/app/api/pallets.py. Run gen-tests to add tests for it without touching any existing test files.",
+      "expected_output": "Only backend/tests/test_api_pallets.py is created. Existing test files are untouched.",
+      "files": [],
+      "expectations": [
+        "backend/tests/test_api_pallets.py is created",
+        "The test reads the actual pallets.py route file before writing the test",
+        "Existing test files are not overwritten",
+        "The new test checks GET /api/pallets returns 200 and a list"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up CI for BakeryPilot — just the GitHub Actions workflow. I already have tests written, I just need the .github/workflows/ci.yml file.",
+      "expected_output": "Only .github/workflows/ci.yml is created. No test files are generated.",
+      "files": [],
+      "expectations": [
+        ".github/workflows/ci.yml is created",
+        "The workflow has jobs for backend, agent, and frontend",
+        "uv is used for Python package management (not pip)",
+        "Node 20 is used for the frontend job",
+        "Caching is configured for both uv virtualenv and npm"
+      ]
+    }
+  ]
+}
