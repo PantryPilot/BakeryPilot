@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } from "../../components/atoms";
@@ -397,7 +398,12 @@ function PerformanceTab() {
 
 export default function ScorecardPage() {
   const { openChatContext } = useApp();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState("performance");
+
+  useEffect(() => {
+    setTab(searchParams.get("tab") === "suppliers" ? "suppliers" : "performance");
+  }, [searchParams]);
 
   return (
     <div className="h-full overflow-y-auto">

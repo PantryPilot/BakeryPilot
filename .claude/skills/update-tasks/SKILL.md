@@ -30,7 +30,7 @@ If invoked with no args, ask the user which task IDs and what status before doin
 
 ## What to do
 
-1. **Read `TASKS.md`** at the repo root (`D:\Projects\BakeryPilot\TASKS.md` on this machine; just `TASKS.md` if working elsewhere).
+1. **Read `TASKS.md`** at the repo root. Locate it with `git rev-parse --show-toplevel` and append `/TASKS.md`.
 
 2. **Locate each task body.** Tasks are level-3 headings:
    ```

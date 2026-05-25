@@ -1,22 +1,23 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "./Icon";
 import { FACILITIES, KPIS } from "../lib/data";
 import { useApp } from "../lib/context";
 
 const NAV = [
-  { id: "facilities", route: "/facilities", label: "FlowSight",  icon: "grid"     },
-  { id: "materials",  route: "/materials",  label: "Inventory",  icon: "box"      },
-  { id: "suppliers",  route: "/scorecard",  label: "Suppliers",  icon: "truck"    },
-  { id: "schedule",   route: "/schedule",   label: "Schedule",   icon: "calendar" },
-  { id: "scorecard",  route: "/scorecard",  label: "Scorecard",  icon: "bars"     },
+  { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid"     },
+  { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box"      },
+  { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
+  { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
+  { id: "scorecard",  route: "/scorecard",               label: "Scorecard",  icon: "bars"     },
 ];
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed } = useApp();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   return (
     <aside className={`shrink-0 ${sidebarCollapsed ? "w-[64px]" : "w-[208px]"} transition-all duration-200 border-r border-slate-800/80 bg-[#0a0d14] flex flex-col`}>
@@ -37,7 +38,18 @@ export function Sidebar() {
 
       <nav className="flex-1 py-3">
         {NAV.map(item => {
-          const active = pathname === item.route || (item.id === "scorecard" && pathname === "/scorecard");
+          const [basePath, query] = item.route.split("?");
+          let active = false;
+          if (pathname === basePath) {
+            if (query) {
+              const params = new URLSearchParams(query);
+              active = [...params.entries()].every(([k, v]) => searchParams.get(k) === v);
+            } else if (basePath === "/scorecard") {
+              active = searchParams.get("tab") !== "suppliers";
+            } else {
+              active = true;
+            }
+          }
           return (
             <Link key={item.id} href={item.route}
               className={`w-full flex items-center gap-3 px-4 py-2.5 transition relative ${active ? "text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>
