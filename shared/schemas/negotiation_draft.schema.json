@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bakerypilot.local/schemas/negotiation_draft.schema.json",
+  "title": "NegotiationDraft",
+  "description": "Auto-generated supplier or retailer negotiation email, pending manager review.",
+  "type": "object"
+}

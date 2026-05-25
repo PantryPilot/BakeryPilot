@@ -386,6 +386,136 @@ judge sees one path five times, not five paths once.
 
 ---
 
+## Phase 1 -- MVP: Detailed Plan
+
+The MVP is the **walking skeleton**: a single end-to-end path from user message
+to confirmed DB write. Every later phase layers depth on top of this path. If the
+path is not green by the end of Phase 1, nothing else ships.
+
+### The walking-skeleton path (6 hops)
+
+1. User types a shortage question (*"We're short on blueberries -- what can we bake?"*) into the `/chat` shell.
+2. Frontend POSTs the message to `/api/chat` over SSE.
+3. LangGraph orchestrator classifies intent and routes to **InventoryAgent**, which calls the substitution tool to rank alternative production runs achievable with current stock.
+4. Orchestrator hands the recommendation to **ProcurementAgent**, which calls `compute_landed_cost` and emits an `action_card` JSON with unit price + MOQ overage + holding cost.
+5. Frontend streams the agent reply and renders the `ActionCard` with a single confirm button.
+6. User confirms -> backend `POST /api/orders` persists the supplier order, the SAP mock returns a confirmation number, and `/materials` re-renders with updated risk badges.
+
+If those 6 hops run green from `make up.full`, the MVP is done.
+
+### Day-1 schema freeze (M3 owns; locks by lunch)
+
+- **DB tables for MVP:** `facilities`, `suppliers`, `ingredient_lots`, `warehouse_costs`, `supplier_orders`, `production_formulas` (minimal columns only -- everything else is additive in later phases).
+- **`shared/schemas/action_card.schema.json`** -- the contract M2 emits and M4 renders.
+- **`shared/schemas/ingredient_lot.schema.json`** -- the shape M1's substitution endpoint returns.
+- **`shared/schemas/supplier_order.schema.json`** -- the shape M3 persists after confirm.
+
+After lunch on Day 1, schema changes require team agreement. Additive columns are allowed any time.
+
+### M1 -- ML / Optimization Engineer in MVP
+
+**Owns:**
+
+- **Spoilage risk score** (`backend/app/services/spoilage.py`) -- pure function `kg_on_hand / kg_scheduled_before_expiry`; >= 1.0 = red, 0.7-1.0 = amber, < 0.7 = green.
+- **Substitution engine, MVP version** (`backend/app/services/substitution.py`) -- given a blocked SKU, return ranked alternative SKUs whose ingredient bills can be fully covered by current `ingredient_lots`; rank by margin contribution (a seeded constant per SKU is fine for MVP).
+- The min-cost-flow network balancer is **not** in MVP -- the substitution tool returns "no transfer recommended" until Phase 2.
+
+**Tech for MVP:** Python stdlib + pandas. No OR-Tools yet -- a greedy ranking is enough to demo the path; depth comes in Phase 2.
+
+**Handoffs:** M3 calls these as pure functions from the API layer; M2's tool layer wraps the same functions for the agent.
+
+### M2 -- AI / Agent Engineer in MVP
+
+**Owns:**
+
+- **LangGraph orchestrator** (`agent/agent/graph.py`) -- 3-node graph: classify intent -> route to specialist -> render action_card or plain reply.
+- **InventoryAgent + 2 tools** -- `query_materials` (read-only lot lookup) and `substitution_engine` (HTTP call to M1's service).
+- **ProcurementAgent + 2 tools** -- `compute_landed_cost` (HTTP call to M3's service) and `build_supplier_order` (emits an `action_card` JSON pending confirm).
+- **`action_card` JSON contract** -- frozen Day 1 against `shared/schemas/action_card.schema.json`.
+- **Prompts** -- `agent/agent/prompts/orchestrator.md` (system) and `intent_classifier.md` (router).
+- **SSE streaming logic** wired through the chat endpoint M3 hosts.
+
+**Tech for MVP:** LangGraph (Python, uv); langchain-anthropic with Claude Sonnet 4.6 (Opus 4.7 stays reserved for Phase 3 negotiation drafts); httpx for tool HTTP calls.
+
+**Handoffs:** M4 consumes the SSE stream and the `action_card` JSON; M3 hosts the underlying API endpoints the tools call.
+
+### M3 -- Backend / Procurement Engineer in MVP
+
+**Owns:**
+
+- **Schema freeze + seed data** -- inserts 4 facilities, 5 suppliers (one per personality: reliable, cheap-but-late, high-MOQ, seasonally disrupted, new entrant), 30+ ingredient lots with realistic expiry dates, 10+ warehouse cost rows.
+- **FastAPI app skeleton** (`backend/app/main.py`) and routers: `inventory`, `suppliers`, `orders`, `chat`.
+- **Endpoints required for MVP:**
+  - `GET /api/lots` -- list with spoilage badge
+  - `GET /api/lots/{id}/spoilage` -- single-lot score
+  - `GET /api/substitution_candidates?sku=...` -- proxies M1's substitution service
+  - `GET /api/suppliers` -- master list with MOQ and price
+  - `POST /api/orders` -- the confirm endpoint; persists `supplier_orders` row + posts to SAP mock
+  - `POST /api/chat` -- SSE proxy to the LangGraph orchestrator
+- **Landed cost service** (`backend/app/services/landed_cost.py`) -- `unit_price * qty + overage_qty * holding_cost_per_day * days_held`.
+- **MOQ engine, MVP version** (`backend/app/services/moq_engine.py`) -- detects demand < MOQ, computes overage; the quarterly tax ledger lands in Phase 3.
+- **SAP mock** (`backend/app/integrations/sap_mock.py`) -- accepts a PO, returns a confirmation number after ~200 ms latency.
+- **`shared/schemas/*.schema.json`** -- publishes Day 1, locks after lunch.
+
+**Tech for MVP:** FastAPI + Pydantic v2; SQLAlchemy 2.0 async; PostgreSQL 16; Faker for seed data; httpx for the SAP mock client.
+
+**Handoffs:** Schema + endpoints published Day 1 so M1, M2, M4 are unblocked from minute one.
+
+### M4 -- Frontend Engineer in MVP
+
+**Owns:**
+
+- **Next.js 15 app shell** -- `layout.tsx`, `globals.css`, Tailwind wired up.
+- **Typed API client** (`frontend/src/lib/api.ts`) -- `getLots()`, `getSubstitutionCandidates(sku)`, `postOrder(payload)`, typed against the JSON Schemas M3 published.
+- **`ChatBox` component** -- SSE-streamed messages; agent reply chunks render as they arrive; input box at bottom.
+- **`ActionCard` component** -- renders an `action_card` JSON as a 3-line summary (unit price / MOQ overage / holding cost) with a single confirm button that POSTs to `/api/orders`.
+- **`/chat` page** -- chat shell + action card render area.
+- **`/materials` page** -- lot table with red/amber/green spoilage badges; "see alternatives" button per red lot links to `/chat` with a pre-filled query.
+
+**Tech for MVP:** Next.js 15 + React 19 + Tailwind + TypeScript; native EventSource for SSE. No PixiJS or react-flow yet -- those land in Phase 5 and Phase 2 respectively.
+
+**Handoffs:** Consumes M2's SSE chat API and M3's REST endpoints; FlowSight integration with M5 starts in Phase 5.
+
+### M5 -- FlowSight + DevOps / PM in MVP
+
+**Owns:**
+
+- **`docker-compose.yml`** -- postgres + redis stand up cleanly with `make up`; full stack stands up with `make up.full`.
+- **Makefile** -- every target in the Makefile reference section works end-to-end.
+- **Deployment skeleton** -- Vercel project for frontend, Render service for backend + agent, env-var checklist filled in.
+- **Walking-skeleton smoke test** -- end-to-end test (pytest fixture or bash script) that drives the 6-hop path against a live local stack and exits non-zero if any hop fails; runs in CI on every push.
+- **Nightly green-build gate** -- if the smoke test fails, the team fixes it before adding features.
+- **PM duties** -- Day-1 schema freeze enforcement, daily standup, scope cuts when needed, ownership of the MVP demo script (lines 0:00-1:15 of the Scripted Demo).
+- **FlowSight placeholder** -- `FlowSightCanvas` renders an empty canvas with the four plant nodes positioned; animations come in Phase 5.
+
+**Tech for MVP:** Docker Compose; Vercel CLI; Render Blueprint; Make; pytest or bash for the smoke test.
+
+**Handoffs:** Provides M1-M4 a green local stack from minute one; reports daily skeleton-green status to the team.
+
+### MVP definition of done
+
+- `make up.full` brings the entire stack up with one command and exits cleanly.
+- A user can open `/chat`, type *"What can we bake if blueberries are short?"*, and see a streamed reply with at least two substitution candidates ranked by margin.
+- The reply includes a rendered `ActionCard` with unit price, MOQ overage, holding cost, and a confirm button.
+- Clicking confirm POSTs the order, persists it to `supplier_orders`, returns a SAP confirmation number, and re-renders `/materials` with updated spoilage badges.
+- The smoke test (M5) passes locally and in CI.
+- All MVP-scoped `shared/schemas/*.schema.json` files are committed and frozen.
+
+### MVP cut order (if behind schedule)
+
+If MVP is at risk, cut in this order -- preserve the green walking skeleton above all else:
+
+1. **Multi-candidate substitution ranking** -- ship with one candidate instead of three.
+2. **Holding cost in landed cost** -- ship with unit price + MOQ overage only.
+3. **Spoilage badges on `/materials`** -- a plain text list is acceptable.
+4. **SAP confirmation latency simulation** -- return immediately.
+5. **CI smoke test** -- run locally only for MVP, wire to CI in Phase 2.
+
+Do **not** cut: the SSE chat, the `ActionCard` confirm, the DB write. Those three
+are the walking skeleton.
+
+---
+
 ## Key Engineering Rules
 
 - **Schema freeze:** `shared/schemas/*.schema.json` is the cross-service contract.

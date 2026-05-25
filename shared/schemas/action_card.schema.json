@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bakerypilot.local/schemas/action_card.schema.json",
+  "title": "ActionCard",
+  "description": "The human-in-the-loop confirm contract. Every state-changing agent action surfaces an ActionCard before commit.",
+  "type": "object"
+}

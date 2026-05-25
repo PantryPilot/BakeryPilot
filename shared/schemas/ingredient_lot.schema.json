@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bakerypilot.local/schemas/ingredient_lot.schema.json",
+  "title": "IngredientLot",
+  "description": "Per-lot ingredient record with expiry and computed spoilage risk.",
+  "type": "object"
+}

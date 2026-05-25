@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bakerypilot.local/schemas/supplier_order.schema.json",
+  "title": "SupplierOrder",
+  "description": "PO draft through to confirmed; total landed cost + chosen delivery day.",
+  "type": "object"
+}

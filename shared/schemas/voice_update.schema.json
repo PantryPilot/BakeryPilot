@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bakerypilot.local/schemas/voice_update.schema.json",
+  "title": "VoiceUpdate",
+  "description": "Voice inventory update with audio reference, parsed delta, verification chain, and confidence score.",
+  "type": "object"
+}
