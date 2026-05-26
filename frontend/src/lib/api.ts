@@ -402,6 +402,50 @@ export async function rejectActionCard(
   });
 }
 
+// ---------- Admin ----------
+
+export interface AdminTableInfo {
+  name: string;
+  row_count: number;
+}
+
+export interface AdminColumnInfo {
+  name: string;
+  type: string;
+}
+
+export interface AdminTableRowsResponse {
+  table: string;
+  columns: AdminColumnInfo[];
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export async function fetchAdminTables(): Promise<AdminTableInfo[] | null> {
+  return safeFetch<AdminTableInfo[]>("/api/admin/tables", undefined, 10000);
+}
+
+export async function fetchAdminTableRows(
+  table: string,
+  page = 1,
+  perPage = 50,
+  sort?: string,
+  order?: "asc" | "desc",
+): Promise<AdminTableRowsResponse | null> {
+  const qs = new URLSearchParams();
+  qs.set("page", String(page));
+  qs.set("per_page", String(perPage));
+  if (sort) qs.set("sort", sort);
+  if (order) qs.set("order", order);
+  return safeFetch<AdminTableRowsResponse>(
+    `/api/admin/tables/${encodeURIComponent(table)}/rows?${qs.toString()}`,
+    undefined,
+    10000,
+  );
+}
+
 // ---------- SSE: chat + events ----------
 
 export interface ChatStreamHandlers {
