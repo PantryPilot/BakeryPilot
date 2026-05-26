@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
@@ -242,7 +244,25 @@ function PopupMessage({ m }: { m: Message }) {
             <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
           </span>
         ) : (
-          <div className="text-[13.5px] leading-relaxed text-slate-200 whitespace-pre-wrap">{m.text}</div>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <p className="text-[13.5px] leading-relaxed text-slate-200 mb-2 last:mb-0">{children}</p>,
+              strong: ({ children }) => <strong className="text-slate-100 font-semibold">{children}</strong>,
+              ul: ({ children }) => <ul className="list-disc list-inside space-y-1 text-[13px] text-slate-200 mb-2">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 text-[13px] text-slate-200 mb-2">{children}</ol>,
+              li: ({ children }) => <li className="text-slate-300">{children}</li>,
+              code: ({ children }) => <code className="bg-slate-800 text-blue-300 rounded px-1 py-0.5 text-[12px] font-mono">{children}</code>,
+              table: ({ children }) => <div className="overflow-x-auto mb-2"><table className="text-[12px] border-collapse w-full">{children}</table></div>,
+              thead: ({ children }) => <thead className="bg-slate-800/60">{children}</thead>,
+              th: ({ children }) => <th className="border border-slate-700 px-2 py-1 text-left text-slate-300 font-medium">{children}</th>,
+              td: ({ children }) => <td className="border border-slate-700 px-2 py-1 text-slate-400">{children}</td>,
+              h3: ({ children }) => <h3 className="text-[13px] font-semibold text-slate-100 mb-1 mt-2">{children}</h3>,
+              h4: ({ children }) => <h4 className="text-[12px] font-semibold text-slate-200 mb-1">{children}</h4>,
+            }}
+          >
+            {m.text}
+          </ReactMarkdown>
         )}
       </div>
       {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
