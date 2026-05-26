@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { marked } from "marked";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
@@ -215,16 +216,52 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   );
 }
 
-function downloadMarkdown(text: string, agent: string) {
-  const slug = agent.toLowerCase().replace(/\s+/g, "-");
+function fileSlug(agent: string) {
   const ts = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+  return `bakery-report_${agent.toLowerCase().replace(/\s+/g, "-")}_${ts}`;
+}
+
+function downloadMarkdown(text: string, agent: string) {
   const blob = new Blob([text], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `bakery-report_${slug}_${ts}.md`;
+  a.download = `${fileSlug(agent)}.md`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadPdf(text: string, agent: string) {
+  const html = marked(text) as string;
+  const content = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>BakeryPilot — ${agent}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 820px; margin: 48px auto; color: #111827; line-height: 1.6; }
+    h1,h2,h3,h4 { color: #111827; margin-top: 1.4em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 13px; }
+    th, td { border: 1px solid #d1d5db; padding: 7px 12px; text-align: left; }
+    th { background: #f3f4f6; font-weight: 600; }
+    code { background: #f3f4f6; padding: 2px 5px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+    .meta { color: #6b7280; font-size: 12px; margin-bottom: 1.5em; }
+    @media print { body { margin: 28px; } }
+  </style>
+</head>
+<body>
+  <h2>BakeryPilot — ${agent}</h2>
+  <p class="meta">Generated ${new Date().toLocaleString()}</p>
+  <hr/>
+  ${html}
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+  const blob = new Blob([content], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win) win.onload = () => URL.revokeObjectURL(url);
 }
 
 function PopupMessage({ m }: { m: Message }) {
@@ -279,13 +316,20 @@ function PopupMessage({ m }: { m: Message }) {
       </div>
       {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
       {!m.thinking && m.text && (
-        <div className="pl-6 pt-1">
+        <div className="pl-6 pt-1 flex items-center gap-3">
+          <button
+            onClick={() => downloadPdf(m.text, m.agent || "copilot")}
+            className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
+          >
+            <Icon name="download" size={11} />
+            Download PDF
+          </button>
           <button
             onClick={() => downloadMarkdown(m.text, m.agent || "copilot")}
             className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
           >
             <Icon name="download" size={11} />
-            Download report
+            Download MD
           </button>
         </div>
       )}
