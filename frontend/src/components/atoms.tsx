@@ -79,6 +79,7 @@ export interface ActionCardData {
   flags?: { text: string; tone?: string }[];
   details?: { label: string; value: string; tone?: string }[];
   state?: string;
+  cardId?: string;
 }
 
 export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false }: { card: ActionCardData; onConfirm?: (c: ActionCardData) => void; onReject?: (c: ActionCardData) => void; onEdit?: () => void; compact?: boolean }) {

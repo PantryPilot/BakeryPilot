@@ -2,9 +2,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
-import { pickAgent, pickTools, pickCard } from "./ChatBrain";
-import { BACKEND_URL } from "../lib/api";
 import { ActionCardData } from "./atoms";
+import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -61,110 +60,51 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   const send = async () => {
     if (!input.trim() || isThinking) return;
     const u = input.trim();
-    const agent = pickAgent(u);
-    const tools = pickTools(u);
-
+    const history = messages.map((m) => ({ role: m.role, content: m.text }));
     setMessages(m => [
       ...m,
       { role: "user", text: u, time: nowTime() },
-      { role: "assistant", agent, text: "", time: nowTime(), tools, thinking: true },
+      { role: "assistant", agent: "OrchestratorAgent", text: "", time: nowTime(), thinking: false },
     ]);
     setInput("");
     setIsThinking(true);
 
-    let accumulated = "";
-
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: u, history: [] }),
-      });
-
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      let sseEvent = "message";
-      let sseData = "";
-      let finished = false;
-
-      outer: while (!finished) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-        let newline: number;
-        while ((newline = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, newline);
-          buf = buf.slice(newline + 1);
-
-          if (line === "") {
-            // blank line = end of event
-            if (sseData) {
-              if (sseEvent === "message") {
-                let payload: { content?: unknown } = {};
-                try { payload = JSON.parse(sseData); } catch {}
-                if (payload.content) {
-                  accumulated += String(payload.content);
-                  const snap = accumulated;
-                  setMessages(m => {
-                    const next = [...m];
-                    const last = next[next.length - 1];
-                    if (last?.role === "assistant") {
-                      next[next.length - 1] = { ...last, text: snap, thinking: false };
-                    }
-                    return next;
-                  });
-                }
-              } else if (sseEvent === "action_card") {
-                const card = pickCard(u);
-                if (card) {
-                  setMessages(m => {
-                    const next = [...m];
-                    const last = next[next.length - 1];
-                    if (last?.role === "assistant") next[next.length - 1] = { ...last, card };
-                    return next;
-                  });
-                }
-              } else if (sseEvent === "done") {
-                finished = true;
-                break outer;
-              }
-            }
-            sseEvent = "message";
-            sseData = "";
-          } else if (line.startsWith("event:")) {
-            sseEvent = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            sseData = line.slice(5).trim();
-          }
-        }
-      }
-
-      if (!accumulated) {
+    await streamChat(u, history, {
+      onMessage: (chunk) => {
         setMessages(m => {
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: "No response received.", thinking: false };
+            next[next.length - 1] = { ...last, text: (last.text || "") + chunk };
           }
           return next;
         });
-      }
-    } catch (e) {
-      setMessages(m => {
-        const next = [...m];
-        const last = next[next.length - 1];
-        if (last?.role === "assistant") {
-          next[next.length - 1] = { ...last, text: `Error: ${e}`, thinking: false };
-        }
-        return next;
-      });
-    } finally {
-      setIsThinking(false);
-    }
+      },
+      onActionCard: async (cardId) => {
+        if (!cardId) return;
+        const raw = await fetchActionCard(cardId);
+        if (!raw) return;
+        const card = adaptActionCard(raw);
+        setMessages(m => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { ...last, card };
+          }
+          return next;
+        });
+      },
+      onDone: () => setIsThinking(false),
+      onError: () => {
+        setIsThinking(false);
+        setMessages(m => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && !last.text) next.pop();
+          return next;
+        });
+      },
+    });
   };
 
   const testPing = () => {
@@ -191,14 +131,11 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
     };
 
     es.addEventListener("done", finish);
-    es.onerror = () => {
-      finish();
-    };
+    es.onerror = () => { finish(); };
   };
 
   return (
     <div className="fixed bottom-32 right-5 z-50 w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden">
-      {/* Header */}
       <div className="h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">
@@ -221,14 +158,12 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
         {messages.map((m, i) => (
           <PopupMessage key={i} m={m} />
         ))}
       </div>
 
-      {/* Input */}
       <div className="border-t border-slate-800 p-3 shrink-0">
         <div className="flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition">
           <textarea
@@ -292,7 +227,6 @@ function PopupMessage({ m }: { m: Message }) {
   );
 }
 
-// Keep ChatBox export for the /chat page
 interface ChatBoxProps {
   value: string;
   setValue: (v: string) => void;

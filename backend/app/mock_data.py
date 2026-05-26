@@ -288,6 +288,8 @@ WASTE_COUNTER: dict[str, Any] = {
     "co2e_avoided_kg": 1893.0,
     "period_start": (TODAY - timedelta(days=90)).isoformat(),
     "period_end": TODAY.isoformat(),
+    "moq_tax_ytd": 6960.0,
+    "disruptions_caught": 3,
 }
 
 ESG_PATTERNS: list[dict[str, Any]] = [
@@ -418,10 +420,145 @@ WEEKLY_SUMMARIES: list[dict[str, Any]] = [
 ]
 
 
+# --- Waste events (append-only audit log) ---
+
+WASTE_EVENTS: list[dict[str, Any]] = [
+    {
+        "event_id": "we_001", "ts": (NOW - timedelta(hours=1, minutes=18)).isoformat(),
+        "lot_id": "LOT-21902", "ingredient_name": "Buttermilk", "quantity_kg": 2.4,
+        "value_usd": 18.0, "reason": "Quality reject — failed pH test", "avoided": False,
+        "facility_id": "plant_1",
+    },
+    {
+        "event_id": "we_002", "ts": (NOW - timedelta(hours=1, minutes=55)).isoformat(),
+        "lot_id": "lot_blueberry_1", "ingredient_name": "Blueberries", "quantity_kg": 0.0,
+        "value_usd": 12.0, "reason": "Substituted in time", "avoided": True,
+        "facility_id": "plant_1",
+    },
+    {
+        "event_id": "we_003", "ts": (NOW - timedelta(hours=2, minutes=49)).isoformat(),
+        "lot_id": "LOT-22051", "ingredient_name": "Cream Cheese", "quantity_kg": 0.0,
+        "value_usd": 880.0, "reason": "Transfer to Plant 1 before expiry", "avoided": True,
+        "facility_id": "plant_2",
+    },
+    {
+        "event_id": "we_004", "ts": (NOW - timedelta(hours=4, minutes=11)).isoformat(),
+        "lot_id": "LOT-21863", "ingredient_name": "Pecans", "quantity_kg": 12.0,
+        "value_usd": 248.0, "reason": "Allergen conflict — line changeover failed", "avoided": False,
+        "facility_id": "plant_3",
+    },
+    {
+        "event_id": "we_005", "ts": (NOW - timedelta(days=1, hours=3)).isoformat(),
+        "lot_id": "lot_butter_1", "ingredient_name": "Butter", "quantity_kg": 0.0,
+        "value_usd": 3200.0, "reason": "Rerouted to Plant 2 — naan run moved", "avoided": True,
+        "facility_id": "plant_1",
+    },
+    {
+        "event_id": "we_006", "ts": (NOW - timedelta(days=1, hours=11)).isoformat(),
+        "lot_id": "LOT-21710", "ingredient_name": "Sesame Seeds", "quantity_kg": 4.1,
+        "value_usd": 31.0, "reason": "Overweight drop during portioning", "avoided": False,
+        "facility_id": "plant_2",
+    },
+    {
+        "event_id": "we_007", "ts": (NOW - timedelta(days=2, hours=6)).isoformat(),
+        "lot_id": "LOT-21655", "ingredient_name": "Sugar", "quantity_kg": 0.0,
+        "value_usd": 540.0, "reason": "Cross-facility transfer to Plant 3", "avoided": True,
+        "facility_id": "plant_4",
+    },
+    {
+        "event_id": "we_008", "ts": (NOW - timedelta(days=2, hours=14)).isoformat(),
+        "lot_id": "LOT-21600", "ingredient_name": "Chocolate Chips", "quantity_kg": 6.8,
+        "value_usd": 89.0, "reason": "Damaged packaging — moisture intrusion", "avoided": False,
+        "facility_id": "plant_1",
+    },
+    {
+        "event_id": "we_009", "ts": (NOW - timedelta(days=3, hours=9)).isoformat(),
+        "lot_id": "LOT-21510", "ingredient_name": "Blueberries", "quantity_kg": 0.0,
+        "value_usd": 620.0, "reason": "Scheduled into muffin run — zero waste", "avoided": True,
+        "facility_id": "plant_2",
+    },
+    {
+        "event_id": "we_010", "ts": (NOW - timedelta(days=4, hours=2)).isoformat(),
+        "lot_id": "LOT-21403", "ingredient_name": "Flour", "quantity_kg": 18.3,
+        "value_usd": 11.0, "reason": "Divider calibration drift — over-portioning", "avoided": False,
+        "facility_id": "plant_1",
+    },
+]
+
+
+# --- Yield telemetry (actual vs theoretical per line, last 14 days) ---
+
+YIELD_TELEMETRY: list[dict[str, Any]] = [
+    {
+        "date": (TODAY - timedelta(days=13 - i)).isoformat(),
+        "line_id": "line_1",
+        "facility_id": "plant_1",
+        "actual_pct": round(96.4 + (hash(str(i) + "l1") % 30) / 10 - 1.5 + (-3.5 if i == 4 else 0) + (-2.0 if i == 5 else 0), 2),
+        "target_pct": 97.1,
+    }
+    for i in range(14)
+] + [
+    {
+        "date": (TODAY - timedelta(days=13 - i)).isoformat(),
+        "line_id": "line_2",
+        "facility_id": "plant_1",
+        "actual_pct": round(95.8 + (hash(str(i) + "l2") % 25) / 10 - 1.2, 2),
+        "target_pct": 96.5,
+    }
+    for i in range(14)
+]
+
+
 # --- In-memory mutable state ---
 
 ACTION_CARDS: dict[str, dict[str, Any]] = {}
-SUPPLIER_ORDERS: list[dict[str, Any]] = []
+SUPPLIER_ORDERS: list[dict[str, Any]] = [
+    {
+        "order_id": "ord_001", "supplier_id": "sup_a",
+        "items": [{"ingredient_id": "ing_flour", "quantity_kg": 1200.0, "unit_price": 0.72}],
+        "delivery_date": (TODAY + timedelta(days=3)).isoformat(),
+        "status": "confirmed", "confirmed_at": (NOW - timedelta(days=2)).isoformat(),
+        "action_card_id": None,
+    },
+    {
+        "order_id": "ord_002", "supplier_id": "sup_b",
+        "items": [{"ingredient_id": "ing_sugar", "quantity_kg": 800.0, "unit_price": 0.55}],
+        "delivery_date": (TODAY + timedelta(days=5)).isoformat(),
+        "status": "in-transit", "confirmed_at": (NOW - timedelta(days=1)).isoformat(),
+        "action_card_id": None,
+    },
+    {
+        "order_id": "ord_003", "supplier_id": "sup_c",
+        "items": [{"ingredient_id": "ing_flour", "quantity_kg": 2500.0, "unit_price": 0.68}],
+        "delivery_date": (TODAY + timedelta(days=7)).isoformat(),
+        "status": "pending", "confirmed_at": None,
+        "action_card_id": None,
+    },
+    {
+        "order_id": "ord_004", "supplier_id": "sup_d",
+        "items": [{"ingredient_id": "ing_blueberries", "quantity_kg": 300.0, "unit_price": 3.20}],
+        "delivery_date": (TODAY + timedelta(days=4)).isoformat(),
+        "status": "in-transit", "confirmed_at": (NOW - timedelta(hours=18)).isoformat(),
+        "action_card_id": None,
+    },
+    {
+        "order_id": "ord_005", "supplier_id": "sup_e",
+        "items": [{"ingredient_id": "ing_butter", "quantity_kg": 400.0, "unit_price": 4.10}],
+        "delivery_date": (TODAY + timedelta(days=6)).isoformat(),
+        "status": "confirmed", "confirmed_at": (NOW - timedelta(days=3)).isoformat(),
+        "action_card_id": None,
+    },
+    {
+        "order_id": "ord_006", "supplier_id": "sup_a",
+        "items": [
+            {"ingredient_id": "ing_sesame", "quantity_kg": 150.0, "unit_price": 2.85},
+            {"ingredient_id": "ing_choc_chips", "quantity_kg": 200.0, "unit_price": 3.50},
+        ],
+        "delivery_date": (TODAY + timedelta(days=9)).isoformat(),
+        "status": "pending", "confirmed_at": None,
+        "action_card_id": None,
+    },
+]
 
 
 def new_id(prefix: str) -> str:

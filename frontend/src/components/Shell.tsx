@@ -3,8 +3,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "./Icon";
-import { FACILITIES, KPIS } from "../lib/data";
+import { FACILITIES } from "../lib/data";
 import { useApp } from "../lib/context";
+import { useEsgCounter } from "../lib/hooks";
 
 const NAV = [
   { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid"     },
@@ -124,6 +125,7 @@ export function TopBar() {
 }
 
 export function BottomStrip() {
+  const { data: esg, status: esgStatus } = useEsgCounter();
   const colorMap: Record<string, string> = {
     green: "text-emerald-300",
     red: "text-red-300",
@@ -131,11 +133,14 @@ export function BottomStrip() {
     slate: "text-slate-300",
   };
 
+  const wasteValue = esgStatus === "live" && esg.wasteAvoided !== undefined ? `$${esg.wasteAvoided.toLocaleString()}` : "--";
+  const co2Value   = esgStatus === "live" && esg.co2eSaved    !== undefined ? `${esg.co2eSaved.toFixed(1)} t`         : "--";
+
   const stats = [
-    { label: "Waste avoided", value: `$${KPIS.wasteAvoided.toLocaleString()}`, tone: "green", icon: "leaf" },
-    { label: "CO2e saved",    value: `${KPIS.co2eSaved.toFixed(1)} t`,         tone: "green", icon: "drop" },
-    { label: "Active disruptions", value: `${KPIS.disruptions}`,               tone: KPIS.disruptions > 1 ? "red" : KPIS.disruptions > 0 ? "amber" : "slate", icon: "warn" },
-    { label: "MOQ-tax YTD",   value: `$${KPIS.moqTaxYtd.toLocaleString()}`,   tone: KPIS.moqTaxYtd > 3000 ? "red" : "amber", icon: "diff" },
+    { label: "Waste avoided",      value: wasteValue, tone: "green", icon: "leaf" },
+    { label: "CO2e saved",         value: co2Value,   tone: "green", icon: "drop" },
+    { label: "Active disruptions", value: "--",        tone: "slate", icon: "warn" },
+    { label: "MOQ-tax YTD",        value: "--",        tone: "amber", icon: "diff" },
   ];
 
   return (

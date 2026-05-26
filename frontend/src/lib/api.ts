@@ -69,6 +69,28 @@ interface BackendWasteCounter {
   co2e_avoided_kg: number;
   period_start: string;
   period_end: string;
+  moq_tax_ytd?: number;
+  disruptions_caught?: number;
+}
+
+export interface BackendWasteEvent {
+  event_id: string;
+  ts: string;
+  lot_id: string;
+  ingredient_name: string;
+  quantity_kg: number;
+  value_usd: number;
+  reason: string;
+  avoided: boolean;
+  facility_id: string;
+}
+
+export interface BackendYieldTelemetryPoint {
+  date: string;
+  line_id: string;
+  facility_id: string;
+  actual_pct: number;
+  target_pct: number;
 }
 
 interface BackendActionCard {
@@ -200,6 +222,157 @@ export async function fetchEsgCounter(): Promise<Partial<Kpis> | null> {
   return {
     wasteAvoided: Math.round(data.dollars_saved),
     co2eSaved: Number((data.co2e_avoided_kg / 1000).toFixed(1)),
+    moqTaxYtd: data.moq_tax_ytd,
+    disruptionsCaught: data.disruptions_caught,
+  };
+}
+
+export async function fetchWasteEvents(facilityId?: string): Promise<BackendWasteEvent[] | null> {
+  const qs = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
+  return safeFetch<BackendWasteEvent[]>(`/api/esg/waste_events${qs}`);
+}
+
+export async function fetchYieldTelemetry(lineId?: string): Promise<BackendYieldTelemetryPoint[] | null> {
+  const qs = lineId ? `?line_id=${encodeURIComponent(lineId)}` : "";
+  return safeFetch<BackendYieldTelemetryPoint[]>(`/api/yield/telemetry${qs}`);
+}
+
+export async function fetchDemandForecasts(skuId?: string, days = 14): Promise<import("./data").DemandForecast[] | null> {
+  const qs = new URLSearchParams();
+  if (skuId) qs.set("sku_id", skuId);
+  qs.set("days", String(days));
+  const rows = await safeFetch<{
+    sku_id: string; forecast_date: string; quantity_expected: number;
+    quantity_low: number; quantity_high: number;
+  }[]>(`/api/forecasts?${qs.toString()}`);
+  if (!rows) return null;
+  return rows.map(r => ({
+    skuId: r.sku_id,
+    date: r.forecast_date,
+    expected: r.quantity_expected,
+    low: r.quantity_low,
+    high: r.quantity_high,
+  }));
+}
+
+// ---------- Additional backend response shapes ----------
+
+export interface BackendSubstitutionCandidate {
+  sku_id: string;
+  sku_name: string;
+  achievable_quantity: number;
+  margin_score: number;
+  reason: string;
+}
+
+export interface BackendScheduleRun {
+  run_id: string;
+  sku_id: string;
+  start_at: string;
+  end_at: string;
+  quantity: number;
+  lot_assignments: string[];
+}
+
+export interface BackendSchedule {
+  schedule_id: string;
+  version: number;
+  facility_id: string;
+  line_id: string;
+  runs: BackendScheduleRun[];
+  waste_avoided_kg: number;
+  status: string;
+}
+
+export interface BackendMoqTaxEntry {
+  supplier_id: string;
+  quarter: string;
+  overage_kg: number;
+  holding_cost_usd: number;
+  recorded_at: string;
+}
+
+export interface BackendEsgPattern {
+  pattern_id: string;
+  description: string;
+  occurrences: number;
+  root_cause: string;
+  proposed_rule: string;
+}
+
+export interface BackendOrder {
+  order_id: string;
+  supplier_id: string;
+  items: { ingredient_id: string; quantity_kg: number; unit_price: number }[];
+  delivery_date: string;
+  status: string;
+  confirmed_at: string | null;
+  action_card_id: string | null;
+}
+
+// ---------- Additional fetch functions ----------
+
+export async function fetchLotSubstitutions(
+  lotId: string,
+): Promise<BackendSubstitutionCandidate[] | null> {
+  return safeFetch<BackendSubstitutionCandidate[]>(
+    `/api/lots/${encodeURIComponent(lotId)}/substitutions`,
+  );
+}
+
+export async function fetchSchedules(): Promise<BackendSchedule[] | null> {
+  return safeFetch<BackendSchedule[]>("/api/schedules");
+}
+
+export async function fetchMoqTax(
+  supplierId: string,
+): Promise<BackendMoqTaxEntry[] | null> {
+  return safeFetch<BackendMoqTaxEntry[]>(
+    `/api/suppliers/${encodeURIComponent(supplierId)}/moq_tax`,
+  );
+}
+
+export async function fetchEsgPatterns(): Promise<BackendEsgPattern[] | null> {
+  return safeFetch<BackendEsgPattern[]>("/api/esg/patterns");
+}
+
+/** Fetch supplier orders. Optionally filter by frontend-format supplier id (e.g. "s-northstar_mills"). */
+export async function fetchOrders(supplierId?: string): Promise<BackendOrder[] | null> {
+  const all = await safeFetch<BackendOrder[]>("/api/orders");
+  if (!all) return null;
+  if (!supplierId) return all;
+  const backendId = supplierId.replace(/^s-/, "sup_");
+  return all.filter((o) => o.supplier_id === backendId);
+}
+
+// ---------- Action cards ----------
+
+const ACTION_CARD_ICONS: Record<string, string> = {
+  supplier_order: "truck",
+  schedule_change: "calendar",
+  work_order: "bars",
+  transfer: "diff",
+  notify: "bell",
+};
+
+/** Adapt a backend action card to the frontend ActionCardData shape for <ActionCard/>. */
+export function adaptActionCard(b: BackendActionCard) {
+  const p = (b.payload || {}) as Record<string, unknown>;
+  const summary = Object.entries(p)
+    .filter(([k]) => !["title", "sub", "agent"].includes(k))
+    .slice(0, 3)
+    .map(([k, v]) => ({ label: k.replace(/_/g, " "), value: String(v) }));
+  if (summary.length === 0) {
+    summary.push({ label: "created", value: b.created_at.slice(0, 10) });
+  }
+  return {
+    kind: b.kind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    agent: String(p.agent ?? "Agent"),
+    icon: ACTION_CARD_ICONS[b.kind] ?? "zap",
+    title: String(p.title ?? b.kind.replace(/_/g, " ")),
+    summary,
+    state: b.state,
+    cardId: b.card_id,
   };
 }
 
