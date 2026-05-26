@@ -44,3 +44,11 @@ class WorkOrderRequest(BaseModel):
 class WorkOrderResponse(BaseModel):
     work_order_id: str
     scheduled_at: str
+
+
+class YieldTelemetryPoint(BaseModel):
+    date: str
+    line_id: str
+    facility_id: str
+    actual_pct: float
+    target_pct: float

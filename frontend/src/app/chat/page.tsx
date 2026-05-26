@@ -3,10 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "../../components/Icon";
 import { Pill, Dot, ToolBreadcrumbs, ActionCard } from "../../components/atoms";
 import { ChatBox } from "../../components/ChatDrawer";
-import { SAMPLE_CARDS, pickAgent, pickTools, mockReply, pickCard } from "../../components/ChatBrain";
-import { TOOL_CHAINS } from "../../lib/data";
 import { ActionCardData } from "../../components/atoms";
-import { streamChat } from "../../lib/api";
+import { streamChat, fetchActionCard, adaptActionCard } from "../../lib/api";
 
 interface Message {
   role: "user" | "assistant";
@@ -130,24 +128,10 @@ export default function ChatPage() {
     {
       role: "assistant",
       agent: "OrchestratorAgent",
-      time: "07:42",
-      text: "Morning. Two plants are in attention, three lots expire today. Want me to walk through the priority queue, or do you have a specific question?",
-    },
-    {
-      role: "user",
-      text: "Which lots expire today and what's the best plan?",
-      time: "07:43",
-    },
-    {
-      role: "assistant",
-      agent: "InventoryAgent",
-      time: "07:43",
-      tools: TOOL_CHAINS.shortage,
-      text: "3 lots expire in the next 24 hours:\n· LOT-21884 — blueberries IQF — Plant 1 — 0.8 kg\n· LOT-22051 — cream cheese — Plant 2 — 220 kg\n· LOT-21971 — almond meal — Plant 4 — 88 kg\n\nCombined book value: $4,318. Two have viable substitution paths — LOT-21884 fits a lemon-poppy swap at 98% compat with +1.4 pp yield. LOT-22051 is harder — no allergen-compatible alt at Plant 2 today; recommend transfer 180 kg from Plant 1 (truck arrives 09:30) and accept 40 kg write-off.",
-      card: SAMPLE_CARDS.substitute,
+      time: "now",
+      text: "Morning. I have full read across plants, suppliers, and orders. What would you like to know?",
     },
   ]);
-  const [contextItem, setContextItem] = useState("substitute");
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -158,39 +142,17 @@ export default function ChatPage() {
   const send = async () => {
     if (!input.trim() || isThinking) return;
     const u = input.trim();
-    const agent = pickAgent(u);
-    const tools = pickTools(u);
-
-    // Push the user message and an empty assistant placeholder we'll fill in
-    // as SSE chunks arrive. If the backend is unreachable, the fallback below
-    // replaces it with the canned mockReply.
+    const history = thread.map(m => ({ role: m.role, content: m.text }));
     setThread(t => [
       ...t,
       { role: "user", text: u, time: "now" },
-      { role: "assistant", agent, time: "now", tools, text: "" },
+      { role: "assistant", agent: "OrchestratorAgent", time: "now", text: "" },
     ]);
     setInput("");
     setIsThinking(true);
 
-    const history = thread.map(m => ({ role: m.role, content: m.text }));
-
-    let received = false;
-    const fallback = () => {
-      const card = pickCard(u);
-      setThread(t => {
-        const next = [...t];
-        next[next.length - 1] = { role: "assistant", agent, time: "now", tools, text: mockReply(u), card };
-        return next;
-      });
-      if (card) {
-        const key = Object.keys(SAMPLE_CARDS).find(k => SAMPLE_CARDS[k] === card);
-        if (key) setContextItem(key);
-      }
-    };
-
     await streamChat(u, history, {
       onMessage: (chunk) => {
-        received = true;
         setThread(t => {
           const next = [...t];
           const last = next[next.length - 1];
@@ -200,9 +162,11 @@ export default function ChatPage() {
           return next;
         });
       },
-      onActionCard: () => {
-        const card = pickCard(u);
-        if (!card) return;
+      onActionCard: async (cardId) => {
+        if (!cardId) return;
+        const raw = await fetchActionCard(cardId);
+        if (!raw) return;
+        const card = adaptActionCard(raw);
         setThread(t => {
           const next = [...t];
           const last = next[next.length - 1];
@@ -211,11 +175,17 @@ export default function ChatPage() {
           }
           return next;
         });
-        const key = Object.keys(SAMPLE_CARDS).find(k => SAMPLE_CARDS[k] === card);
-        if (key) setContextItem(key);
       },
-      onDone: () => { setIsThinking(false); if (!received) fallback(); },
-      onError: () => { setIsThinking(false); if (!received) fallback(); },
+      onDone: () => setIsThinking(false),
+      onError: () => {
+        setIsThinking(false);
+        setThread(t => {
+          const next = [...t];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && !last.text) next.pop();
+          return next;
+        });
+      },
     });
   };
 
@@ -234,7 +204,7 @@ export default function ChatPage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
           <div className="max-w-[760px] mx-auto space-y-5">
             {thread.map((m, i) => <ChatMessageFull key={i} m={m}/>)}
-            {isThinking && <ThinkingIndicator agent="InventoryAgent"/>}
+            {isThinking && <ThinkingIndicator agent="OrchestratorAgent"/>}
           </div>
         </div>
 
@@ -251,7 +221,10 @@ export default function ChatPage() {
           <div className="text-[13px] text-slate-200 font-mono">Latest ActionCard from thread</div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <ActionCard card={SAMPLE_CARDS[contextItem] || SAMPLE_CARDS.substitute}/>
+          {thread.filter(m => m.card).at(-1)?.card
+            ? <ActionCard card={thread.filter(m => m.card).at(-1)!.card!}/>
+            : <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-[12px] text-slate-500">No action cards yet — ask me to place an order, schedule a run, or substitute a lot.</div>
+          }
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Verification chain · voice-logged update</div>
             <VerificationBadge level="peer"/>

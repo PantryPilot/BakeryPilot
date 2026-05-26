@@ -3,7 +3,20 @@ import { useState, useMemo } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, SectionHeader } from "../../components/atoms";
-import { PRODUCTION_RUNS, FACILITIES, SKUS, ProductionRun } from "../../lib/data";
+import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
+import { useSchedules } from "../../lib/hooks";
+
+const FACILITY_MAP: Record<string, string> = {
+  plant_1: "p1", plant_2: "p2", plant_3: "p3", plant_4: "p4",
+};
+const BACKEND_SKU_MAP: Record<string, string> = {
+  sku_blueberry_muffin: "SKU-BBM-12",
+  sku_croissant: "SKU-CRO-06",
+  sku_chocolate_chip_cookie: "SKU-CCC-24",
+  sku_lemon_poppy_muffin: "SKU-LPM-12",
+  sku_cranberry_biscuit: "SKU-CRB-08",
+  sku_almond_biscotti: "SKU-ALB-08",
+};
 
 const HOUR_W = 56;
 const LANE_H = 44;
@@ -206,8 +219,36 @@ export default function SchedulePage() {
   const [plant, setPlant] = useState("all");
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const { data: backendSchedules, status: scheduleStatus } = useSchedules();
 
-  const runs = useMemo(() => plant === "all" ? PRODUCTION_RUNS : PRODUCTION_RUNS.filter(r => r.plant === plant), [plant]);
+  const allRuns = useMemo<ProductionRun[]>(() => {
+    if (scheduleStatus !== "live" || backendSchedules.length === 0) return [];
+    const runs: ProductionRun[] = [];
+    for (const s of backendSchedules) {
+      const plantId = FACILITY_MAP[s.facility_id] ?? s.facility_id;
+      const lineNum = parseInt(s.line_id.replace(/\D/g, "")) || 1;
+      for (const r of s.runs) {
+        const start = new Date(r.start_at);
+        const end = new Date(r.end_at);
+        const skuId = BACKEND_SKU_MAP[r.sku_id] || r.sku_id;
+        runs.push({
+          id: r.run_id,
+          plant: plantId,
+          line: lineNum,
+          sku: skuId,
+          qty: r.quantity,
+          start: start.getHours() + start.getMinutes() / 60,
+          end: end.getHours() + end.getMinutes() / 60,
+          allergen: "none",
+          risk: "ok",
+          lots: r.lot_assignments,
+        });
+      }
+    }
+    return runs;
+  }, [backendSchedules, scheduleStatus]);
+
+  const runs = useMemo(() => plant === "all" ? allRuns : allRuns.filter(r => r.plant === plant), [allRuns, plant]);
   const lanes = useMemo(() => {
     const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
     runs.forEach(r => {

@@ -4,7 +4,7 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
 import { FACILITIES, Lot } from "../../lib/data";
-import { useLots } from "../../lib/hooks";
+import { useLots, useLotSubstitutions } from "../../lib/hooks";
 
 const FILTER_FACILITY = [
   { id: "all", label: "All" },
@@ -30,11 +30,16 @@ function ChipGroup({ label, value, onChange, options }: {
 }
 
 function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
-  const substitutes = [
-    { name: "Lemon zest paste",     facility: "P1", qty: 38,  compat: 0.98, allergen: "none", rank: 1 },
-    { name: "Raspberries (frozen)", facility: "P3", qty: 96,  compat: 0.92, allergen: "none", rank: 2 },
-    { name: "Chocolate chips",      facility: "P4", qty: 220, compat: 0.85, allergen: "milk", rank: 3 },
-  ];
+  const backendLotId = lot.id.toLowerCase();
+  const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
+  const substitutes = rawSubs.map((s, i) => ({
+    name: s.sku_name,
+    facility: "—",
+    qty: s.achievable_quantity,
+    compat: s.margin_score,
+    allergen: "—",
+    rank: i + 1,
+  }));
   return (
     <div className="fixed top-14 right-0 bottom-12 z-30 w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
@@ -60,7 +65,16 @@ function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
         </div>
 
         <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Substitution candidates</div>
+          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">
+            Substitution candidates
+            {subsStatus === "live" && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
+          {subsStatus === "loading" && (
+            <div className="text-[12px] text-slate-500 py-3">Loading…</div>
+          )}
+          {subsStatus !== "loading" && substitutes.length === 0 && (
+            <div className="text-[12px] text-slate-500 py-3">No substitution candidates found for this lot.</div>
+          )}
           <div className="space-y-1.5">
             {substitutes.map((s, i) => (
               <div key={i} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
@@ -81,41 +95,8 @@ function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
 
         <div>
           <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Lot genealogy</div>
-          <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
-            <svg viewBox="0 0 600 200" className="w-full">
-              {[
-                { x: 50, y: 100, label: "LOT-21884", sub: "blueberries", color: "#3b82f6" },
-                { x: 210, y: 60, label: "R-9412", sub: "muffin run", color: "#64748b" },
-                { x: 210, y: 140, label: "R-9413", sub: "lpm run", color: "#64748b" },
-                { x: 400, y: 50, label: "PLT-4421", sub: "Costco", color: "#22c55e" },
-                { x: 400, y: 110, label: "PLT-4422", sub: "Walmart", color: "#22c55e" },
-                { x: 400, y: 170, label: "PLT-4423", sub: "Loblaws", color: "#22c55e" },
-              ].map((n, i) => {
-                const w = 56;
-                return (
-                  <g key={i} transform={`translate(${n.x}, ${n.y})`}>
-                    <rect x={-w/2} y="-18" width={w} height="36" rx="6" fill="#0c111c" stroke={n.color} strokeWidth="1.4"/>
-                    <text textAnchor="middle" y="-3" fontSize="10" fontWeight="600" fill="#e2e8f0" fontFamily="ui-monospace, monospace">{n.label}</text>
-                    <text textAnchor="middle" y="10" fontSize="9" fill="#64748b">{n.sub}</text>
-                  </g>
-                );
-              })}
-              {[
-                { from: [78, 100], to: [182, 60], label: "0.8 kg" },
-                { from: [78, 100], to: [182, 140], label: "0 kg" },
-                { from: [238, 60], to: [372, 50], label: "2,400 u" },
-                { from: [238, 60], to: [372, 110], label: "2,400 u" },
-                { from: [238, 140], to: [372, 170], label: "5,200 u" },
-              ].map((e, i) => {
-                const mx = (e.from[0] + e.to[0]) / 2;
-                return (
-                  <g key={i}>
-                    <path d={`M ${e.from[0]} ${e.from[1]} C ${mx} ${e.from[1]}, ${mx} ${e.to[1]}, ${e.to[0]} ${e.to[1]}`} fill="none" stroke="#334155" strokeWidth="1"/>
-                    <text x={mx} y={(e.from[1] + e.to[1]) / 2 - 3} textAnchor="middle" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{e.label}</text>
-                  </g>
-                );
-              })}
-            </svg>
+          <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4 text-[12px] text-slate-500">
+            Genealogy tracing not yet available — requires production_runs + finished_goods_pallets backend endpoint.
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ from app.models.yield_intel import (
     WorkOrderRequest,
     WorkOrderResponse,
     YieldRun,
+    YieldTelemetryPoint,
 )
 
 router = APIRouter(prefix="/api/yield", tags=["yield"])
@@ -19,6 +20,20 @@ router = APIRouter(prefix="/api/yield", tags=["yield"])
 @router.get("", response_model=list[YieldRun])
 async def list_yield_runs() -> list[YieldRun]:
     return [YieldRun(**r) for r in mock_data.YIELD_RUNS]
+
+
+@router.get("/telemetry", response_model=list[YieldTelemetryPoint])
+async def yield_telemetry(
+    line_id: str | None = None,
+    facility_id: str | None = None,
+    days: int = 14,
+) -> list[YieldTelemetryPoint]:
+    rows = mock_data.YIELD_TELEMETRY
+    if line_id:
+        rows = [r for r in rows if r["line_id"] == line_id]
+    if facility_id:
+        rows = [r for r in rows if r["facility_id"] == facility_id]
+    return [YieldTelemetryPoint(**r) for r in rows[:days * 4]]
 
 
 @router.get("/{run_id}", response_model=YieldRun)

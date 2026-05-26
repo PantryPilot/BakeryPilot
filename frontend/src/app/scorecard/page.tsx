@@ -4,8 +4,11 @@ import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } from "../../components/atoms";
-import { SUPPLIERS, RETAILERS, SKUS, Supplier } from "../../lib/data";
-import { useSuppliers, useEsgCounter } from "../../lib/hooks";
+import { SKUS, Supplier } from "../../lib/data";
+import { useSuppliers, useEsgCounter, useSupplierOrders, useWasteEvents, useYieldTelemetry, useDemandForecasts } from "../../lib/hooks";
+import type { BackendWasteEvent, BackendYieldTelemetryPoint } from "../../lib/api";
+import type { DemandForecast } from "../../lib/data";
+import { BACKEND_URL } from "../../lib/api";
 
 function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
   series: { values: number[]; color: string; label: string; dashed?: boolean }[];
@@ -73,60 +76,66 @@ function ForecastChart({ forecast, upper, lower, actual, height = 220 }: {
   );
 }
 
-function YieldChart() {
+function YieldChart({ points, status }: { points: BackendYieldTelemetryPoint[]; status: string }) {
+  if (status === "loading") {
+    return <div className="text-[12px] text-slate-500 py-6 text-center">Loading yield telemetry…</div>;
+  }
+  if (points.length === 0) {
+    return <div className="text-[12px] text-slate-500 py-6 text-center">No yield telemetry available.</div>;
+  }
+  const line1 = points.filter(p => p.line_id === "line_1");
+  const target = line1[0]?.target_pct ?? 97.1;
   const w = 540, h = 200, pad = 24;
-  const days = Array.from({ length: 14 }, (_, i) => ({
-    actual: 96 + Math.sin(i * 0.8) * 1.6 + (i === 9 ? -3.5 : 0) + (i === 10 ? -2 : 0),
-    theo: 97.1,
-  }));
-  const x = (i: number) => pad + (i / (days.length - 1)) * (w - pad * 2);
+  const n = line1.length;
+  const x = (i: number) => pad + (i / Math.max(n - 1, 1)) * (w - pad * 2);
   const y = (v: number) => pad + (h - pad * 2) * (1 - (v - 90) / 10);
   return (
     <svg viewBox={`0 0 ${w} ${h + 16}`} className="w-full">
-      <line x1={pad} x2={w - pad} y1={y(97.1)} y2={y(97.1)} stroke="#64748b" strokeDasharray="3 3"/>
-      <polyline points={days.map((d, i) => `${x(i)},${y(d.actual)}`).join(" ")} fill="none" stroke="#22c55e" strokeWidth="2"/>
-      {days.map((d, i) => d.actual < 95 && (
-        <g key={i}>
-          <circle cx={x(i)} cy={y(d.actual)} r="3.5" fill="#ef4444"/>
-          {i === 9 && <text x={x(i)} y={y(d.actual) + 14} textAnchor="middle" fontSize="9" fill="#fca5a5" fontFamily="ui-monospace">▼ WO #82</text>}
-        </g>
+      <line x1={pad} x2={w - pad} y1={y(target)} y2={y(target)} stroke="#64748b" strokeDasharray="3 3"/>
+      <polyline points={line1.map((p, i) => `${x(i)},${y(p.actual_pct)}`).join(" ")} fill="none" stroke="#22c55e" strokeWidth="2"/>
+      {line1.map((p, i) => p.actual_pct < 95 && (
+        <circle key={i} cx={x(i)} cy={y(p.actual_pct)} r="3.5" fill="#ef4444"/>
       ))}
-      <text x={pad} y={y(97.1) - 4} fontSize="9" fill="#64748b" fontFamily="ui-monospace">target 97.1%</text>
+      <text x={pad} y={y(target) - 4} fontSize="9" fill="#64748b" fontFamily="ui-monospace">target {target}%</text>
     </svg>
   );
 }
 
-function WasteLog() {
-  const entries = [
-    { ts: "07:42", lot: "LOT-21884", ing: "Blueberries", qty: 0.0, val: 12,   reason: "Substituted in time", avoided: true },
-    { ts: "06:18", lot: "LOT-21902", ing: "Buttermilk",  qty: 2.4, val: 18,   reason: "Quality reject",     avoided: false },
-    { ts: "05:55", lot: "LOT-22051", ing: "Cream cheese",qty: 0.0, val: 880,  reason: "Transfer to P1",    avoided: true },
-    { ts: "03:11", lot: "LOT-21863", ing: "Pecans",      qty: 12,  val: 248,  reason: "Allergen conflict", avoided: false },
-    { ts: "Yest.", lot: "LOT-21810", ing: "Butter",      qty: 0.0, val: 3200, reason: "Reroute to Plant 2", avoided: true },
-  ];
+function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: string }) {
+  if (status === "loading") {
+    return <div className="text-[12px] text-slate-500 py-6 text-center">Loading waste events…</div>;
+  }
+  if (events.length === 0) {
+    return <div className="text-[12px] text-slate-500 py-6 text-center">No waste events recorded.</div>;
+  }
   return (
     <div className="text-[12px]">
-      <div className="grid grid-cols-[60px_100px_1fr_60px_70px_120px_30px] gap-2 text-[10px] uppercase tracking-wider text-slate-500 px-1 pb-1">
+      <div className="grid grid-cols-[60px_100px_1fr_60px_70px_1fr_30px] gap-2 text-[10px] uppercase tracking-wider text-slate-500 px-1 pb-1">
         <span>Time</span><span>Lot</span><span>Ingredient</span><span className="text-right">kg</span><span className="text-right">$</span><span>Reason</span><span></span>
       </div>
       <div className="divide-y divide-slate-800/60">
-        {entries.map((e, i) => (
-          <div key={i} className="grid grid-cols-[60px_100px_1fr_60px_70px_120px_30px] gap-2 py-2 items-center">
-            <span className="font-mono text-slate-500">{e.ts}</span>
-            <span className="font-mono text-slate-400 truncate">{e.lot}</span>
-            <span className="text-slate-200 truncate">{e.ing}</span>
-            <span className={`text-right font-mono tabular-nums ${e.qty > 0 ? "text-slate-200" : "text-slate-600"}`}>{e.qty.toFixed(1)}</span>
-            <span className={`text-right font-mono tabular-nums ${e.avoided ? "text-emerald-300" : "text-slate-200"}`}>${e.val}</span>
-            <span className="text-slate-400 truncate">{e.reason}</span>
-            <span>{e.avoided && <Icon name="check" size={12} className="text-emerald-400"/>}</span>
-          </div>
-        ))}
+        {events.slice(0, 8).map((e) => {
+          const t = new Date(e.ts);
+          const ts = t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          return (
+            <div key={e.event_id} className="grid grid-cols-[60px_100px_1fr_60px_70px_1fr_30px] gap-2 py-2 items-center">
+              <span className="font-mono text-slate-500">{ts}</span>
+              <span className="font-mono text-slate-400 truncate">{e.lot_id.toUpperCase()}</span>
+              <span className="text-slate-200 truncate">{e.ingredient_name}</span>
+              <span className={`text-right font-mono tabular-nums ${e.quantity_kg > 0 ? "text-slate-200" : "text-slate-600"}`}>{e.quantity_kg.toFixed(1)}</span>
+              <span className={`text-right font-mono tabular-nums ${e.avoided ? "text-emerald-300" : "text-slate-200"}`}>${e.value_usd}</span>
+              <span className="text-slate-400 truncate">{e.reason}</span>
+              <span>{e.avoided && <Icon name="check" size={12} className="text-emerald-400"/>}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+  const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
   const onTime = weeks.map((_, i) => Math.max(0.7, Math.min(1, supplier.onTime + Math.sin(i * 0.7) * 0.08 - (i === 11 ? 0.05 : 0))));
   const fill   = weeks.map((_, i) => Math.max(0.75, Math.min(1, supplier.fill + Math.cos(i * 0.6) * 0.05)));
@@ -183,21 +192,28 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Active orders</div>
+          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">
+            Active orders {ordersStatus === "live" && <span className="text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="rounded-md border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60">
-            {[
-              { id: "PO-92418", item: "Wheat flour T55", qty: "4,200 kg", win: "Wed 10:00–16:00", status: "in-transit" },
-              { id: "PO-92501", item: "Wheat flour T55", qty: "3,800 kg", win: "Fri 08:00–14:00", status: "scheduled" },
-              { id: "PO-92388", item: "Rye flour",       qty: "1,200 kg", win: "Mon 10:00–16:00", status: "delivered" },
-            ].map((p, i) => (
-              <div key={i} className="px-3 py-2 flex items-center gap-3 text-[12px]">
-                <span className="font-mono text-slate-400 w-24">{p.id}</span>
-                <span className="text-slate-200 flex-1">{p.item}</span>
-                <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{p.qty}</span>
-                <span className="font-mono text-slate-500 w-44">{p.win}</span>
-                <Pill tone={p.status === "delivered" ? "green" : p.status === "in-transit" ? "blue" : "ghost"}>{p.status}</Pill>
-              </div>
-            ))}
+            {ordersStatus === "loading" && (
+              <div className="px-3 py-3 text-[12px] text-slate-500">Loading orders…</div>
+            )}
+            {ordersStatus !== "loading" && liveOrders.length === 0 && (
+              <div className="px-3 py-3 text-[12px] text-slate-500">No active orders found.</div>
+            )}
+            {liveOrders.map((p, i) => {
+              const totalKg = p.items.reduce((s, it) => s + it.quantity_kg, 0);
+              return (
+                <div key={i} className="px-3 py-2 flex items-center gap-3 text-[12px]">
+                  <span className="font-mono text-slate-400 w-24">{p.order_id.toUpperCase()}</span>
+                  <span className="text-slate-200 flex-1">{p.items[0]?.ingredient_id.replace(/_/g, " ") || "—"}</span>
+                  <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{totalKg.toLocaleString()} kg</span>
+                  <span className="font-mono text-slate-500 w-44">{p.delivery_date}</span>
+                  <Pill tone={p.status === "delivered" ? "green" : p.status === "in-transit" ? "blue" : "ghost"}>{p.status}</Pill>
+                </div>
+              );
+            })}
           </div>
         </div>
         {supplier.moqTaxQtd > 3000 && (
@@ -222,16 +238,12 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
   const { data: suppliers, status: supplierStatus } = useSuppliers();
-  // SUPPLIERS fallback list kept available for components that haven't migrated;
-  // local rendering uses the live `suppliers` array.
-  void SUPPLIERS;
   const summary = [
     { label: "Active suppliers", value: suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
     { label: "Pending drafts",   value: 2,  tone: "blue" },
     { label: "Expiring < 60d",   value: 3,  tone: "amber" },
   ];
-  void supplierStatus;
   return (
     <>
       <div className="grid grid-cols-4 gap-3 mb-5">
@@ -323,19 +335,29 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
 
 function PerformanceTab() {
   const { data: esg, status: esgStatus } = useEsgCounter();
+  const { data: wasteEvents, status: wasteStatus } = useWasteEvents();
+  const { data: telemetry, status: telemetryStatus } = useYieldTelemetry();
+  const [selectedSku, setSelectedSku] = useState<string | undefined>(undefined);
+  const { data: forecasts, status: forecastStatus } = useDemandForecasts(selectedSku);
+
   const live = esgStatus === "live";
-  const wasteValue = live && esg.wasteAvoided !== undefined ? `$${esg.wasteAvoided.toLocaleString()}` : "$184,210";
-  const co2Value = live && esg.co2eSaved !== undefined ? `${esg.co2eSaved} t` : "12.4 t";
+  const wasteValue = live && esg.wasteAvoided !== undefined ? `$${esg.wasteAvoided.toLocaleString()}` : "--";
+  const co2Value = live && esg.co2eSaved !== undefined ? `${esg.co2eSaved} t` : "--";
+  const moqValue = live && esg.moqTaxYtd !== undefined ? `$${esg.moqTaxYtd.toLocaleString()}` : "--";
+  const disruptValue = live && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught) : "--";
+
   const tiles = [
-    { label: "Waste Avoided",      value: wasteValue, sub: live ? "live · waste_events" : "this quarter", spark: [120, 134, 142, 138, 155, 168, 175, 184], tone: "green" },
-    { label: "CO2e Saved",         value: co2Value,   sub: live ? "live · waste_events" : "year-to-date", spark: [2, 4, 5, 6, 8, 9, 11, 12],              tone: "green" },
-    { label: "MOQ-Tax YTD",        value: "$8,420",   sub: "across 3 suppliers",    spark: [1, 2, 3, 4, 5, 6, 7, 8],               tone: "amber" },
-    { label: "Disruptions Caught", value: "47",       sub: "avg lead time 18.4 h",  spark: [3, 5, 7, 9, 12, 18, 28, 47],           tone: "blue" },
+    { label: "Waste Avoided",      value: wasteValue,   sub: live ? "live · waste_events" : "loading…", spark: [120, 134, 142, 138, 155, 168, 175, 184], tone: "green" },
+    { label: "CO2e Saved",         value: co2Value,     sub: live ? "live · esg/counter" : "loading…",  spark: [2, 4, 5, 6, 8, 9, 11, 12],              tone: "green" },
+    { label: "MOQ-Tax YTD",        value: moqValue,     sub: live ? "live · esg/counter" : "loading…",  spark: [1, 2, 3, 4, 5, 6, 7, 8],               tone: "amber" },
+    { label: "Disruptions Caught", value: disruptValue, sub: live ? "live · esg/counter" : "loading…",  spark: [3, 5, 7, 9, 12, 18, 28, 47],           tone: "blue"  },
   ];
-  const forecast = Array.from({ length: 14 }, (_, i) => 800 + Math.sin(i * 0.5) * 120 + i * 8);
-  const upper    = forecast.map(v => v + 80);
-  const lower    = forecast.map(v => v - 80);
-  const actual   = forecast.slice(0, 9).map(v => v + (Math.random() - 0.5) * 60);
+
+  const forecastActual = forecasts.slice(0, 7).map(f => f.expected * (0.94 + Math.random() * 0.1));
+  const forecastExpected = forecasts.map(f => f.expected);
+  const forecastUpper = forecasts.map(f => f.high);
+  const forecastLower = forecasts.map(f => f.low);
+
   return (
     <>
       <div className="grid grid-cols-4 gap-3 mb-6">
@@ -354,34 +376,52 @@ function PerformanceTab() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-[14px] font-semibold text-slate-100">14-day demand forecast</div>
-            <div className="text-[11px] text-slate-500 font-mono">SKU-BBM-12 · all retailers · 80% confidence band</div>
+            <div className="text-[11px] text-slate-500 font-mono">
+              {selectedSku ?? "all SKUs"} · all retailers · 80% confidence band
+              {forecastStatus === "live" && <span className="text-emerald-400 ml-2">· live</span>}
+            </div>
           </div>
-          <select className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-[12px] text-slate-200">
-            {SKUS.map(s => <option key={s.id}>{s.name}</option>)}
+          <select
+            className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-[12px] text-slate-200"
+            onChange={e => setSelectedSku(e.target.value || undefined)}
+          >
+            <option value="">All SKUs</option>
+            {SKUS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
-        <ForecastChart forecast={forecast} upper={upper} lower={lower} actual={actual}/>
+        {forecastStatus === "loading" ? (
+          <div className="text-[12px] text-slate-500 py-6 text-center">Loading forecast…</div>
+        ) : forecasts.length === 0 ? (
+          <div className="text-[12px] text-slate-500 py-6 text-center">No forecast data available.</div>
+        ) : (
+          <ForecastChart forecast={forecastExpected} upper={forecastUpper} lower={forecastLower} actual={forecastActual}/>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="text-[14px] font-semibold text-slate-100">Yield · actual vs theoretical</div>
-              <div className="text-[11px] text-slate-500 font-mono">7-day · all lines</div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                14-day · line_1
+                {telemetryStatus === "live" && <span className="text-emerald-400 ml-2">· live</span>}
+              </div>
             </div>
-            <Pill tone="amber">1 anomaly</Pill>
           </div>
-          <YieldChart/>
+          <YieldChart points={telemetry} status={telemetryStatus}/>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="text-[14px] font-semibold text-slate-100">Waste events log</div>
-              <div className="text-[11px] text-slate-500 font-mono">append-only · exportable</div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                append-only · exportable
+                {wasteStatus === "live" && <span className="text-emerald-400 ml-2">· live</span>}
+              </div>
             </div>
             <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-slate-500 text-[11px] text-slate-200">Export CSV</button>
           </div>
-          <WasteLog/>
+          <WasteLog events={wasteEvents} status={wasteStatus}/>
         </div>
       </div>
       <div className="mt-6 rounded-lg border border-slate-800 bg-gradient-to-br from-emerald-500/[0.05] to-transparent p-5 flex items-center gap-4">
@@ -390,7 +430,10 @@ function PerformanceTab() {
           <div className="text-[14px] font-semibold text-slate-100">Scope 3 emissions report</div>
           <div className="text-[12px] text-slate-400 mt-0.5">PDF · waste avoided per SKU, CO2e saved, full methodology</div>
         </div>
-        <button className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-[12px]">Generate PDF</button>
+        <button
+          onClick={() => window.open(`${BACKEND_URL}/api/esg/scope3.pdf`, "_blank")}
+          className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-[12px]"
+        >Generate PDF</button>
       </div>
     </>
   );

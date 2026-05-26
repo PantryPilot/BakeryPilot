@@ -1,17 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
-import { Dot, Pill, ActionCard, YieldCounter } from "./atoms";
-import { SAMPLE_CARDS } from "./ChatBrain";
-import { SUPPLIERS, RETAILERS, DISRUPTIONS, Supplier } from "../lib/data";
+import { Dot, Pill, YieldCounter } from "./atoms";
+import type { Supplier, Disruption } from "../lib/data";
+import { useSuppliers, useDisruptions } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 130;
 const PLANT_CX = 640;
 const RETAILER_X = 1150;
 
-const SUPPLIER_POS = SUPPLIERS.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
-const RETAILER_POS = RETAILERS.map((r, i) => ({ ...r, x: RETAILER_X, y: 386 + i * 48 }));
 const PLANT_POS = [
   { id: "p1", name: "Plant 1", city: "Brampton, ON", x: PLANT_CX + 60,  y: 410, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
   { id: "p2", name: "Plant 2", city: "Surrey, BC",   x: PLANT_CX - 270, y: 280, status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
@@ -20,6 +18,15 @@ const PLANT_POS = [
 ] as const;
 
 type PlantData = { id: string; name: string; city: string; x: number; y: number; status: string; util: { frozen: number; ref: number; dry: number } };
+
+// UI visual config for the map — retailer lane positions (no backend endpoint)
+const RETAILER_POS = [
+  { id: "r1", name: "Costco",  poRatio: 1.28, shelfRisk: "amber" as const, x: RETAILER_X, y: 386 },
+  { id: "r2", name: "Walmart", poRatio: 0.94, shelfRisk: "green" as const, x: RETAILER_X, y: 434 },
+  { id: "r3", name: "Loblaws", poRatio: 0.88, shelfRisk: "green" as const, x: RETAILER_X, y: 482 },
+  { id: "r4", name: "Metro",   poRatio: 1.05, shelfRisk: "red" as const,   x: RETAILER_X, y: 530 },
+];
+type RetailerPos = typeof RETAILER_POS[number];
 
 const FLOWS = [
   { id: "f1", from: { x: SUPPLIER_X, y: 130 }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "inbound",  cargo: "wheat T55 · 4,200 kg" },
@@ -176,7 +183,7 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   );
 }
 
-function RetailerNode({ r: rr, forecastOn }: { r: typeof RETAILER_POS[number]; forecastOn: boolean }) {
+function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boolean }) {
   const color = rr.shelfRisk === "red" ? "#ef4444" : rr.shelfRisk === "amber" ? "#f59e0b" : "#22c55e";
   const barWidth = Math.min(44, 44 * rr.poRatio * 0.75);
   return (
@@ -219,7 +226,8 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
   );
 }
 
-function NewsTicker() {
+function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
+  if (disruptions.length === 0) return null;
   return (
     <div className="absolute left-0 right-0 bottom-[88px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
       <div className="shrink-0 px-3 h-full flex items-center gap-1.5 bg-red-900/60 border-r border-red-800/60">
@@ -228,7 +236,7 @@ function NewsTicker() {
       </div>
       <div className="ticker-wrap flex-1">
         <div className="ticker font-mono text-[12px] text-red-200">
-          {DISRUPTIONS.concat(DISRUPTIONS).map((d, i) => (
+          {disruptions.concat(disruptions).map((d, i) => (
             <span key={i} className="mx-8">
               <span className="text-red-400">[{d.ts.slice(11)}]</span>{" "}
               <span className="text-red-300">{d.src}</span> · {d.text}
@@ -364,8 +372,9 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
         </div>
         <div className="space-y-2">
           <div className="text-[10px] uppercase tracking-wider text-slate-500">Agent suggestions</div>
-          <ActionCard card={SAMPLE_CARDS.substitute}/>
-          {plant.id === "p1" && <ActionCard card={SAMPLE_CARDS.yieldWO}/>}
+          <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 text-[12px] text-slate-500">
+            No pending action cards — ask copilot to generate one.
+          </div>
         </div>
       </div>
       <div className="p-3 border-t border-slate-800">
@@ -389,6 +398,10 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const setLayer = (id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on }));
 
+  const { data: suppliers } = useSuppliers();
+  const { data: disruptions } = useDisruptions();
+  const supplierPos = suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
+
   return (
     <div className="relative w-full h-full bg-[#070a11] overflow-hidden">
       <div className="absolute inset-0 opacity-[0.18]" style={{
@@ -397,7 +410,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       }}/>
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>
-        <span className="text-[11px] text-slate-500 font-mono">live · {SUPPLIERS.length} suppliers · {PLANT_POS.length} plants · {RETAILERS.length} retailers</span>
+        <span className="text-[11px] text-slate-500 font-mono">live · {supplierPos.length} suppliers · {PLANT_POS.length} plants · {RETAILER_POS.length} retailers</span>
       </div>
       <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} preserveAspectRatio="xMidYMid meet" className="absolute inset-0 w-full h-full">
         <defs>
@@ -432,7 +445,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {FLOWS.filter(f => f.kind === "outbound").map((f, idx) => <TruckSprite key={"to-" + f.id} flow={f} dur={14 + idx * 2}/>)}
         {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => <TruckSprite key={"tx-" + f.id} flow={f} dur={18}/>)}
 
-        {SUPPLIER_POS.map(s => (
+        {supplierPos.map(s => (
           <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
         ))}
         {PLANT_POS.map((p: PlantData) => (
@@ -449,7 +462,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         </g>
       </svg>
       <LayerToggles layers={layers} setLayer={setLayer}/>
-      {layers.risk && <NewsTicker/>}
+      {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
       <TimeScrubber live={live} setLive={setLive}/>
       {activePlant && (
         <FactoryView

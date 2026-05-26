@@ -9,16 +9,26 @@ import { useEffect, useState } from "react";
 import {
   fetchDisruptions,
   fetchEsgCounter,
+  fetchEsgPatterns,
+  fetchLotSubstitutions,
   fetchLots,
+  fetchOrders,
+  fetchSchedules,
   fetchSuppliers,
+  fetchWasteEvents,
+  fetchYieldTelemetry,
+  fetchDemandForecasts,
   openEventStream,
+  type BackendEsgPattern,
+  type BackendOrder,
+  type BackendSchedule,
+  type BackendSubstitutionCandidate,
+  type BackendWasteEvent,
+  type BackendYieldTelemetryPoint,
   type LiveEvent,
 } from "./api";
 import {
-  DISRUPTIONS,
-  KPIS,
-  LOTS,
-  SUPPLIERS,
+  type DemandForecast,
   type Disruption,
   type Kpis,
   type Lot,
@@ -61,22 +71,95 @@ function useBackend<T>(
 }
 
 export function useLots(): Result<Lot[]> {
-  return useBackend(fetchLots, LOTS);
+  return useBackend(fetchLots, []);
 }
 
 export function useSuppliers(): Result<Supplier[]> {
-  return useBackend(fetchSuppliers, SUPPLIERS);
+  return useBackend(fetchSuppliers, []);
 }
 
 export function useDisruptions(): Result<Disruption[]> {
-  return useBackend(fetchDisruptions, DISRUPTIONS);
+  return useBackend(fetchDisruptions, []);
 }
 
 export function useEsgCounter(): Result<Partial<Kpis>> {
-  return useBackend(
-    fetchEsgCounter,
-    { wasteAvoided: KPIS.wasteAvoided, co2eSaved: KPIS.co2eSaved },
-  );
+  return useBackend(fetchEsgCounter, {});
+}
+
+export function useSchedules(): Result<BackendSchedule[]> {
+  return useBackend(fetchSchedules, []);
+}
+
+export function useEsgPatterns(): Result<BackendEsgPattern[]> {
+  return useBackend(fetchEsgPatterns, []);
+}
+
+/** Fetch substitution candidates for a specific lot. Re-fetches when lotId changes. */
+export function useLotSubstitutions(lotId: string | null): {
+  data: BackendSubstitutionCandidate[];
+  status: BackendStatus;
+} {
+  const [data, setData] = useState<BackendSubstitutionCandidate[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    if (!lotId) return;
+    setStatus("loading");
+    setData([]);
+    let alive = true;
+    fetchLotSubstitutions(lotId).then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [lotId]);
+
+  return { data, status };
+}
+
+/** Fetch supplier orders filtered by frontend supplier id (e.g. "s-northstar_mills"). */
+export function useSupplierOrders(supplierId: string | null): {
+  data: BackendOrder[];
+  status: BackendStatus;
+} {
+  const [data, setData] = useState<BackendOrder[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    if (!supplierId) return;
+    setStatus("loading");
+    setData([]);
+    let alive = true;
+    fetchOrders(supplierId).then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [supplierId]);
+
+  return { data, status };
+}
+
+export function useWasteEvents(facilityId?: string): Result<BackendWasteEvent[]> {
+  return useBackend(() => fetchWasteEvents(facilityId), []);
+}
+
+export function useYieldTelemetry(lineId?: string): Result<BackendYieldTelemetryPoint[]> {
+  return useBackend(() => fetchYieldTelemetry(lineId), []);
+}
+
+export function useDemandForecasts(skuId?: string, days = 14): Result<DemandForecast[]> {
+  return useBackend(() => fetchDemandForecasts(skuId, days), []);
 }
 
 /** Subscribe to the FlowSight live event stream. Callback fires per event. */
