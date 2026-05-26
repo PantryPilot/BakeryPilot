@@ -1,5 +1,5 @@
 .PHONY: up up.full down reset \
-        schema.migrate schema.seed seed.lots seed.events seed.demo \
+        schema.migrate schema.seed seed.lots seed.events seed.demo seed.toronto \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -49,6 +49,9 @@ seed.events:
 
 seed.demo:
 	$(UV) run infra/seed_demo.py
+
+seed.toronto:
+	$(UV) run infra/seed_toronto_suppliers.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:
