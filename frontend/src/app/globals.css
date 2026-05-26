@@ -103,3 +103,18 @@ button:focus {
 main {
   overflow: hidden;
 }
+
+/* Page mount fade-in transition (Bug 5) */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-transition {
+  animation: page-fade-in 150ms ease-out both;
+}

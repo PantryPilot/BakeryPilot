@@ -41,7 +41,7 @@ function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
     rank: i + 1,
   }));
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div>
           <div className="font-mono text-[11px] text-slate-500">{lot.id}</div>
@@ -161,7 +161,7 @@ export default function MaterialsPage() {
         />
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <ChipGroup label="Facility" value={facility} onChange={setFacility} options={FILTER_FACILITY}/>
             <span className="w-px h-5 bg-slate-800"/>
             <ChipGroup label="Storage" value={storage} onChange={setStorage} options={FILTER_STORAGE.map(x => ({ id: x, label: x }))}/>
@@ -185,8 +185,8 @@ export default function MaterialsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
-          <table className="w-full text-[13px]">
+        <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden overflow-x-auto">
+          <table className="w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
               <tr>
                 {["Lot ID", "Ingredient", "Facility", "Qty (kg)", "Expiry", "Days left", "Storage", "Risk score", "Status", "Actions"].map((h, i) => (
@@ -225,7 +225,7 @@ export default function MaterialsPage() {
           <SectionHeader title="Stock horizon" sub="Days of stock remaining at current consumption rate. Red marker = reorder by lead time."/>
           <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4 space-y-2">
             {horizon.map((h, i) => (
-              <div key={i} className="grid grid-cols-[200px_1fr_auto] items-center gap-3">
+              <div key={i} className="grid grid-cols-[minmax(120px,200px)_1fr_auto] items-center gap-3">
                 <div className="text-[12px] text-slate-300 truncate">{h.ingredient}</div>
                 <div className="relative h-5 rounded bg-slate-800/60 overflow-hidden">
                   <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 60) * 100)}%` }}/>

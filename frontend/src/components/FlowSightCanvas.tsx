@@ -203,7 +203,7 @@ function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boole
 
 function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; setLayer: (id: string, on: boolean) => void }) {
   return (
-    <div className="absolute top-4 right-4 w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl z-10">
+    <div className="absolute top-4 right-2 sm:right-4 w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl z-10">
       <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Layers</span>
         <span className="text-[10px] font-mono text-slate-500">{Object.values(layers).filter(Boolean).length} on</span>
@@ -305,7 +305,7 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
     4: { sku: "Chocolate Cookie 24pk", qty: 7400, expiryLot: "LOT-21999", expiryH: 48,  status: "ok" },
   };
   return (
-    <div className="absolute top-0 right-0 bottom-0 w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl">
+    <div className="absolute top-0 right-0 bottom-0 w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl">
       <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div>

@@ -7,7 +7,6 @@ import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } fro
 import { SKUS, Supplier } from "../../lib/data";
 import { useSuppliers, useEsgCounter, useSupplierOrders, useWasteEvents, useYieldTelemetry, useDemandForecasts } from "../../lib/hooks";
 import type { BackendWasteEvent, BackendYieldTelemetryPoint } from "../../lib/api";
-import type { DemandForecast } from "../../lib/data";
 import { BACKEND_URL } from "../../lib/api";
 
 function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
@@ -144,7 +143,7 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
 
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <ReliabilityHalo score={supplier.onTime} disrupt={supplier.status === "disrupt"} size={36}>
@@ -235,9 +234,11 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
   );
 }
 
+// openChatContext prop is forwarded from ScorecardInner but not currently used in this tab
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
-  const { data: suppliers, status: supplierStatus } = useSuppliers();
+  const { data: suppliers } = useSuppliers();
   const summary = [
     { label: "Active suppliers", value: suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
@@ -246,7 +247,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   ];
   return (
     <>
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {summary.map((s, i) => (
           <div key={i} className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{s.label}</div>
@@ -254,8 +255,8 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden mb-6">
-        <table className="w-full text-[13px]">
+      <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden overflow-x-auto mb-6">
+        <table className="w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               {["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"].map((h, i) => (
@@ -360,7 +361,7 @@ function PerformanceTab() {
 
   return (
     <>
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {tiles.map((t, i) => (
           <div key={i} className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{t.label}</div>

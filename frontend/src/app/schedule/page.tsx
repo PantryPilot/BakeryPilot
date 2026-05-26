@@ -174,7 +174,7 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
     </div>
   );
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-[420px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[420px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-2">
           <Icon name="spark" size={14} className="text-purple-400"/>
@@ -278,15 +278,15 @@ export default function SchedulePage() {
           }
         />
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40 overflow-x-auto">
             {[{ id: "all", label: "All" }, ...FACILITIES.filter(f => f.id !== "all").map(f => ({ id: f.id, label: f.name }))].map(t => (
-              <button key={t.id} onClick={() => setPlant(t.id)} className={`px-2.5 py-1 rounded-md text-[12px] ${plant === t.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
+              <button key={t.id} onClick={() => setPlant(t.id)} className={`px-2.5 py-1 rounded-md text-[12px] whitespace-nowrap ${plant === t.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
             ))}
           </div>
-          <div className="text-[11px] font-mono text-slate-500">Mon 25 May · Tue 26 May · Wed 27 May</div>
+          <div className="text-[11px] font-mono text-slate-500 hidden sm:block">Mon 25 May · Tue 26 May · Wed 27 May</div>
           <div className="flex-1"/>
-          <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
+          <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 whitespace-nowrap ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
             <Icon name="diff" size={12}/> {showDiff ? "Hide" : "Show"} agent proposal
           </button>
         </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "./Icon";
@@ -16,26 +16,33 @@ const NAV = [
   { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database" },
 ];
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
 export function Sidebar() {
-  const { sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  return (
-    <aside className={`shrink-0 ${sidebarCollapsed ? "w-[64px]" : "w-[208px]"} transition-all duration-200 border-r border-slate-800/80 bg-[#0a0d14] flex flex-col`}>
-      <div className="h-14 flex items-center px-4 gap-2.5 border-b border-slate-800/80">
+  // Shared sidebar content rendered for both desktop and mobile overlay
+  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+    <aside className={`
+      flex flex-col bg-[#0a0d14] border-r border-slate-800/80 h-full
+      ${mobile
+        ? "w-[240px]"
+        : `shrink-0 transition-all duration-200 ${sidebarCollapsed ? "w-[64px]" : "w-[208px]"}`
+      }
+    `}>
+      <div className="h-14 flex items-center px-4 gap-2.5 border-b border-slate-800/80 shrink-0">
         <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-950">
             <path d="M4 14c0-5 4-9 8-9s8 4 8 9c0 3-3 5-8 5s-8-2-8-5z"/>
             <path d="M9 11v-1M15 11v-1M12 11v-2"/>
           </svg>
         </div>
-        {!sidebarCollapsed && (
-          <div className="flex-1 min-w-0">
-            <div className="text-[14px] font-semibold text-slate-100 leading-none">BakeryPilot</div>
-            <div className="text-[10px] text-slate-500 mt-0.5 tracking-wider uppercase">Ops copilot</div>
-          </div>
-        )}
+        <div className={`flex-1 min-w-0 overflow-hidden transition-all duration-200 ${(!mobile && sidebarCollapsed) ? "w-0 opacity-0" : "opacity-100"}`}>
+          <div className="text-[14px] font-semibold text-slate-100 leading-none whitespace-nowrap">BakeryPilot</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 tracking-wider uppercase whitespace-nowrap">Ops copilot</div>
+        </div>
       </div>
 
       <nav className="flex-1 py-3">
@@ -53,48 +60,261 @@ export function Sidebar() {
             }
           }
           return (
-            <Link key={item.id} href={item.route}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 transition relative ${active ? "text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>
-              {active && <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-blue-500"/>}
-              <Icon name={item.icon} size={18} className={active ? "text-blue-400" : ""}/>
-              {!sidebarCollapsed && <span className="text-[13px] font-medium">{item.label}</span>}
+            <Link
+              key={item.id}
+              href={item.route}
+              onClick={() => mobile && setMobileSidebarOpen(false)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 relative ${active ? "text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
+            >
+              {/* Active indicator with smooth transition */}
+              <div className={`absolute left-0 top-0 bottom-0 w-[2px] rounded-r-sm bg-blue-500 transition-all duration-200 ${active ? "opacity-100" : "opacity-0"}`}/>
+              <Icon
+                name={item.icon}
+                size={18}
+                className={`transition-colors duration-150 shrink-0 ${active ? "text-blue-400" : ""}`}
+              />
+              <span className={`
+                text-[13px] font-medium whitespace-nowrap overflow-hidden transition-all duration-200
+                ${(!mobile && sidebarCollapsed) ? "opacity-0 w-0 translate-x-2" : "opacity-100 translate-x-0"}
+              `}>
+                {item.label}
+              </span>
             </Link>
           );
         })}
       </nav>
 
       <button
-        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        className="border-t border-slate-800/80 py-3 text-slate-500 hover:text-slate-300 text-[11px] font-mono"
+        onClick={() => {
+          if (mobile) setMobileSidebarOpen(false);
+          else setSidebarCollapsed(!sidebarCollapsed);
+        }}
+        className="border-t border-slate-800/80 py-3 text-slate-500 hover:text-slate-300 text-[11px] font-mono transition-colors duration-150 shrink-0"
       >
-        {sidebarCollapsed ? "›" : "‹ collapse"}
+        {mobile ? "✕ close" : sidebarCollapsed ? "›" : "‹ collapse"}
       </button>
     </aside>
   );
-}
-
-export function TopBar() {
-  const { facility, setFacility } = useApp();
-  const [open, setOpen] = useState(false);
 
   return (
-    <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[#0a0d14]/80 backdrop-blur flex items-center px-4 gap-4 z-30">
-      <div className="relative">
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex h-full">
+        <SidebarContent mobile={false}/>
+      </div>
+
+      {/* Mobile overlay drawer */}
+      {mobileSidebarOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="fixed top-0 left-0 bottom-0 z-50 md:hidden shadow-2xl">
+            <SidebarContent mobile={true}/>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// ─── Notification Panel ───────────────────────────────────────────────────────
+
+const KIND_ICON: Record<string, string> = {
+  expiring_lot: "box",
+  supplier_risk: "truck",
+  yield_spike: "zap",
+};
+
+function NotificationPanel({ onClose }: { onClose: () => void }) {
+  const { notifications, dismissNotification, openChatContext } = useApp();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+
+  const handleAskCopilot = (refId: string, action: string) => {
+    dismissNotification(refId);
+    openChatContext(action);
+    onClose();
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      className="absolute top-full right-0 mt-1 w-[360px] rounded-lg border border-slate-700 bg-slate-900 shadow-2xl z-50 overflow-hidden"
+      style={{ maxHeight: "min(480px, calc(100vh - 80px))" }}
+    >
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
+        <span className="text-[12px] font-semibold text-slate-200 uppercase tracking-wider">Notifications</span>
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 p-0.5">
+          <Icon name="x" size={14}/>
+        </button>
+      </div>
+
+      {notifications.length === 0 && (
+        <div className="px-4 py-8 text-[13px] text-slate-500 text-center">No notifications</div>
+      )}
+
+      <div className="overflow-y-auto" style={{ maxHeight: "400px" }}>
+        {notifications.map(n => (
+          <div
+            key={n.ref_id}
+            className={`flex gap-3 px-4 py-3 border-b border-slate-800/60 last:border-b-0 ${!n.read ? "bg-slate-800/30" : ""}`}
+          >
+            <span className={`mt-0.5 shrink-0 ${n.severity === "critical" ? "text-red-400" : "text-amber-400"}`}>
+              <Icon name={KIND_ICON[n.kind] ?? "zap"} size={14}/>
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-semibold text-slate-100 leading-tight">{n.title}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">{n.body}</div>
+              <button
+                onClick={() => handleAskCopilot(n.ref_id, n.action)}
+                className="mt-1.5 text-[10px] font-medium text-blue-400 hover:text-blue-300 underline underline-offset-2"
+              >
+                Ask Copilot →
+              </button>
+            </div>
+            <button
+              onClick={() => dismissNotification(n.ref_id)}
+              className="shrink-0 text-slate-600 hover:text-slate-400 mt-0.5"
+            >
+              <Icon name="x" size={12}/>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── User Menu ────────────────────────────────────────────────────────────────
+
+function UserMenu({ onClose }: { onClose: () => void }) {
+  const { facility } = useApp();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const facilityLabel = FACILITIES.find(f => f.id === facility)?.name ?? "All Plants";
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute top-full right-0 mt-1 w-[220px] rounded-lg border border-slate-700 bg-slate-900 shadow-2xl z-50 overflow-hidden"
+    >
+      <div className="px-4 py-3 border-b border-slate-800">
+        <div className="text-[13px] font-semibold text-slate-100">Alex Chen</div>
+        <div className="text-[11px] text-slate-400 mt-0.5">Ops Manager</div>
+        <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1">
+          <Icon name="grid" size={10} className="text-slate-500"/>
+          {facilityLabel}
+        </div>
+      </div>
+      <div className="py-1">
         <button
-          onClick={() => setOpen(o => !o)}
+          className="w-full text-left px-4 py-2 text-[13px] text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2"
+          onClick={onClose}
+        >
+          <Icon name="database" size={14} className="text-slate-500"/>
+          Settings
+        </button>
+        <button
+          className="w-full text-left px-4 py-2 text-[13px] text-red-400 hover:bg-slate-800 hover:text-red-300 transition-colors flex items-center gap-2"
+          onClick={onClose}
+        >
+          <Icon name="x" size={14} className="text-slate-500"/>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── TopBar ───────────────────────────────────────────────────────────────────
+
+export function TopBar() {
+  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
+  const [facilityOpen, setFacilityOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  const facilityRef = useRef<HTMLDivElement>(null);
+
+  // Close facility dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (facilityRef.current && !facilityRef.current.contains(e.target as Node)) {
+        setFacilityOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleNotifToggle = () => {
+    if (!notifOpen) markNotificationsRead();
+    setNotifOpen(o => !o);
+    setUserOpen(false);
+  };
+
+  const handleUserToggle = () => {
+    setUserOpen(o => !o);
+    setNotifOpen(false);
+  };
+
+  return (
+    <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[#0a0d14]/80 backdrop-blur flex items-center px-4 gap-3 z-30">
+      {/* Hamburger — mobile only */}
+      <button
+        className="md:hidden p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300"
+        onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+        aria-label="Open navigation"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <line x1="2" y1="5" x2="16" y2="5"/>
+          <line x1="2" y1="9" x2="16" y2="9"/>
+          <line x1="2" y1="13" x2="16" y2="13"/>
+        </svg>
+      </button>
+
+      {/* Facility selector */}
+      <div className="relative" ref={facilityRef}>
+        <button
+          onClick={() => setFacilityOpen(o => !o)}
           className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-800 hover:border-slate-600 transition"
         >
           <Icon name="grid" size={14} className="text-slate-400"/>
-          <span className="text-[13px] text-slate-200">{FACILITIES.find(f => f.id === facility)?.name}</span>
+          <span className="text-[13px] text-slate-200 hidden sm:inline">
+            {FACILITIES.find(f => f.id === facility)?.name}
+          </span>
           {FACILITIES.find(f => f.id === facility)?.city && (
-            <span className="text-[11px] text-slate-500 font-mono">{FACILITIES.find(f => f.id === facility)?.city}</span>
+            <span className="text-[11px] text-slate-500 font-mono hidden lg:inline">
+              {FACILITIES.find(f => f.id === facility)?.city}
+            </span>
           )}
           <Icon name="chevron" size={14} className="text-slate-500"/>
         </button>
-        {open && (
+        {facilityOpen && (
           <div className="absolute top-full mt-1 left-0 min-w-[220px] rounded-md border border-slate-800 bg-slate-900 shadow-xl z-40 overflow-hidden">
             {FACILITIES.map(f => (
-              <button key={f.id} onClick={() => { setFacility(f.id); setOpen(false); }}
+              <button key={f.id} onClick={() => { setFacility(f.id); setFacilityOpen(false); }}
                 className={`w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-[13px] ${facility === f.id ? "text-blue-300 bg-slate-800/50" : "text-slate-200"}`}>
                 <span className="flex-1">{f.name}</span>
                 {f.city && <span className="text-[11px] text-slate-500 font-mono">{f.city}</span>}
@@ -106,30 +326,56 @@ export function TopBar() {
 
       <div className="flex-1"/>
 
-      <div className="flex items-center gap-2 px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/5">
+      {/* Live status badge */}
+      <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/5">
         <span className="relative flex w-2 h-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
           <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"/>
         </span>
         <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Live</span>
-        <span className="text-[10px] text-slate-500 font-mono">SSE · 42ms</span>
+        <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
       </div>
 
-      <button className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300">
-        <Icon name="bell" size={18}/>
-        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400"/>
-      </button>
+      {/* Notification bell */}
+      <div className="relative">
+        <button
+          onClick={handleNotifToggle}
+          className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+        >
+          <Icon name="bell" size={18}/>
+          {unreadCount > 0 && (
+            <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] rounded-full bg-amber-400 flex items-center justify-center text-[9px] font-bold text-amber-950 px-0.5">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+        {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)}/>}
+      </div>
 
-      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[11px] font-semibold text-slate-100">JD</div>
+      {/* User avatar */}
+      <div className="relative">
+        <button
+          onClick={handleUserToggle}
+          className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[11px] font-semibold text-white hover:opacity-90 transition-opacity"
+          aria-label="User menu"
+          aria-expanded={userOpen}
+        >
+          AC
+        </button>
+        {userOpen && <UserMenu onClose={() => setUserOpen(false)}/>}
+      </div>
     </header>
   );
 }
+
+// ─── BottomStrip ──────────────────────────────────────────────────────────────
 
 export function BottomStrip() {
   const { data: esg, status: esgStatus } = useEsgCounter();
   const colorMap: Record<string, string> = {
     green: "text-emerald-300",
-    red: "text-red-300",
+    red:   "text-red-300",
     amber: "text-amber-300",
     slate: "text-slate-300",
   };
@@ -138,20 +384,25 @@ export function BottomStrip() {
   const co2Value   = esgStatus === "live" && esg.co2eSaved    !== undefined ? `${esg.co2eSaved.toFixed(1)} t`         : "--";
 
   const stats = [
-    { label: "Waste avoided",      value: wasteValue, tone: "green", icon: "leaf" },
-    { label: "CO2e saved",         value: co2Value,   tone: "green", icon: "drop" },
-    { label: "Active disruptions", value: "--",        tone: "slate", icon: "warn" },
-    { label: "MOQ-tax YTD",        value: "--",        tone: "amber", icon: "diff" },
+    { label: "Waste avoided",      value: wasteValue, tone: "green", icon: "leaf", priority: true  },
+    { label: "CO2e saved",         value: co2Value,   tone: "green", icon: "drop", priority: false },
+    { label: "Active disruptions", value: "--",        tone: "slate", icon: "warn", priority: true  },
+    { label: "MOQ-tax YTD",        value: "--",        tone: "amber", icon: "diff", priority: false },
   ];
 
   return (
-    <div className="h-12 shrink-0 border-t border-slate-800/80 bg-[#0a0d14]/95 flex items-stretch px-4 gap-px">
+    <div className="h-12 shrink-0 border-t border-slate-800/80 bg-[#0a0d14]/95 flex items-stretch overflow-x-auto">
+      {/* On mobile: only show priority stats inline; on larger screens show all */}
       {stats.map((s, i) => (
-        <div key={i} className="flex-1 flex items-center justify-center gap-3 border-r border-slate-800/40 last:border-r-0">
-          <Icon name={s.icon} size={14} className={`${colorMap[s.tone]} opacity-80`}/>
-          <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{s.label}</span>
-          <span className={`text-[14px] font-mono tabular-nums font-semibold ${colorMap[s.tone]}`}>{s.value}</span>
-          {s.tone === "red" && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"/>}
+        <div
+          key={i}
+          className={`flex-1 min-w-0 flex items-center justify-center gap-2 border-r border-slate-800/40 last:border-r-0 px-2
+            ${s.priority ? "flex" : "hidden sm:flex"}`}
+        >
+          <Icon name={s.icon} size={14} className={`${colorMap[s.tone]} opacity-80 shrink-0`}/>
+          <span className="text-[10px] uppercase tracking-[0.14em] text-slate-500 truncate hidden md:inline">{s.label}</span>
+          <span className={`text-[13px] font-mono tabular-nums font-semibold ${colorMap[s.tone]} whitespace-nowrap`}>{s.value}</span>
+          {s.tone === "red" && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0"/>}
         </div>
       ))}
     </div>

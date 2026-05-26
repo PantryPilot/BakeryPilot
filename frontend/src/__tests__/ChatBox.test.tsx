@@ -39,7 +39,6 @@ describe('ChatBox', () => {
 
   test('calls onSend when send button is clicked', () => {
     const { onSend } = setup({ value: 'click send' })
-    const sendBtn = screen.getByRole('button', { name: '' })
     // find send button by its SVG icon parent
     const buttons = screen.getAllByRole('button')
     const sendButton = buttons[buttons.length - 1]

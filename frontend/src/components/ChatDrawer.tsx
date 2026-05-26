@@ -194,7 +194,7 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed bottom-32 right-5 z-50 w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden">
       <div className="h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">
@@ -436,6 +436,8 @@ interface ChatBoxProps {
   onVoice?: () => void;
 }
 
+// compact and suggested are reserved for future use by the chat page
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ChatBox({ value, setValue, onSend, compact, suggested, onVoice }: ChatBoxProps) {
   const handleSend = () => onSend();
   return (

@@ -26,17 +26,17 @@ const TEXT: Record<string, string> = {
 export default function HomePage() {
   return (
     <div className="h-full overflow-y-auto bg-[#070a11]">
-      <div className="max-w-[1200px] mx-auto p-10">
-        <div className="mb-10">
+      <div className="max-w-[1200px] mx-auto p-5 sm:p-8 lg:p-10">
+        <div className="mb-8 sm:mb-10">
           <Pill tone="blue" className="mb-3">First run</Pill>
-          <h1 className="text-[44px] font-semibold text-slate-100 leading-tight tracking-tight">BakeryPilot</h1>
-          <p className="text-[16px] text-slate-400 mt-2 max-w-[640px] leading-relaxed">
+          <h1 className="text-[32px] sm:text-[44px] font-semibold text-slate-100 leading-tight tracking-tight">BakeryPilot</h1>
+          <p className="text-[14px] sm:text-[16px] text-slate-400 mt-2 max-w-[640px] leading-relaxed">
             Agentic ops copilot for four plants, hundreds of SKUs, thousands of tonnes weekly.
             Choose a loop to start, or open FlowSight to see the whole network live.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
           {LOOPS.map(l => (
             <Link key={l.id} href={l.href} className={`text-left rounded-xl border ${ACCENT[l.color]} bg-slate-900/40 p-5 transition group block`}>
               <div className="flex items-start justify-between mb-3">
