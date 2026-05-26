@@ -10,16 +10,23 @@ def _async_url(url: str) -> str:
     return re.sub(r"^postgres(?:ql)?(?:\+\w+)?://", "postgresql+asyncpg://", url)
 
 
-_engine = create_async_engine(
-    _async_url(settings.database_url),
-    pool_size=5,
-    max_overflow=10,
-    echo=False,
-)
+_engine = None
+_SessionLocal = None
 
-_SessionLocal = async_sessionmaker(_engine, expire_on_commit=False)
+
+def _get_session_factory() -> async_sessionmaker:
+    global _engine, _SessionLocal
+    if _SessionLocal is None:
+        _engine = create_async_engine(
+            _async_url(settings.database_url),
+            pool_size=5,
+            max_overflow=10,
+            echo=False,
+        )
+        _SessionLocal = async_sessionmaker(_engine, expire_on_commit=False)
+    return _SessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with _SessionLocal() as session:
+    async with _get_session_factory()() as session:
         yield session
