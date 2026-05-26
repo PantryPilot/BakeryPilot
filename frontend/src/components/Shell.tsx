@@ -8,6 +8,7 @@ import { useApp } from "../lib/context";
 import { useEsgCounter } from "../lib/hooks";
 
 const NAV = [
+  { id: "home",       route: "/",                        label: "Home",       icon: "home"     },
   { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid"     },
   { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box"      },
   { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },

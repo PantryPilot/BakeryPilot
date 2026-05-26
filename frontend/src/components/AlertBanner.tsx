@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/context";
 import { Icon } from "./Icon";
 
@@ -8,22 +9,71 @@ const KIND_ICON: Record<string, string> = {
   yield_spike: "zap",
 };
 
+const MAX_VISIBLE = 3;
+const AUTO_HIDE_MS = 5000;
+
 export function AlertBanner() {
-  const { notifications, dismissNotification, openChatContext } = useApp();
+  const { notifications, dismissNotification, hideToast, openChatContext } = useApp();
+  const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
 
-  const visible = notifications.filter(n => n.severity === "critical" || n.severity === "warning");
-  if (visible.length === 0) return null;
+  // Use a ref so timer callbacks always call the latest version of startExit
+  const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const startExitRef = useRef((_id: string, _full: boolean) => {});
 
-  const askCopilot = (refId: string, action: string) => {
-    dismissNotification(refId);
-    openChatContext(action);
+  startExitRef.current = (refId: string, fullDismiss: boolean) => {
+    const existing = timersRef.current.get(refId);
+    if (existing) { clearTimeout(existing); timersRef.current.delete(refId); }
+
+    setExitingIds(prev => {
+      if (prev.has(refId)) return prev;
+      return new Set([...prev, refId]);
+    });
+
+    setTimeout(() => {
+      setExitingIds(prev => { const n = new Set(prev); n.delete(refId); return n; });
+      if (fullDismiss) dismissNotification(refId);
+      else hideToast(refId);
+    }, 280);
   };
+
+  const toastList = notifications.filter(n => !n.toastHidden);
+  const visible = toastList.slice(0, MAX_VISIBLE);
+  const extraCount = toastList.length - visible.length;
+
+  // Set auto-hide timers whenever the visible list changes
+  const visibleKey = visible.map(n => n.ref_id).join(",");
+  useEffect(() => {
+    const ids = new Set(visible.map(v => v.ref_id));
+
+    visible.forEach(n => {
+      if (!timersRef.current.has(n.ref_id)) {
+        const id = n.ref_id;
+        const t = setTimeout(() => startExitRef.current(id, false), AUTO_HIDE_MS);
+        timersRef.current.set(n.ref_id, t);
+      }
+    });
+
+    // Clear timers for notifications no longer in the visible list
+    for (const [id, t] of timersRef.current) {
+      if (!ids.has(id)) { clearTimeout(t); timersRef.current.delete(id); }
+    }
+  // visibleKey captures all identity changes without triggering on unrelated renders
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey]);
+
+  if (visible.length === 0 && extraCount === 0) return null;
 
   return (
     <div className="fixed top-16 right-4 z-40 flex flex-col gap-2 max-w-[340px] pointer-events-none">
-      {visible.slice(0, 5).map(n => (
+      {visible.map(n => (
         <div
           key={n.ref_id}
+          style={{
+            animation: exitingIds.has(n.ref_id)
+              ? "toast-out 280ms ease forwards"
+              : "toast-in 280ms ease forwards",
+          }}
           className={`rounded-lg border px-3 py-2.5 shadow-lg flex gap-3 items-start text-[12px] pointer-events-auto ${
             n.severity === "critical"
               ? "border-red-500/40 bg-red-950/60 text-red-100"
@@ -37,20 +87,25 @@ export function AlertBanner() {
             <div className="font-semibold leading-tight">{n.title}</div>
             <div className="text-[11px] opacity-70 mt-0.5 leading-tight">{n.body}</div>
             <button
-              onClick={() => askCopilot(n.ref_id, n.action)}
+              onClick={() => { startExitRef.current(n.ref_id, true); openChatContext(n.action); }}
               className="mt-1.5 text-[10px] font-medium underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               Ask Copilot →
             </button>
           </div>
           <button
-            onClick={() => dismissNotification(n.ref_id)}
+            onClick={() => startExitRef.current(n.ref_id, true)}
             className="shrink-0 opacity-50 hover:opacity-100 mt-0.5"
           >
             <Icon name="x" size={12}/>
           </button>
         </div>
       ))}
+      {extraCount > 0 && (
+        <p className="pointer-events-none self-end text-[10px] font-mono text-slate-400 pr-0.5">
+          +{extraCount} more · open notification panel
+        </p>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ export interface AppNotification {
   body: string;
   action: string;
   read: boolean;
+  toastHidden?: boolean; // auto-hidden from banner but still visible in bell panel
 }
 
 interface AppState {
@@ -28,6 +29,7 @@ interface AppState {
   notifications: AppNotification[];
   unreadCount: number;
   dismissNotification: (refId: string) => void;
+  hideToast: (refId: string) => void;
   markNotificationsRead: () => void;
 }
 
@@ -68,6 +70,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications(prev => prev.filter(n => n.ref_id !== refId));
   }, []);
 
+  const hideToast = useCallback((refId: string) => {
+    setNotifications(prev => prev.map(n => n.ref_id === refId ? { ...n, toastHidden: true } : n));
+  }, []);
+
   const markNotificationsRead = useCallback(() => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }, []);
@@ -87,7 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sidebarCollapsed, setSidebarCollapsed,
       mobileSidebarOpen, setMobileSidebarOpen,
       openChatContext,
-      notifications, unreadCount, dismissNotification, markNotificationsRead,
+      notifications, unreadCount, dismissNotification, hideToast, markNotificationsRead,
     }}>
       {children}
     </AppContext.Provider>

@@ -283,7 +283,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.window * 100).toFixed(0)}%</td>
                   <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${s.priceVsBench < 0 ? "text-emerald-300" : s.priceVsBench > 0.04 ? "text-red-300" : "text-amber-300"}`}>{(s.priceVsBench * 100).toFixed(1)}%</td>
                   <td className="px-3 py-2.5 text-right">
-                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${s.moqTaxQtd.toLocaleString()}</span> : <span className="text-slate-600">—</span>}
+                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${Math.round(s.moqTaxQtd).toLocaleString()}</span> : <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-slate-300">{s.contractExpiry}</td>
                   <td className="px-3 py-2.5">
@@ -313,7 +313,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                 <Pill tone="ghost">Tier {s.tier}</Pill>
               </div>
               <div className="font-mono text-[14px] tabular-nums">
-                <span className={s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}>${s.moqTaxQtd.toLocaleString()}</span>
+                <span className={s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}>${Math.round(s.moqTaxQtd).toLocaleString()}</span>
                 <span className="text-slate-500"> / $3,000 threshold</span>
               </div>
             </div>
