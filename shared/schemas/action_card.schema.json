@@ -17,7 +17,7 @@
     },
     "kind": {
       "type": "string",
-      "enum": ["supplier_order", "schedule_change", "transfer", "work_order", "download"]
+      "enum": ["supplier_order", "schedule_change", "transfer", "work_order", "download", "notify"]
     },
     "state": {
       "type": "string",
@@ -42,7 +42,8 @@
       "type": "object",
       "description": "Kind-specific body. Discriminated by the top-level `kind`. Only the supplier_order variant is defined in Phase 1.",
       "oneOf": [
-        { "$ref": "#/$defs/SupplierOrderPayload" }
+        { "$ref": "#/$defs/SupplierOrderPayload" },
+        { "$ref": "#/$defs/NotifyPayload" }
       ]
     }
   },
@@ -74,6 +75,31 @@
         "unit_price":    { "type": "number", "minimum": 0 },
         "moq_overage_kg":{ "type": "number", "minimum": 0,
                            "description": "Required-vs-MOQ overage. Drives MOQ-tax ledger in Phase 3." }
+      },
+      "additionalProperties": false
+    },
+    "NotifyPayload": {
+      "type": "object",
+      "required": ["stakeholders", "subject", "body_md", "kind"],
+      "properties": {
+        "stakeholders": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["stakeholder_id", "name", "email"],
+            "properties": {
+              "stakeholder_id": { "type": "string" },
+              "name": { "type": "string" },
+              "email": { "type": "string", "format": "email" },
+              "relevance_reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "subject": { "type": "string" },
+        "body_md": { "type": "string" },
+        "kind": { "type": "string", "description": "notification kind, e.g. weekly_summary, supplier_negotiation" }
       },
       "additionalProperties": false
     },
