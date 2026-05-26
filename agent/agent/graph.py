@@ -15,6 +15,8 @@ from agent.agents.inventory import InventoryAgent
 from agent.agents.orchestrator import classify_intent
 from agent.agents.procurement import ProcurementAgent
 from agent.agents.scheduler import SchedulerAgent
+from agent.agents.summary import SummaryAgent
+from agent.agents.weekly_plan import WeeklyPlanAgent
 from agent.agents.yield_intel import YieldAgent
 from agent.config import LANGCHAIN_API_KEY, LANGCHAIN_PROJECT, LANGCHAIN_TRACING_V2, get_model
 from agent.prompts.store import get_prompt_store
@@ -32,6 +34,8 @@ _procurement_agent = ProcurementAgent()
 _scheduler_agent = SchedulerAgent()
 _yield_agent = YieldAgent()
 _esg_agent = ESGAgent()
+_weekly_plan_agent = WeeklyPlanAgent()
+_summary_agent = SummaryAgent()
 
 
 def _route_intent(state: AgentState) -> str:
@@ -42,6 +46,8 @@ def _route_intent(state: AgentState) -> str:
         "scheduler": "scheduler_agent",
         "yield": "yield_agent",
         "esg": "esg_agent",
+        "weekly_plan": "weekly_plan_agent",
+        "weekly_summary": "summary_agent",
     }
     return routes.get(intent, "respond")
 
@@ -74,6 +80,16 @@ def _yield_node(state: AgentState) -> AgentState:
 @opik.track(name="esg_agent_node")
 def _esg_node(state: AgentState) -> AgentState:
     return _esg_agent.run(state)
+
+
+@opik.track(name="weekly_plan_agent_node")
+def _weekly_plan_node(state: AgentState) -> AgentState:
+    return _weekly_plan_agent.run(state)
+
+
+@opik.track(name="summary_agent_node")
+def _summary_node(state: AgentState) -> AgentState:
+    return _summary_agent.run(state)
 
 
 @opik.track(name="respond_node")
@@ -121,6 +137,8 @@ def create_graph():
     builder.add_node("scheduler_agent", _scheduler_node)
     builder.add_node("yield_agent", _yield_node)
     builder.add_node("esg_agent", _esg_node)
+    builder.add_node("weekly_plan_agent", _weekly_plan_node)
+    builder.add_node("summary_agent", _summary_node)
     builder.add_node("respond", _respond_node)
 
     builder.add_edge(START, "classify_intent")
@@ -133,6 +151,8 @@ def create_graph():
             "scheduler_agent": "scheduler_agent",
             "yield_agent": "yield_agent",
             "esg_agent": "esg_agent",
+            "weekly_plan_agent": "weekly_plan_agent",
+            "summary_agent": "summary_agent",
             "respond": "respond",
         },
     )
@@ -141,6 +161,8 @@ def create_graph():
     builder.add_edge("scheduler_agent", "respond")
     builder.add_edge("yield_agent", "respond")
     builder.add_edge("esg_agent", "respond")
+    builder.add_edge("weekly_plan_agent", "respond")
+    builder.add_edge("summary_agent", "respond")
     builder.add_edge("respond", END)
 
     return builder.compile(checkpointer=_checkpointer, store=_store)
@@ -168,6 +190,8 @@ if __name__ == "__main__":
         ("show me the production schedule for plant 1", "scheduler"),
         ("what is the yield variance for the last run?", "yield"),
         ("how much waste have we avoided this quarter?", "esg"),
+        ("plan my week across all operations", "weekly_plan"),
+        ("send the weekly summary to the team", "weekly_summary"),
     ]
     for msg, expected_intent in test_messages:
         thread = str(uuid.uuid4())

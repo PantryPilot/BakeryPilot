@@ -49,6 +49,19 @@ async def confirm_action_card(card_id: str) -> ActionCard:
                 "confirmed_at": card["decided_at"],
                 "action_card_id": card_id,
             })
+        elif card["kind"] == "notify":
+            for stakeholder in card["payload"]["stakeholders"]:
+                draft_id = mock_data.new_id("ndft")
+                mock_data.NOTIFICATION_DRAFTS.append({
+                    "draft_id": draft_id,
+                    "kind": card["payload"]["kind"],
+                    "recipients": [stakeholder["email"]],
+                    "subject": card["payload"]["subject"],
+                    "body_md": card["payload"]["body_md"],
+                    "gmail_draft_url": f"https://mail.google.com/mail/u/0/#drafts/mock-{draft_id}",
+                    "action_card_id": card_id,
+                    "created_at": datetime.utcnow().isoformat(),
+                })
     return ActionCard(**card)
 
 

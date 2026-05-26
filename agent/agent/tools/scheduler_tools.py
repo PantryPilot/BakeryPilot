@@ -29,7 +29,7 @@ def suggest_production_schedule(
 def run_changeover_optimizer(
     schedule_id: Annotated[str, "Schedule ID to compute allergen changeover diff for"],
 ) -> dict:
-    """Return the optimized changeover diff between the current approved schedule and a suggested one."""
+    """Return the optimized changeover diff for human review before any schedule change is confirmed."""
     resp = httpx.get(f"{BACKEND_URL}/api/schedules/{schedule_id}/diff", timeout=15)
     if resp.status_code != 200:
         raise ToolException(

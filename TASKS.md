@@ -520,6 +520,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.13 [M2] Negotiation draft generation (Claude Opus 4.7)
 
+**Status:** done
 **What:** `agent/agent/tools/procurement_tools.py::draft_negotiation(trigger_kind, supporting_data)` calls Claude Opus 4.7 with the relevant prompt from `prompts/negotiation.md`. Returns markdown body; service writes to `negotiation_drafts`.
 **Files:** `agent/agent/tools/procurement_tools.py`, `agent/agent/prompts/negotiation.md`
 **Acceptance:**
@@ -863,6 +864,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.2 [M2] HITL gate: every state-changing tool returns `action_card_id`
 
+**Status:** done
 **What:** Audit every tool in `agent/agent/tools/*` -- any tool that ultimately writes state must return an action_card_id, never commit directly.
 **Files:** `agent/agent/tools/*`
 **Acceptance:**
@@ -927,6 +929,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.9 [M2] `notify` action card kind
 
+**Status:** done
 **What:** Extend `action_card.schema.json` with `kind='notify'` payload: `{stakeholders: Stakeholder[], subject_template, body_template, render_context}`. Confirming the card POSTs to a new backend endpoint that loops over the *selected* stakeholders and calls `gmail_drafts.create_draft` for each.
 **Files:** `shared/schemas/action_card.schema.json` (extend), `agent/agent/tools/notify_tools.py` (extend), `backend/app/api/notifications.py` (extend with confirm handler)
 **Acceptance:**
@@ -967,6 +970,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.O.2 [M2] Weekly summary narration via Claude
 
+**Status:** done
 **What:** `agent/agent/tools/summary_tools.py::narrate_week(stats)` turns the raw stats into an executive-friendly markdown summary (~300-500 words). Sonnet 4.6. The prompt instructs Claude to only reference numbers from the stats input (no hallucinated metrics).
 **Files:** `agent/agent/tools/summary_tools.py` (NEW), `agent/agent/prompts/weekly_summary.md` (NEW)
 **Acceptance:**
@@ -1153,6 +1157,62 @@ but they're the guarantees the README's "Non-functional features" table promises
 **Files:** `.github/pull_request_template.md`
 **Acceptance:**
 - [ ] Template auto-loads on every new PR
+
+---
+
+# Agent Improvements — Hackathon Sprint
+
+High-impact agent features added for the demo. Each is sized for ≤1 day.
+
+### AI.1 [M2] Negotiation draft tool (F3.13 implementation)
+
+**Status:** done
+**What:** Implement `draft_negotiation(trigger_kind, supporting_data)` in `procurement_tools.py` using Claude Opus 4.7. Write production content for `negotiation.md` covering three trigger kinds: `moq_tax`, `late_window`, `price_drift`. Wire into ProcurementAgent tool list.
+**Files:** `agent/agent/tools/procurement_tools.py`, `agent/agent/prompts/negotiation.md`, `agent/agent/agents/procurement.py`
+**Acceptance:**
+- [ ] Three trigger kinds produce distinct, data-grounded draft emails
+- [ ] Draft references exact numbers from `supporting_data` (no hallucination)
+- [ ] Returns markdown body surfaced via action card
+
+### AI.2 [M2] "Plan my week" cross-agent orchestrator
+
+**Status:** done
+**What:** Add intent `weekly_plan` and a `WeeklyPlanAgent` that chains all 5 specialists in sequence: inventory (expiring lots) → scheduler (reprioritise runs) → procurement (bridge orders for shorts) → yield (flag underperforming lines) → ESG (waste snapshot). Surfaces results as a combined markdown report + individual action cards.
+**Files:** `agent/agent/agents/weekly_plan.py` (NEW), `agent/agent/graph.py`, `agent/agent/prompts/intent_classifier.md`
+**Acceptance:**
+- [ ] "Plan my week" or "optimise this week" routes to `weekly_plan` intent
+- [ ] Response includes inventory, schedule, procurement, yield, and ESG sections
+- [ ] Each actionable item produces an action card
+
+### AI.3 [M2+M3] Proactive push alerts for critical thresholds
+
+**Status:** done
+**What:** Backend `GET /api/alerts/stream` SSE endpoint polls key metrics every 10s and pushes structured alerts when thresholds are crossed: lot expiry within 48h with no schedule, yield variance >15%, supplier risk score >0.7. Frontend subscribes and injects alerts directly into the chat drawer as assistant messages.
+**Files:** `backend/app/api/alerts.py` (NEW), `frontend/src/components/ChatDrawer.tsx` (extend)
+**Acceptance:**
+- [ ] Alert fires within 10s of threshold crossing
+- [ ] Alert message includes the affected entity ID and a suggested action
+- [ ] No duplicate alerts for the same condition within 1 hour
+
+### AI.4 [M2] Voice input wired to agent
+
+**Status:** done
+**What:** Wire the existing `deepgram_stt.py` + `verification.py` infrastructure into the chat UI. Mic button in `ChatDrawer` captures audio, POSTs to `POST /api/voice/transcribe`, backend transcribes and returns `{transcript, verification_level, reasons}`. Frontend shows the transcript + verification badge, then sends it through the normal `streamChat` path.
+**Files:** `backend/app/api/voice.py` (NEW), `frontend/src/components/ChatDrawer.tsx` (extend mic button)
+**Acceptance:**
+- [ ] Mic button records and submits audio
+- [ ] Transcript appears in input box with verification level badge
+- [ ] `dual_sign_off` and `supervisor_approve` show a warning before sending
+
+### AI.5 [M2] Weekly summary on-demand
+
+**Status:** done
+**What:** Implement `agent/agent/tools/summary_tools.py::narrate_week(stats)` + `agent/agent/prompts/weekly_summary.md`. Add `GET /api/weekly-summary` backend endpoint that calls `aggregate()` then returns structured stats. Add `generate_weekly_summary` intent so users can ask "send me this week's summary" from chat.
+**Files:** `agent/agent/tools/summary_tools.py` (NEW), `agent/agent/prompts/weekly_summary.md` (NEW), `backend/app/api/weekly_summary.py` (NEW), `agent/agent/agents/summary.py` (NEW)
+**Acceptance:**
+- [ ] "Send me this week's summary" routes correctly and returns 300-500 word narration
+- [ ] Every number in the prose matches the aggregated stats
+- [ ] Creates a Gmail draft to stakeholders tagged `weekly_summary`
 
 ---
 
@@ -1450,7 +1510,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F3.10 | M3 | Disruption risk scoring service | todo |
 | F3.11 | M3 | Contract lifecycle service (60/30-day) | todo |
 | F3.12 | M3 | Payment terms optimizer | todo |
-| F3.13 | M2 | Negotiation draft generation (Claude Opus) | todo |
+| F3.13 | M2 | Negotiation draft generation (Claude Opus) | done |
 | F3.14 | M3 | `commodity_feed.py` + `news_feed.py` mocks | todo |
 | F3.15 | M5 | Redis event stream publisher | todo |
 | F3.16 | M4 | `MOQTaxBadge` component | todo |
@@ -1490,18 +1550,18 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.S.3 | M3 | Pydantic v2 strict mode for backend models | todo |
 | NF.S.4 | M4 | Generate TS types from JSON Schemas | todo |
 | NF.R.1 | M3 | Append-only convention triggers | in_progress |
-| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | todo |
+| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | done |
 | NF.R.3 | M3 | Action card confirm idempotency | done |
 | NF.R.4 | M5 | Nightly green-build gate | todo |
 | NF.R.5 | M3 | Gmail draft integration (no auto-send) | done |
 | NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
 | NF.R.7 | M3 | `stakeholders` table + seed | todo |
 | NF.R.8 | M2 | Stakeholder identification tool | done |
-| NF.R.9 | M2 | `notify` action card kind | todo |
+| NF.R.9 | M2 | `notify` action card kind | done |
 | NF.R.10 | M4 | `StakeholderSelector` component | todo |
 | NF.R.11 | M5 | No-direct-send lint rule | todo |
 | NF.O.1 | M3 | Weekly activity aggregation service | todo |
-| NF.O.2 | M2 | Weekly summary narration via Claude | todo |
+| NF.O.2 | M2 | Weekly summary narration via Claude | done |
 | NF.O.3 | M3 | Monday scheduled job | todo |
 | NF.O.4 | M3 | `weekly_summaries` table | todo |
 | NF.O.5 | M4 | `/summaries` archive page | todo |
@@ -1542,6 +1602,16 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | AG.12 | M2 | OrchestratorAgent intent classifier | done |
 | AG.13 | M2 | LangGraph main graph + LangMem | done |
 | AG.14 | M2 | Opik tracing + evaluation | done |
+
+## Agent Improvements — Hackathon Sprint
+
+| ID | Owner | Title | Status |
+| :--- | :---: | :--- | :---: |
+| AI.1 | M2 | Negotiation draft tool (Opus 4.7) | done |
+| AI.2 | M2 | "Plan my week" cross-agent orchestrator | done |
+| AI.3 | M2+M3 | Proactive push alerts for critical thresholds | done |
+| AI.4 | M2 | Voice input wired to agent | done |
+| AI.5 | M2 | Weekly summary on-demand | done |
 
 ## Stretch goals
 

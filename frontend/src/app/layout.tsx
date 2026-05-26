@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProvider } from "../lib/context";
 import { Sidebar, TopBar, BottomStrip } from "../components/Shell";
 import { ChatDrawerWrapper } from "../components/ChatDrawerWrapper";
+import { AlertBanner } from "../components/AlertBanner";
 
 export const metadata: Metadata = {
   title: "BakeryPilot",
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </main>
               <BottomStrip/>
             </div>
+            <AlertBanner/>
             <ChatDrawerWrapper/>
           </div>
         </AppProvider>

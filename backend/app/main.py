@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     action_cards,
+    alerts,
     chat,
     disruptions,
     esg,
@@ -78,5 +79,6 @@ for _router in [
     events.router,
     disruptions.router,
     negotiations.router,
+    alerts.router,
 ]:
     app.include_router(_router)
