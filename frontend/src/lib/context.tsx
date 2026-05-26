@@ -6,7 +6,7 @@ interface AppState {
   facility: FacilityId;
   setFacility: (f: FacilityId) => void;
   chatOpen: boolean;
-  setChatOpen: (v: boolean) => void;
+  setChatOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
   chatContext: string | null;
   setChatContext: (v: string | null) => void;
   sidebarCollapsed: boolean;

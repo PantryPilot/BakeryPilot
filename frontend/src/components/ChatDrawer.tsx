@@ -1,9 +1,13 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { marked } from "marked";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
 import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
+import { useApp } from "../lib/context";
 
 interface Message {
   role: "user" | "assistant";
@@ -20,27 +24,37 @@ function nowTime() {
 }
 
 export function CopilotButton() {
-  const [open, setOpen] = useState(false);
+  const { chatOpen, setChatOpen } = useApp();
 
   return (
     <>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setChatOpen(o => !o)}
         className="fixed bottom-16 right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
         title="Copilot"
       >
-        {open
+        {chatOpen
           ? <Icon name="x" size={18} />
           : <Icon name="chat" size={18} />}
       </button>
 
-      {open && <CopilotPopup onClose={() => setOpen(false)} />}
+      {chatOpen && <CopilotPopup onClose={() => setChatOpen(false)} />}
     </>
   );
 }
 
 
+function contextToMessage(ctx: string): string {
+  if (ctx.startsWith("Inventory")) return "What ingredient lots are currently at risk? Show me the critical and expiring ones.";
+  if (ctx.startsWith("Schedule · optimise")) return "How can I optimise the current production schedule? What changes would reduce changeover time?";
+  if (ctx.startsWith("Supplier:")) return `What is the status of ${ctx.replace("Supplier: ", "")}? Show me their delivery performance and any issues.`;
+  if (ctx.startsWith("Plant")) return `What is happening at ${ctx}? Give me a status summary.`;
+  if (ctx.toLowerCase().includes("esg") || ctx.toLowerCase().includes("waste")) return "How much waste have we avoided this quarter? Show me the latest ESG numbers.";
+  return ctx;
+}
+
 function CopilotPopup({ onClose }: { onClose: () => void }) {
+  const { chatContext, setChatContext } = useApp();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -57,19 +71,17 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
-  const send = async () => {
-    if (!input.trim() || isThinking) return;
-    const u = input.trim();
-    const history = messages.map((m) => ({ role: m.role, content: m.text }));
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isThinking) return;
+    const u = text.trim();
     setMessages(m => [
       ...m,
       { role: "user", text: u, time: nowTime() },
       { role: "assistant", agent: "OrchestratorAgent", text: "", time: nowTime(), thinking: false },
     ]);
-    setInput("");
     setIsThinking(true);
 
-    await streamChat(u, history, {
+    await streamChat(u, [], {
       onMessage: (chunk) => {
         setMessages(m => {
           const next = [...m];
@@ -105,6 +117,20 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
         });
       },
     });
+  }, [isThinking]);
+
+  useEffect(() => {
+    if (chatContext) {
+      setChatContext(null);
+      sendMessage(contextToMessage(chatContext));
+    }
+  }, [chatContext, setChatContext, sendMessage]);
+
+  const send = async () => {
+    if (!input.trim() || isThinking) return;
+    const u = input.trim();
+    setInput("");
+    await sendMessage(u);
   };
 
   const testPing = () => {
@@ -190,6 +216,103 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   );
 }
 
+function parseCells(line: string): string[] {
+  return line.split("|").map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
+}
+
+function isSeparator(cell: string): boolean {
+  return /^[-: ]+$/.test(cell) && cell.includes("-");
+}
+
+function cleanTable(lines: string[]): string {
+  const rows = lines.map(parseCells).filter(r => r.length > 0);
+  if (rows.length === 0) return lines.join("\n");
+
+  const sepIdx = rows.findIndex(r => r.every(isSeparator));
+  const headerRows = sepIdx > 0 ? rows.slice(0, sepIdx) : [rows[0]];
+  const dataRows = rows.slice(sepIdx > 0 ? sepIdx + 1 : 1).filter(r => !r.every(isSeparator));
+
+  const colCount = Math.max(...rows.map(r => r.length));
+  const pad = (row: string[]) => {
+    const r = [...row];
+    while (r.length < colCount) r.push("");
+    return r.slice(0, colCount);
+  };
+
+  const toRow = (cells: string[]) => "| " + pad(cells).join(" | ") + " |";
+  const sep = "| " + Array(colCount).fill("---").join(" | ") + " |";
+
+  return [toRow(headerRows[0]), sep, ...dataRows.map(toRow)].join("\n");
+}
+
+function cleanMarkdown(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim().startsWith("|")) {
+      const block: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        block.push(lines[i]);
+        i++;
+      }
+      out.push(cleanTable(block));
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+  return out.join("\n");
+}
+
+function fileSlug(agent: string) {
+  const ts = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+  return `bakery-report_${agent.toLowerCase().replace(/\s+/g, "-")}_${ts}`;
+}
+
+function downloadMarkdown(text: string, agent: string) {
+  const blob = new Blob([text], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${fileSlug(agent)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadPdf(text: string, agent: string) {
+  const html = marked(text) as string;
+  const content = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>BakeryPilot — ${agent}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 820px; margin: 48px auto; color: #111827; line-height: 1.6; }
+    h1,h2,h3,h4 { color: #111827; margin-top: 1.4em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 13px; }
+    th, td { border: 1px solid #d1d5db; padding: 7px 12px; text-align: left; }
+    th { background: #f3f4f6; font-weight: 600; }
+    code { background: #f3f4f6; padding: 2px 5px; border-radius: 4px; font-family: "SF Mono", monospace; font-size: 12px; }
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+    .meta { color: #6b7280; font-size: 12px; margin-bottom: 1.5em; }
+    @media print { body { margin: 28px; } }
+  </style>
+</head>
+<body>
+  <h2>BakeryPilot — ${agent}</h2>
+  <p class="meta">Generated ${new Date().toLocaleString()}</p>
+  <hr/>
+  ${html}
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+  const blob = new Blob([content], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win) win.onload = () => URL.revokeObjectURL(url);
+}
+
 function PopupMessage({ m }: { m: Message }) {
   if (m.role === "user") {
     return (
@@ -219,10 +342,46 @@ function PopupMessage({ m }: { m: Message }) {
             <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
           </span>
         ) : (
-          <div className="text-[13.5px] leading-relaxed text-slate-200 whitespace-pre-wrap">{m.text}</div>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <p className="text-[13.5px] leading-relaxed text-slate-200 mb-2 last:mb-0">{children}</p>,
+              strong: ({ children }) => <strong className="text-slate-100 font-semibold">{children}</strong>,
+              ul: ({ children }) => <ul className="list-disc list-inside space-y-1 text-[13px] text-slate-200 mb-2">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 text-[13px] text-slate-200 mb-2">{children}</ol>,
+              li: ({ children }) => <li className="text-slate-300">{children}</li>,
+              code: ({ children }) => <code className="bg-slate-800 text-blue-300 rounded px-1 py-0.5 text-[12px] font-mono">{children}</code>,
+              table: ({ children }) => <div className="overflow-x-auto mb-2"><table className="text-[12px] border-collapse w-full">{children}</table></div>,
+              thead: ({ children }) => <thead className="bg-slate-800/60">{children}</thead>,
+              th: ({ children }) => <th className="border border-slate-700 px-2 py-1 text-left text-slate-300 font-medium">{children}</th>,
+              td: ({ children }) => <td className="border border-slate-700 px-2 py-1 text-slate-400">{children}</td>,
+              h3: ({ children }) => <h3 className="text-[13px] font-semibold text-slate-100 mb-1 mt-2">{children}</h3>,
+              h4: ({ children }) => <h4 className="text-[12px] font-semibold text-slate-200 mb-1">{children}</h4>,
+            }}
+          >
+            {cleanMarkdown(m.text)}
+          </ReactMarkdown>
         )}
       </div>
       {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
+      {!m.thinking && m.text && (
+        <div className="pl-6 pt-1 flex items-center gap-3">
+          <button
+            onClick={() => downloadPdf(m.text, m.agent || "copilot")}
+            className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
+          >
+            <Icon name="download" size={11} />
+            Download PDF
+          </button>
+          <button
+            onClick={() => downloadMarkdown(m.text, m.agent || "copilot")}
+            className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
+          >
+            <Icon name="download" size={11} />
+            Download MD
+          </button>
+        </div>
+      )}
     </div>
   );
 }

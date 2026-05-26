@@ -48,13 +48,28 @@ async def chat(req: ChatRequest):
         messages = final_state.get("messages", [])
         last = messages[-1] if messages else None
         if isinstance(last, AIMessage) and last.content:
-            words = last.content.split(" ")
-            for word in words:
-                yield {
-                    "event": "message",
-                    "data": json.dumps({"content": word + " "}),
-                }
-                await asyncio.sleep(0.02)
+            for line in last.content.splitlines(keepends=True):
+                stripped = line.strip()
+                if stripped.startswith("|") or stripped.startswith("|-"):
+                    # Stream table rows whole so pipes and newlines stay intact
+                    yield {
+                        "event": "message",
+                        "data": json.dumps({"content": line}),
+                    }
+                    await asyncio.sleep(0.01)
+                else:
+                    for word in line.split(" "):
+                        if word:
+                            yield {
+                                "event": "message",
+                                "data": json.dumps({"content": word + " "}),
+                            }
+                            await asyncio.sleep(0.02)
+                    if not line.endswith("\n"):
+                        yield {
+                            "event": "message",
+                            "data": json.dumps({"content": "\n"}),
+                        }
 
         action_cards = final_state.get("action_cards", [])
         if action_cards:

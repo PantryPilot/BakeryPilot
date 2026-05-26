@@ -431,36 +431,42 @@ export async function streamChat(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let sseEvent = "message";
+    let sseData = "";
     (async () => {
       try {
-        while (true) {
+        outer: while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const frames = buf.split("\n\n");
-          buf = frames.pop() ?? "";
-          for (const frame of frames) {
-            const evMatch = frame.match(/^event:\s*(.+)$/m);
-            const dataMatch = frame.match(/^data:\s*(.+)$/m);
-            if (!dataMatch) continue;
-            const event = evMatch?.[1]?.trim() || "message";
-            let payload: Record<string, unknown> = {};
-            try {
-              payload = JSON.parse(dataMatch[1]);
-            } catch {
-              /* ignore */
-            }
-            if (event === "message") {
-              handlers.onMessage(String(payload.content || ""));
-            } else if (event === "substitutions") {
-              const cands = (payload.candidates as
-                | { sku_id: string; sku_name: string; achievable_quantity: number }[]
-                | undefined) ?? [];
-              handlers.onSubstitutions?.(cands);
-            } else if (event === "action_card") {
-              handlers.onActionCard?.(String(payload.action_card_id || ""));
-            } else if (event === "done") {
-              handlers.onDone?.();
+          buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+          let newline: number;
+          while ((newline = buf.indexOf("\n")) !== -1) {
+            const line = buf.slice(0, newline);
+            buf = buf.slice(newline + 1);
+            if (line === "") {
+              if (sseData) {
+                let payload: Record<string, unknown> = {};
+                try { payload = JSON.parse(sseData); } catch { /* ignore */ }
+                if (sseEvent === "message") {
+                  handlers.onMessage(String(payload.content || ""));
+                } else if (sseEvent === "substitutions") {
+                  const cands = (payload.candidates as
+                    | { sku_id: string; sku_name: string; achievable_quantity: number }[]
+                    | undefined) ?? [];
+                  handlers.onSubstitutions?.(cands);
+                } else if (sseEvent === "action_card") {
+                  handlers.onActionCard?.(String(payload.action_card_id || ""));
+                } else if (sseEvent === "done") {
+                  handlers.onDone?.();
+                  break outer;
+                }
+              }
+              sseEvent = "message";
+              sseData = "";
+            } else if (line.startsWith("event:")) {
+              sseEvent = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+              sseData = line.slice(5).trim();
             }
           }
         }
