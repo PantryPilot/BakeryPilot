@@ -216,6 +216,55 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   );
 }
 
+function parseCells(line: string): string[] {
+  return line.split("|").map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
+}
+
+function isSeparator(cell: string): boolean {
+  return /^[-: ]+$/.test(cell) && cell.includes("-");
+}
+
+function cleanTable(lines: string[]): string {
+  const rows = lines.map(parseCells).filter(r => r.length > 0);
+  if (rows.length === 0) return lines.join("\n");
+
+  const sepIdx = rows.findIndex(r => r.every(isSeparator));
+  const headerRows = sepIdx > 0 ? rows.slice(0, sepIdx) : [rows[0]];
+  const dataRows = rows.slice(sepIdx > 0 ? sepIdx + 1 : 1).filter(r => !r.every(isSeparator));
+
+  const colCount = Math.max(...rows.map(r => r.length));
+  const pad = (row: string[]) => {
+    const r = [...row];
+    while (r.length < colCount) r.push("");
+    return r.slice(0, colCount);
+  };
+
+  const toRow = (cells: string[]) => "| " + pad(cells).join(" | ") + " |";
+  const sep = "| " + Array(colCount).fill("---").join(" | ") + " |";
+
+  return [toRow(headerRows[0]), sep, ...dataRows.map(toRow)].join("\n");
+}
+
+function cleanMarkdown(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim().startsWith("|")) {
+      const block: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        block.push(lines[i]);
+        i++;
+      }
+      out.push(cleanTable(block));
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+  return out.join("\n");
+}
+
 function fileSlug(agent: string) {
   const ts = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
   return `bakery-report_${agent.toLowerCase().replace(/\s+/g, "-")}_${ts}`;
@@ -310,7 +359,7 @@ function PopupMessage({ m }: { m: Message }) {
               h4: ({ children }) => <h4 className="text-[12px] font-semibold text-slate-200 mb-1">{children}</h4>,
             }}
           >
-            {m.text}
+            {cleanMarkdown(m.text)}
           </ReactMarkdown>
         )}
       </div>
