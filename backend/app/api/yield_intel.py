@@ -38,7 +38,7 @@ async def yield_telemetry(
 
 @router.get("/{run_id}", response_model=YieldRun)
 async def get_yield_run(run_id: str) -> YieldRun:
-    row = next((r for r in mock_data.YIELD_RUNS if r["run_id"] == run_id), None)
+    row = _resolve_run(run_id)
     if not row:
         raise HTTPException(404, f"yield run {run_id} not found")
     return YieldRun(**row)
@@ -120,13 +120,32 @@ _DEFAULT_DIAGNOSIS = {
 }
 
 
+def _resolve_run(run_id: str) -> dict | None:
+    """Accept run_id or a bare line name (e.g. 'line2', 'line_2', 'Line 2')."""
+    # Exact match first
+    exact = next((r for r in mock_data.YIELD_RUNS if r["run_id"] == run_id), None)
+    if exact:
+        return exact
+    # Normalise: "line2" / "Line 2" / "line_2" -> "line_2"
+    normalised = run_id.strip().lower().replace(" ", "_")
+    if not normalised.startswith("line_"):
+        normalised = normalised.replace("line", "line_", 1)
+    # Return the most recent run matching that line_id
+    candidates = [r for r in mock_data.YIELD_RUNS if r["line_id"] == normalised]
+    if candidates:
+        return max(candidates, key=lambda r: r["started_at"])
+    return None
+
+
 @router.get("/{run_id}/diagnose", response_model=AnomalyDiagnosis)
 async def diagnose_anomaly(run_id: str) -> AnomalyDiagnosis:
-    if not any(r["run_id"] == run_id for r in mock_data.YIELD_RUNS):
+    run = _resolve_run(run_id)
+    if not run:
         raise HTTPException(404, f"yield run {run_id} not found")
-    d = _DIAGNOSES.get(run_id, _DEFAULT_DIAGNOSIS)
+    resolved_id = run["run_id"]
+    d = _DIAGNOSES.get(resolved_id, _DEFAULT_DIAGNOSIS)
     return AnomalyDiagnosis(
-        run_id=run_id,
+        run_id=resolved_id,
         candidate_causes=d["candidate_causes"],
         recommendation=d["recommendation"],
     )
