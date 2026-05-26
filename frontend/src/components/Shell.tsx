@@ -14,6 +14,7 @@ const NAV = [
   { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
   { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
   { id: "scorecard",  route: "/scorecard",               label: "Scorecard",  icon: "bars"     },
+  { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings" },
   { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database" },
 ];
 

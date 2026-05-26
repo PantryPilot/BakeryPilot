@@ -255,7 +255,46 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden overflow-x-auto mb-6">
+      {/* Mobile card list — visible only on xs screens */}
+      <div className="sm:hidden space-y-2 mb-6">
+        {suppliers.map(s => (
+          <div
+            key={s.id}
+            onClick={() => setActiveSupplier(s)}
+            className={`rounded-lg border px-4 py-3 cursor-pointer transition ${
+              s.status === "disrupt" ? "border-red-500/30 bg-red-500/[0.04]" :
+              s.status === "warn"    ? "border-amber-500/20 bg-amber-500/[0.03]" :
+              "border-slate-800 bg-slate-900/40"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="shrink-0">
+                <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={36}>
+                  <span className="text-[10px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
+                </ReliabilityHalo>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold text-slate-100 truncate">{s.name}</div>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                  T{s.tier} · {(s.onTime * 100).toFixed(0)}% on-time · {(s.fill * 100).toFixed(0)}% fill
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                {s.status === "ok"     && <Pill tone="green"><Dot tone="green"/>Healthy</Pill>}
+                {s.status === "warn"   && <Pill tone="amber"><Dot tone="amber"/>Watch</Pill>}
+                {s.status === "disrupt"&& <Pill tone="redPulse"><Dot tone="red" pulse/>Disrupted</Pill>}
+                {s.moqTaxQtd > 0 && (
+                  <span className={`text-[10px] font-mono ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>
+                    MOQ ${Math.round(s.moqTaxQtd).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
@@ -269,15 +308,21 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
               const rowTone = s.status === "disrupt" ? "bg-red-500/[0.06]" : s.status === "warn" ? "bg-amber-500/[0.04]" : "";
               return (
                 <tr key={s.id} onClick={() => setActiveSupplier(s)} className={`border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition ${rowTone}`}>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={28}>
-                        <span className="text-[9px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
-                      </ReliabilityHalo>
-                      <span className="text-slate-100">{s.name}</span>
+                  <td className="px-3 py-2.5 max-w-[200px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="shrink-0">
+                        <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={28}>
+                          <span className="text-[9px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
+                        </ReliabilityHalo>
+                      </div>
+                      <span className="text-slate-100 truncate">{s.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5"><Pill tone={s.tier === 1 ? "blue" : "ghost"}>Tier {s.tier}</Pill></td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <Pill tone={s.tier === 1 ? "blue" : "ghost"}>
+                      <span className="hidden md:inline">Tier </span>{s.tier}
+                    </Pill>
+                  </td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.onTime * 100).toFixed(0)}%</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.fill * 100).toFixed(0)}%</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.window * 100).toFixed(0)}%</td>
@@ -302,6 +347,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
             })}
           </tbody>
         </table>
+        </div>
       </div>
       <SectionHeader title="MOQ-tax ledger" sub="Per-supplier over-ordering cost · progress toward $3K negotiation threshold"/>
       <div className="rounded-lg border border-slate-800 bg-slate-900/30 divide-y divide-slate-800/60">
