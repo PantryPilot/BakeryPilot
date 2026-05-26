@@ -520,6 +520,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.13 [M2] Negotiation draft generation (Claude Opus 4.7)
 
+**Status:** done
 **What:** `agent/agent/tools/procurement_tools.py::draft_negotiation(trigger_kind, supporting_data)` calls Claude Opus 4.7 with the relevant prompt from `prompts/negotiation.md`. Returns markdown body; service writes to `negotiation_drafts`.
 **Files:** `agent/agent/tools/procurement_tools.py`, `agent/agent/prompts/negotiation.md`
 **Acceptance:**
@@ -863,6 +864,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.2 [M2] HITL gate: every state-changing tool returns `action_card_id`
 
+**Status:** done
 **What:** Audit every tool in `agent/agent/tools/*` -- any tool that ultimately writes state must return an action_card_id, never commit directly.
 **Files:** `agent/agent/tools/*`
 **Acceptance:**
@@ -927,6 +929,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.9 [M2] `notify` action card kind
 
+**Status:** done
 **What:** Extend `action_card.schema.json` with `kind='notify'` payload: `{stakeholders: Stakeholder[], subject_template, body_template, render_context}`. Confirming the card POSTs to a new backend endpoint that loops over the *selected* stakeholders and calls `gmail_drafts.create_draft` for each.
 **Files:** `shared/schemas/action_card.schema.json` (extend), `agent/agent/tools/notify_tools.py` (extend), `backend/app/api/notifications.py` (extend with confirm handler)
 **Acceptance:**
@@ -967,6 +970,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.O.2 [M2] Weekly summary narration via Claude
 
+**Status:** done
 **What:** `agent/agent/tools/summary_tools.py::narrate_week(stats)` turns the raw stats into an executive-friendly markdown summary (~300-500 words). Sonnet 4.6. The prompt instructs Claude to only reference numbers from the stats input (no hallucinated metrics).
 **Files:** `agent/agent/tools/summary_tools.py` (NEW), `agent/agent/prompts/weekly_summary.md` (NEW)
 **Acceptance:**
@@ -1506,7 +1510,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F3.10 | M3 | Disruption risk scoring service | todo |
 | F3.11 | M3 | Contract lifecycle service (60/30-day) | todo |
 | F3.12 | M3 | Payment terms optimizer | todo |
-| F3.13 | M2 | Negotiation draft generation (Claude Opus) | todo |
+| F3.13 | M2 | Negotiation draft generation (Claude Opus) | done |
 | F3.14 | M3 | `commodity_feed.py` + `news_feed.py` mocks | todo |
 | F3.15 | M5 | Redis event stream publisher | todo |
 | F3.16 | M4 | `MOQTaxBadge` component | todo |
@@ -1546,18 +1550,18 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.S.3 | M3 | Pydantic v2 strict mode for backend models | todo |
 | NF.S.4 | M4 | Generate TS types from JSON Schemas | todo |
 | NF.R.1 | M3 | Append-only convention triggers | in_progress |
-| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | todo |
+| NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | done |
 | NF.R.3 | M3 | Action card confirm idempotency | done |
 | NF.R.4 | M5 | Nightly green-build gate | todo |
 | NF.R.5 | M3 | Gmail draft integration (no auto-send) | done |
 | NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
 | NF.R.7 | M3 | `stakeholders` table + seed | todo |
 | NF.R.8 | M2 | Stakeholder identification tool | done |
-| NF.R.9 | M2 | `notify` action card kind | todo |
+| NF.R.9 | M2 | `notify` action card kind | done |
 | NF.R.10 | M4 | `StakeholderSelector` component | todo |
 | NF.R.11 | M5 | No-direct-send lint rule | todo |
 | NF.O.1 | M3 | Weekly activity aggregation service | todo |
-| NF.O.2 | M2 | Weekly summary narration via Claude | todo |
+| NF.O.2 | M2 | Weekly summary narration via Claude | done |
 | NF.O.3 | M3 | Monday scheduled job | todo |
 | NF.O.4 | M3 | `weekly_summaries` table | todo |
 | NF.O.5 | M4 | `/summaries` archive page | todo |
