@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
 import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
+import { useApp } from "../lib/context";
 
 interface Message {
   role: "user" | "assistant";
@@ -20,27 +21,37 @@ function nowTime() {
 }
 
 export function CopilotButton() {
-  const [open, setOpen] = useState(false);
+  const { chatOpen, setChatOpen } = useApp();
 
   return (
     <>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setChatOpen(o => !o)}
         className="fixed bottom-16 right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
         title="Copilot"
       >
-        {open
+        {chatOpen
           ? <Icon name="x" size={18} />
           : <Icon name="chat" size={18} />}
       </button>
 
-      {open && <CopilotPopup onClose={() => setOpen(false)} />}
+      {chatOpen && <CopilotPopup onClose={() => setChatOpen(false)} />}
     </>
   );
 }
 
 
+function contextToMessage(ctx: string): string {
+  if (ctx.startsWith("Inventory")) return "What ingredient lots are currently at risk? Show me the critical and expiring ones.";
+  if (ctx.startsWith("Schedule · optimise")) return "How can I optimise the current production schedule? What changes would reduce changeover time?";
+  if (ctx.startsWith("Supplier:")) return `What is the status of ${ctx.replace("Supplier: ", "")}? Show me their delivery performance and any issues.`;
+  if (ctx.startsWith("Plant")) return `What is happening at ${ctx}? Give me a status summary.`;
+  if (ctx.toLowerCase().includes("esg") || ctx.toLowerCase().includes("waste")) return "How much waste have we avoided this quarter? Show me the latest ESG numbers.";
+  return ctx;
+}
+
 function CopilotPopup({ onClose }: { onClose: () => void }) {
+  const { chatContext, setChatContext } = useApp();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -57,19 +68,17 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
-  const send = async () => {
-    if (!input.trim() || isThinking) return;
-    const u = input.trim();
-    const history = messages.map((m) => ({ role: m.role, content: m.text }));
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isThinking) return;
+    const u = text.trim();
     setMessages(m => [
       ...m,
       { role: "user", text: u, time: nowTime() },
       { role: "assistant", agent: "OrchestratorAgent", text: "", time: nowTime(), thinking: false },
     ]);
-    setInput("");
     setIsThinking(true);
 
-    await streamChat(u, history, {
+    await streamChat(u, [], {
       onMessage: (chunk) => {
         setMessages(m => {
           const next = [...m];
@@ -105,6 +114,20 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
         });
       },
     });
+  }, [isThinking]);
+
+  useEffect(() => {
+    if (chatContext) {
+      setChatContext(null);
+      sendMessage(contextToMessage(chatContext));
+    }
+  }, [chatContext, setChatContext, sendMessage]);
+
+  const send = async () => {
+    if (!input.trim() || isThinking) return;
+    const u = input.trim();
+    setInput("");
+    await sendMessage(u);
   };
 
   const testPing = () => {
