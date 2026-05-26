@@ -343,6 +343,7 @@ Retailer PO in -> waste-first allergen-aware schedule out.
 
 ### F2.9 [M2] SchedulerAgent with 3 tools
 
+**Status:** done
 **What:** Implement `suggest_production_schedule`, `run_changeover_optimizer`, `what_if_simulation` as thin HTTP wrappers.
 **Files:** `agent/agent/agents/scheduler.py`, `agent/agent/tools/scheduler_tools.py`
 **Acceptance:**
@@ -627,6 +628,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.7 [M2] YieldAgent with 3 tools
 
+**Status:** done
 **What:** Implement `get_yield_variance`, `diagnose_anomaly`, `create_cmms_work_order` as thin HTTP wrappers.
 **Files:** `agent/agent/agents/yield_intel.py`, `agent/agent/tools/yield_tools.py`
 **Acceptance:**
@@ -657,6 +659,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.11 [M2] ESGAgent with 3 tools
 
+**Status:** done
 **What:** Implement `get_waste_counter`, `run_pattern_analysis`, `generate_esg_report`.
 **Files:** `agent/agent/agents/esg.py`, `agent/agent/tools/esg_tools.py`
 **Acceptance:**
@@ -884,6 +887,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.5 [M3] Gmail draft integration (no auto-send)
 
+**Status:** done
 **What:** Thin wrapper over the Gmail API `users.drafts.create` endpoint. Auth via OAuth2 refresh token from env. Returns `{draft_id, draft_url}` -- the URL the user opens in Gmail to review and send themselves. A mock variant returns a deterministic fake URL for local dev.
 **Why:** Outbound email is irreversible. Centralizing all email through a *draft-only* integration enforces that no code path can ever auto-send. The user is always the last step.
 **Files:** `backend/app/integrations/gmail_drafts.py` (NEW), `backend/app/integrations/gmail_drafts_mock.py` (NEW), `.env.example` (add `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_USE_MOCK`)
@@ -913,6 +917,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.8 [M2] Stakeholder identification tool
 
+**Status:** done
 **What:** `agent/agent/tools/notify_tools.py::identify_stakeholders(action_kind, context) -> Stakeholder[]` returns candidates relevant to the action. Each candidate has `{id, name, email, role, relevance_reason}` -- the reason is a one-sentence string the UI shows on hover.
 **Files:** `agent/agent/tools/notify_tools.py` (NEW)
 **Acceptance:**
@@ -1424,7 +1429,7 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F2.6 | M1 | Allergen changeover constraint | todo |
 | F2.7 | M1 | Waste-first objective term | todo |
 | F2.8 | M1 | Demand forecasting service (LightGBM/Prophet) | todo |
-| F2.9 | M2 | SchedulerAgent with 3 tools | todo |
+| F2.9 | M2 | SchedulerAgent with 3 tools | done |
 | F2.10 | M3 | `POST /api/retailer_orders` triggers re-schedule | done |
 | F2.11 | M3 | `GET /api/schedules/diff` endpoint | done |
 | F2.12 | M4 | `/schedule` page with diff view | done |
@@ -1458,11 +1463,11 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F4.4 | M1 | Yield variance service | todo |
 | F4.5 | M1 | Yield anomaly diagnosis service | todo |
 | F4.6 | M3 | `cmms_mock.py`: stub work-order creation | todo |
-| F4.7 | M2 | YieldAgent with 3 tools | todo |
+| F4.7 | M2 | YieldAgent with 3 tools | done |
 | F4.8 | M3 | ESG aggregation (waste counter) service | todo |
 | F4.9 | M3 | ESG pattern analysis | todo |
 | F4.10 | M3 | Scope 3 PDF generation | todo |
-| F4.11 | M2 | ESGAgent with 3 tools | todo |
+| F4.11 | M2 | ESGAgent with 3 tools | done |
 | F4.12 | M3 | FEFO routing service | todo |
 | F4.13 | M4 | `YieldCounter` component | todo |
 | F4.14 | M4 | `/scorecard` page (full ESG view) | done |
@@ -1488,10 +1493,10 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.R.2 | M2 | HITL gate audit (every write tool returns card id) | todo |
 | NF.R.3 | M3 | Action card confirm idempotency | done |
 | NF.R.4 | M5 | Nightly green-build gate | todo |
-| NF.R.5 | M3 | Gmail draft integration (no auto-send) | todo |
+| NF.R.5 | M3 | Gmail draft integration (no auto-send) | done |
 | NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
 | NF.R.7 | M3 | `stakeholders` table + seed | todo |
-| NF.R.8 | M2 | Stakeholder identification tool | todo |
+| NF.R.8 | M2 | Stakeholder identification tool | done |
 | NF.R.9 | M2 | `notify` action card kind | todo |
 | NF.R.10 | M4 | `StakeholderSelector` component | todo |
 | NF.R.11 | M5 | No-direct-send lint rule | todo |
