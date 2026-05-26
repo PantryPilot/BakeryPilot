@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     action_cards,
+    admin,
     alerts,
     chat,
     disruptions,
@@ -62,5 +63,6 @@ for _router in [
     disruptions.router,
     negotiations.router,
     alerts.router,
+    admin.router,
 ]:
     app.include_router(_router)
