@@ -47,7 +47,7 @@ def create_cmms_work_order(
     suggested_window: Annotated[str, "ISO datetime for suggested maintenance window"],
     reason: Annotated[str, "One-sentence reason for the work order"],
 ) -> dict:
-    """Create a CMMS maintenance work order. Returns work_order_id and scheduled_at."""
+    """Create a CMMS maintenance work order for human review. Returns work_order_id and scheduled_at."""
     resp = httpx.post(
         f"{BACKEND_URL}/api/cmms/work_orders",
         json={
