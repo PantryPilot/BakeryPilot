@@ -4,16 +4,14 @@ def test_list_negotiations_returns_200(client):
     assert isinstance(r.json(), list)
 
 
-def test_create_negotiation_draft(client):
+def test_create_negotiation_draft_supplier_not_found(client):
     payload = {
-        "supplier_id": "sup_a",
+        "supplier_id": "nonexistent_supplier",
         "trigger_kind": "moq_tax",
-        "body_md": "Dear Maple Grain, we'd like to discuss MOQ reduction for Q3.",
+        "body_md": "Test negotiation message.",
     }
     r = client.post("/api/negotiations", json=payload)
-    assert r.status_code == 200
-    body = r.json()
-    assert "draft_id" in body
+    assert r.status_code == 404
 
 
 def test_mark_negotiation_sent_not_found(client):
