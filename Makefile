@@ -9,6 +9,9 @@
 POSTGRES_USER ?= bakery
 POSTGRES_DB   ?= bakery
 
+# uv command — use `python -m uv` if uv is not on PATH
+UV ?= python -m uv
+
 # --- Infra ---
 
 up:
@@ -36,16 +39,16 @@ schema.migrate:
 schema.seed:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
-	uv run infra/seed_lots.py
+	$(UV) run infra/seed_lots.py
 
 seed.lots:
-	uv run infra/seed_lots.py
+	$(UV) run infra/seed_lots.py
 
 seed.events:
-	uv run infra/event_stream.py
+	$(UV) run infra/event_stream.py
 
 seed.demo:
-	uv run infra/seed_demo.py
+	$(UV) run infra/seed_demo.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:
@@ -78,24 +81,24 @@ db.status:
 # --- Backend ---
 
 backend.install:
-	cd backend && uv sync
+	cd backend && $(UV) sync
 
 backend.run:
-	cd backend && uv run uvicorn app.main:app --reload --port 8000
+	cd backend && $(UV) run uvicorn app.main:app --reload --port 8000
 
 backend.test:
-	cd backend && uv run pytest
+	cd backend && $(UV) run pytest
 
 # --- Agent ---
 
 agent.install:
-	cd agent && uv sync
+	cd agent && $(UV) sync
 
 agent.run:
-	cd agent && uv run python -m agent.graph
+	cd agent && $(UV) run python -m agent.graph
 
 agent.test:
-	cd agent && uv run pytest
+	cd agent && $(UV) run pytest
 
 # --- Frontend ---
 
