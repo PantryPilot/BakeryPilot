@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
@@ -29,7 +29,7 @@ function ChipGroup({ label, value, onChange, options }: {
   );
 }
 
-function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
+function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void; isClosing?: boolean }) {
   const backendLotId = lot.id.toLowerCase();
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
   const substitutes = rawSubs.map((s, i) => ({
@@ -41,7 +41,10 @@ function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
     rank: i + 1,
   }));
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
+    >
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div>
           <div className="font-mono text-[11px] text-slate-500">{lot.id}</div>
@@ -112,7 +115,13 @@ export default function MaterialsPage() {
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
+  const [lotClosing, setLotClosing] = useState(false);
   const { data: lots, status: backendStatus } = useLots();
+
+  const closeLot = useCallback(() => {
+    setLotClosing(true);
+    setTimeout(() => { setActiveLot(null); setLotClosing(false); }, 280);
+  }, []);
 
   const filtered = useMemo(() => {
     let l = lots.slice();
@@ -269,7 +278,7 @@ export default function MaterialsPage() {
         </div>
       </div>
 
-      {activeLot && <LotSlideIn lot={activeLot} onClose={() => setActiveLot(null)}/>}
+      {activeLot && <LotSlideIn lot={activeLot} onClose={closeLot} isClosing={lotClosing}/>}
     </div>
   );
 }

@@ -25,11 +25,22 @@ function nowTime() {
 
 export function CopilotButton() {
   const { chatOpen, setChatOpen } = useApp();
+  const [popupClosing, setPopupClosing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    setPopupClosing(true);
+    setTimeout(() => { setChatOpen(false); setPopupClosing(false); }, 220);
+  }, [setChatOpen]);
+
+  const handleToggle = () => {
+    if (chatOpen) handleClose();
+    else setChatOpen(true);
+  };
 
   return (
     <>
       <button
-        onClick={() => setChatOpen(o => !o)}
+        onClick={handleToggle}
         className="fixed bottom-16 right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
         title="Copilot"
       >
@@ -38,7 +49,7 @@ export function CopilotButton() {
           : <Icon name="chat" size={18} />}
       </button>
 
-      {chatOpen && <CopilotPopup onClose={() => setChatOpen(false)} />}
+      {chatOpen && <CopilotPopup onClose={handleClose} isClosing={popupClosing} />}
     </>
   );
 }
@@ -53,7 +64,7 @@ function contextToMessage(ctx: string): string {
   return ctx;
 }
 
-function CopilotPopup({ onClose }: { onClose: () => void }) {
+function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?: boolean }) {
   const { chatContext, setChatContext } = useApp();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -194,7 +205,10 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden">
+    <div
+      style={{ animation: isClosing ? "popup-out 220ms ease forwards" : "popup-in 220ms ease forwards" }}
+      className="fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
+    >
       <div className="h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">

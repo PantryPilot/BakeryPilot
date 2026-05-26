@@ -114,6 +114,26 @@ main {
   to   { opacity: 0; transform: translateX(12px); }
 }
 
+/* Slide panel animations (inventory / supplier detail) */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slide-out-right {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+
+/* Copilot popup animations */
+@keyframes popup-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes popup-out {
+  from { opacity: 1; transform: translateY(0)    scale(1); }
+  to   { opacity: 0; transform: translateY(8px)  scale(0.97); }
+}
+
 /* Page mount fade-in transition (Bug 5) */
 @keyframes page-fade-in {
   from {

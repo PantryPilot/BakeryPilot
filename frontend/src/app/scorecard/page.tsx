@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
@@ -133,7 +133,7 @@ function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: str
   );
 }
 
-function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier; onClose: () => void; isClosing?: boolean }) {
   const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
   const onTime = weeks.map((_, i) => Math.max(0.7, Math.min(1, supplier.onTime + Math.sin(i * 0.7) * 0.08 - (i === 11 ? 0.05 : 0))));
@@ -143,7 +143,10 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
 
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
+    >
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <ReliabilityHalo score={supplier.onTime} disrupt={supplier.status === "disrupt"} size={36}>
@@ -238,7 +241,13 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
+  const [supplierClosing, setSupplierClosing] = useState(false);
   const { data: suppliers } = useSuppliers();
+
+  const closeSupplier = useCallback(() => {
+    setSupplierClosing(true);
+    setTimeout(() => { setActiveSupplier(null); setSupplierClosing(false); }, 280);
+  }, []);
   const summary = [
     { label: "Active suppliers", value: suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
@@ -375,7 +384,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      {activeSupplier && <SupplierSlideIn supplier={activeSupplier} onClose={() => setActiveSupplier(null)}/>}
+      {activeSupplier && <SupplierSlideIn supplier={activeSupplier} onClose={closeSupplier} isClosing={supplierClosing}/>}
     </>
   );
 }
