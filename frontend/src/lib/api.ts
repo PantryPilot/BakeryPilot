@@ -76,7 +76,7 @@ interface BackendWasteCounter {
 export interface BackendWasteEvent {
   event_id: string;
   ts: string;
-  lot_id: string;
+  lot_id: string | null;
   ingredient_name: string;
   quantity_kg: number;
   value_usd: number;

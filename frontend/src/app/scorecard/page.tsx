@@ -120,7 +120,7 @@ function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: str
           return (
             <div key={e.event_id} className="grid grid-cols-[60px_100px_1fr_60px_70px_1fr_30px] gap-2 py-2 items-center">
               <span className="font-mono text-slate-500">{ts}</span>
-              <span className="font-mono text-slate-400 truncate">{e.lot_id.toUpperCase()}</span>
+              <span className="font-mono text-slate-400 truncate">{e.lot_id ? e.lot_id.toUpperCase() : "—"}</span>
               <span className="text-slate-200 truncate">{e.ingredient_name}</span>
               <span className={`text-right font-mono tabular-nums ${e.quantity_kg > 0 ? "text-slate-200" : "text-slate-600"}`}>{e.quantity_kg.toFixed(1)}</span>
               <span className={`text-right font-mono tabular-nums ${e.avoided ? "text-emerald-300" : "text-slate-200"}`}>${e.value_usd}</span>
