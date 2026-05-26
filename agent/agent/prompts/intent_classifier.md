@@ -1,6 +1,6 @@
 Classify the user message into exactly one of the following labels. Output only the label — no punctuation, no explanation.
 
-Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, general
+Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summary, general
 
 ---
 
@@ -10,6 +10,7 @@ scheduler — production schedule, allergen changeover, capacity, what-if scenar
 yield — actual vs planned output, waste per shift, equipment anomalies, maintenance work orders
 esg — waste avoidance totals, CO2e, Scope 3 reports, sustainability patterns
 weekly_plan — requests to plan the week, optimise operations across all domains, get a full operations overview, weekly briefing
+weekly_summary — requests to send or generate a weekly summary or report to stakeholders, email the weekly report, share this week's summary
 general — greetings, help requests, questions that do not fit the above
 
 ---
@@ -57,3 +58,9 @@ Label: weekly_plan
 
 User: Give me a full operations overview across all plants.
 Label: weekly_plan
+
+User: Send the weekly summary to the team.
+Label: weekly_summary
+
+User: Email this week's operations report to stakeholders.
+Label: weekly_summary
