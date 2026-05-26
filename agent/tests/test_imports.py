@@ -21,6 +21,6 @@ def test_esg_tools_importable():
 def test_agent_state_instantiable():
     from agent.state import AgentState
     state = AgentState(messages=[])
-    assert state.intent is None
-    assert state.tool_results == []
-    assert state.action_cards == []
+    assert state.get("intent") is None
+    assert state.get("tool_results", []) == []
+    assert state.get("action_cards", []) == []
