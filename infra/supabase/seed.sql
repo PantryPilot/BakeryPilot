@@ -340,3 +340,108 @@ BEGIN
       ('wholefoods', 'sku-croissant-butter-4pk',   3600, DATE '2026-05-30', 'open');
   END IF;
 END $$;
+
+-- ============================================================================
+-- F3.1: supplier MOQ / window / performance fields
+-- ============================================================================
+
+UPDATE suppliers SET
+  moq_kg = 1000, lead_time_mean_days = 1.5, lead_time_std_days = 0.4,
+  window_earliest_day = 2, window_latest_day = 5,
+  on_time_rate = 0.96, fill_rate = 0.99, window_compliance_rate = 0.92,
+  price_variance_vs_benchmark = 0.02
+WHERE supplier_id = 'sup-northgrain';
+
+UPDATE suppliers SET
+  moq_kg = 500, lead_time_mean_days = 2.3, lead_time_std_days = 1.1,
+  window_earliest_day = 3, window_latest_day = 3,
+  on_time_rate = 0.78, fill_rate = 0.95, window_compliance_rate = 0.55,
+  price_variance_vs_benchmark = -0.08
+WHERE supplier_id = 'sup-valleydairy';
+
+UPDATE suppliers SET
+  moq_kg = 2500, lead_time_mean_days = 1.8, lead_time_std_days = 0.6,
+  window_earliest_day = 1, window_latest_day = 5,
+  on_time_rate = 0.90, fill_rate = 0.98, window_compliance_rate = 0.86,
+  price_variance_vs_benchmark = -0.04
+WHERE supplier_id = 'sup-prairiebulk';
+
+UPDATE suppliers SET
+  moq_kg = 300, lead_time_mean_days = 2.0, lead_time_std_days = 0.5,
+  window_earliest_day = 2, window_latest_day = 4,
+  on_time_rate = 0.84, fill_rate = 0.91, window_compliance_rate = 0.74,
+  price_variance_vs_benchmark = 0.12
+WHERE supplier_id = 'sup-coastalberry';
+
+UPDATE suppliers SET
+  moq_kg = 400, lead_time_mean_days = 2.5, lead_time_std_days = 0.8,
+  window_earliest_day = 3, window_latest_day = 5,
+  on_time_rate = 0.88, fill_rate = 0.93, window_compliance_rate = 0.80,
+  price_variance_vs_benchmark = -0.05
+WHERE supplier_id = 'sup-newleaf';
+
+-- ============================================================================
+-- NF.R.7: stakeholders — 15 sample contacts across all action kinds
+-- ============================================================================
+
+INSERT INTO stakeholders (stakeholder_id, name, email, role, organization, tags) VALUES
+  ('sh-plant-mgr-toronto',  'Priya Nair',         'priya.nair@fgf.example',         'Plant Manager',        'FGF Toronto',      '{production_changes,yield_alerts,weekly_summary}'),
+  ('sh-plant-mgr-hamiltn',  'Marco DeSouza',      'marco.desouza@fgf.example',      'Plant Manager',        'FGF Hamilton',     '{production_changes,yield_alerts}'),
+  ('sh-plant-mgr-missis',   'Anika Patel',        'anika.patel@fgf.example',        'Plant Manager',        'FGF Mississauga',  '{production_changes,yield_alerts}'),
+  ('sh-plant-mgr-montrl',   'Jean-Luc Tremblay',  'jl.tremblay@fgf.example',        'Plant Manager',        'FGF Montreal',     '{production_changes,yield_alerts}'),
+  ('sh-procurement-lead',   'Sarah Kim',          'sarah.kim@fgf.example',          'Procurement Lead',     'FGF Corp',         '{supplier_negotiation,contract_lifecycle,weekly_summary}'),
+  ('sh-esg-officer',        'David Osei',         'david.osei@fgf.example',         'ESG Officer',          'FGF Corp',         '{weekly_summary,esg_reporting}'),
+  ('sh-supply-chain-vp',    'Lisa Zhang',         'lisa.zhang@fgf.example',         'VP Supply Chain',      'FGF Corp',         '{weekly_summary,supplier_negotiation,contract_lifecycle}'),
+  ('sh-costco-buyer',       'Tom Whitmore',       'tom.whitmore@costco.example',    'Category Buyer',       'Costco Canada',    '{retailer_negotiation}'),
+  ('sh-walmart-buyer',      'Rachel Green',       'rachel.green@walmart.example',   'Replenishment Mgr',    'Walmart Canada',   '{retailer_negotiation}'),
+  ('sh-loblaws-buyer',      'Yusuf Abdi',         'yusuf.abdi@loblaws.example',     'Procurement Analyst',  'Loblaws',          '{retailer_negotiation}'),
+  ('sh-sup-northgrain',     'James Harrington',   'j.harrington@northgrain.example','Account Manager',      'NorthGrain Mills', '{supplier_negotiation,contract_lifecycle}'),
+  ('sh-sup-valleydairy',    'Claire Fontaine',    'claire@valleydairy.example',     'Sales Director',       'Valley Dairy',     '{supplier_negotiation,contract_lifecycle}'),
+  ('sh-sup-prairiebulk',    'Ryan Olsson',        'r.olsson@prairiebulk.example',   'Key Account Mgr',      'Prairie Bulk',     '{supplier_negotiation}'),
+  ('sh-operations-analyst', 'Omar Khalid',        'omar.khalid@fgf.example',        'Operations Analyst',   'FGF Corp',         '{yield_alerts,production_changes,weekly_summary}'),
+  ('sh-finance-controller', 'Nina Johansson',     'nina.j@fgf.example',             'Finance Controller',   'FGF Corp',         '{weekly_summary,moq_tax}')
+ON CONFLICT (stakeholder_id) DO NOTHING;
+
+-- ============================================================================
+-- disruption_signals — 5 seeded recent signals for demo
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM disruption_signals) = 0 THEN
+    INSERT INTO disruption_signals (supplier_id, ingredient_id, kind, severity, source, message, observed_at) VALUES
+      ('sup-coastalberry', 'ing-blueberry-frozen', 'weather',   0.72, 'weather',   'Early frost in BC blueberry region may reduce next harvest by 15-20%',                    NOW() - INTERVAL '2 hours'),
+      ('sup-valleydairy',  NULL,                   'miss',      0.61, 'erp',       'Valley Dairy missed 3 of last 5 delivery windows; on-time rate dropped to 68% this month', NOW() - INTERVAL '6 hours'),
+      ('sup-prairiebulk',  'ing-flour-bread',      'commodity', 0.45, 'commodity', 'CBOT wheat futures up 8.2% this week on Saskatchewan drought concerns',                    NOW() - INTERVAL '1 day'),
+      (NULL,               'ing-sugar-granulated', 'commodity', 0.38, 'commodity', 'ICE sugar No. 11 up 4.1% on Brazil supply concerns',                                       NOW() - INTERVAL '2 days'),
+      ('sup-northgrain',   NULL,                   'news',      0.25, 'news',      'NorthGrain Mills announces capacity expansion in Q3; delivery reliability expected to improve', NOW() - INTERVAL '3 days');
+  END IF;
+END $$;
+
+-- ============================================================================
+-- demand_forecasts — 14-day horizon for top 6 SKUs (generated at seed time)
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM demand_forecasts) = 0 THEN
+    INSERT INTO demand_forecasts (sku_id, forecast_date, quantity_expected, quantity_low, quantity_high, model_version)
+    SELECT
+      sku_id,
+      CURRENT_DATE + gs.day_offset AS forecast_date,
+      base_qty + (random() * base_qty * 0.1)::int AS quantity_expected,
+      (base_qty * 0.85)::int AS quantity_low,
+      (base_qty * 1.15)::int AS quantity_high,
+      'lgbm-v0.1' AS model_version
+    FROM (
+      VALUES
+        ('sku-blueberry-muffin-4pk',  850),
+        ('sku-choc-chip-muffin-4pk',  720),
+        ('sku-lemon-poppy-muffin-4pk',610),
+        ('sku-bagel-plain-6pk',       940),
+        ('sku-bagel-sesame-6pk',      480),
+        ('sku-croissant-butter-4pk',  390)
+    ) AS skus(sku_id, base_qty)
+    CROSS JOIN generate_series(0, 13) AS gs(day_offset);
+  END IF;
+END $$;

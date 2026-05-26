@@ -1,45 +1,77 @@
-"""Notifications router: Gmail draft creation (mock; never auto-sends)."""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from datetime import datetime
-
-from fastapi import APIRouter, HTTPException
-
-from app import mock_data
+from app.db.models import NotificationDraft as DraftORM, Stakeholder as StakeholderORM
+from app.db.session import get_db
 from app.models.notifications import NotificationDraft, NotificationDraftRequest
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
 @router.get("/drafts", response_model=list[NotificationDraft])
-async def list_drafts(limit: int = 50) -> list[NotificationDraft]:
-    rows = sorted(
-        mock_data.NOTIFICATION_DRAFTS, key=lambda d: d["created_at"], reverse=True,
-    )[:limit]
-    return [NotificationDraft(**d) for d in rows]
+async def list_drafts(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+) -> list[NotificationDraft]:
+    rows = (
+        await db.execute(
+            select(DraftORM).order_by(DraftORM.created_at.desc()).limit(limit)
+        )
+    ).scalars().all()
+    return [
+        NotificationDraft(
+            draft_id=str(r.draft_id),
+            kind=r.kind,
+            recipients=r.recipients,
+            subject=r.subject,
+            body_md=r.body_md,
+            gmail_draft_url=r.gmail_draft_url or "",
+            action_card_id=str(r.action_card_id) if r.action_card_id else None,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in rows
+    ]
 
 
 @router.post("/drafts", response_model=list[NotificationDraft])
-async def create_drafts(req: NotificationDraftRequest) -> list[NotificationDraft]:
-    """Create one Gmail draft per selected stakeholder. Never sends."""
-    stakeholders = [
-        s for s in mock_data.STAKEHOLDERS if s["stakeholder_id"] in req.stakeholder_ids
-    ]
+async def create_drafts(
+    req: NotificationDraftRequest,
+    db: AsyncSession = Depends(get_db),
+) -> list[NotificationDraft]:
+    stakeholders = (
+        await db.execute(
+            select(StakeholderORM).where(
+                StakeholderORM.stakeholder_id.in_(req.stakeholder_ids)
+            )
+        )
+    ).scalars().all()
     if not stakeholders:
         raise HTTPException(400, "no matching stakeholders")
 
-    created: list[NotificationDraft] = []
+    created = []
     for s in stakeholders:
-        draft_id = mock_data.new_id("ndft")
-        draft = {
-            "draft_id": draft_id,
-            "kind": req.kind,
-            "recipients": [s["email"]],
-            "subject": req.subject,
-            "body_md": req.body_md,
-            "gmail_draft_url": f"https://mail.google.com/mail/u/0/#drafts/mock-{draft_id}",
-            "action_card_id": None,
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        mock_data.NOTIFICATION_DRAFTS.append(draft)
-        created.append(NotificationDraft(**draft))
+        draft = DraftORM(
+            kind=req.kind,
+            recipients=[s.email],
+            subject=req.subject,
+            body_md=req.body_md,
+            gmail_draft_url=f"https://mail.google.com/mail/u/0/#drafts/mock-{s.stakeholder_id}",
+        )
+        db.add(draft)
+        await db.flush()
+        created.append(
+            NotificationDraft(
+                draft_id=str(draft.draft_id),
+                kind=draft.kind,
+                recipients=draft.recipients,
+                subject=draft.subject,
+                body_md=draft.body_md,
+                gmail_draft_url=draft.gmail_draft_url or "",
+                action_card_id=None,
+                created_at=draft.created_at.isoformat(),
+            )
+        )
+
+    await db.commit()
     return created

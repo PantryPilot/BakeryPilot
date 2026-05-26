@@ -24,10 +24,10 @@ class ESGPattern(BaseModel):
 class WasteEvent(BaseModel):
     event_id: str
     ts: str
-    lot_id: str
+    lot_id: str | None = None
     ingredient_name: str
     quantity_kg: float
     value_usd: float
     reason: str
     avoided: bool
-    facility_id: str
+    facility_id: str | None = None

@@ -1,41 +1,44 @@
-"""ESG router: waste counter, pattern analysis, Scope 3 PDF download."""
-
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import mock_data
+from app.db.session import get_db
 from app.models.esg import ESGPattern, WasteCounter, WasteEvent
+from app.services.esg import compute_running_counter, get_esg_patterns, list_waste_events
 
 router = APIRouter(prefix="/api/esg", tags=["esg"])
 
 
 @router.get("/counter", response_model=WasteCounter)
-async def waste_counter() -> WasteCounter:
-    return WasteCounter(**mock_data.WASTE_COUNTER)
+async def waste_counter(
+    facility_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> WasteCounter:
+    data = await compute_running_counter(db, facility_id)
+    return WasteCounter(**data)
 
 
 @router.get("/patterns", response_model=list[ESGPattern])
-async def list_patterns() -> list[ESGPattern]:
-    return [ESGPattern(**p) for p in mock_data.ESG_PATTERNS]
+async def list_patterns(db: AsyncSession = Depends(get_db)) -> list[ESGPattern]:
+    patterns = await get_esg_patterns(db)
+    return [ESGPattern(**p) for p in patterns]
 
 
 @router.get("/waste_events", response_model=list[WasteEvent])
-async def list_waste_events(
+async def waste_events(
     facility_id: str | None = Query(None),
     avoided: bool | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
 ) -> list[WasteEvent]:
-    rows = mock_data.WASTE_EVENTS
-    if facility_id:
-        rows = [r for r in rows if r["facility_id"] == facility_id]
+    rows = await list_waste_events(db, facility_id, limit)
     if avoided is not None:
         rows = [r for r in rows if r["avoided"] == avoided]
-    return [WasteEvent(**r) for r in rows[:limit]]
+    return [WasteEvent(**r) for r in rows]
 
 
 @router.get("/scope3.pdf")
 async def scope_3_pdf(facility_id: str | None = None) -> Response:
-    """Mock Scope 3 PDF -- returns a tiny placeholder bytes payload."""
     placeholder = (
         b"%PDF-1.4\n"
         b"% Scope 3 placeholder. Replace with WeasyPrint/ReportLab output.\n"

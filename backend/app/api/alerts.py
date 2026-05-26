@@ -1,85 +1,99 @@
-"""Alerts router: proactive SSE push channel for high-priority operations signals.
-
-Emits alerts derived from live mock data without polling:
-  - expiring_lot   : ingredient lot expiring in <= 3 days
-  - supplier_risk  : supplier disruption signal with severity >= 0.6
-  - yield_spike    : production run with variance > 10%
-"""
-
 import asyncio
 import json
-from datetime import date
-from typing import AsyncGenerator
+from datetime import date, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from app import mock_data
+from app.db.models import DisruptionSignal, IngredientLot, ProductionRun
+from app.db.session import get_db
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
-def _build_alerts() -> list[dict]:
+async def _build_alerts(db: AsyncSession) -> list[dict]:
     alerts: list[dict] = []
-    today = date.fromisoformat(mock_data.TODAY.isoformat())
+    today = date.today()
+    cutoff = today + timedelta(days=3)
 
-    for lot in mock_data.INGREDIENT_LOTS:
-        expiry = date.fromisoformat(lot["expiry_date"])
-        days_left = (expiry - today).days
-        if days_left <= 3:
-            severity = "critical" if days_left <= 1 else "warning"
-            alerts.append({
-                "kind": "expiring_lot",
-                "severity": severity,
-                "title": f"{lot['ingredient_name']} expiring in {max(days_left, 0)}d",
-                "body": f"Lot {lot['lot_id']} at {lot['facility_id']} — {lot['quantity_kg']} kg",
-                "action": f"What should I do with lot {lot['lot_id']}?",
-                "ref_id": lot["lot_id"],
-            })
+    expiring = (
+        await db.execute(
+            select(IngredientLot)
+            .where(IngredientLot.expiry_date <= cutoff, IngredientLot.quantity_kg > 0)
+            .limit(20)
+        )
+    ).scalars().all()
+    for lot in expiring:
+        days_left = (lot.expiry_date - today).days
+        severity = "critical" if days_left <= 1 else "warning"
+        alerts.append({
+            "kind": "expiring_lot",
+            "severity": severity,
+            "title": f"{lot.ingredient_id} expiring in {max(days_left, 0)}d",
+            "body": f"Lot {str(lot.lot_id)[:8]} at {lot.facility_id} — {float(lot.quantity_kg)} kg",
+            "action": f"What should I do with lot {lot.lot_id}?",
+            "ref_id": str(lot.lot_id),
+        })
 
-    for sig in mock_data.DISRUPTION_SIGNALS:
-        if sig["severity"] >= 0.6:
-            supplier_name = next(
-                (s["name"] for s in mock_data.SUPPLIERS if s["supplier_id"] == sig["supplier_id"]),
-                sig["supplier_id"],
+    risky = (
+        await db.execute(
+            select(DisruptionSignal)
+            .where(DisruptionSignal.severity >= 0.6)
+            .order_by(DisruptionSignal.observed_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    for sig in risky:
+        sev = "critical" if float(sig.severity) >= 0.8 else "warning"
+        alerts.append({
+            "kind": "supplier_risk",
+            "severity": sev,
+            "title": f"Supplier risk: {sig.supplier_id or 'unknown'}",
+            "body": sig.message,
+            "action": f"What is the risk level for supplier {sig.supplier_id}?",
+            "ref_id": sig.supplier_id or str(sig.signal_id),
+        })
+
+    high_variance = (
+        await db.execute(
+            select(ProductionRun)
+            .where(
+                ProductionRun.actual_ingredient_consumption.isnot(None),
+                ProductionRun.status != "cancelled",
             )
-            alerts.append({
-                "kind": "supplier_risk",
-                "severity": "warning" if sig["severity"] < 0.8 else "critical",
-                "title": f"Supplier risk: {supplier_name}",
-                "body": sig.get("message", "Disruption signal detected"),
-                "action": f"What is the risk level for supplier {supplier_name}?",
-                "ref_id": sig["supplier_id"],
-            })
-
-    for run in mock_data.YIELD_RUNS:
-        ingredients = run.get("actual_vs_theoretical", [])
-        max_variance = max((abs(i.get("variance_pct", 0.0)) * 100 for i in ingredients), default=0.0)
-        if max_variance > 10.0:
+            .order_by(ProductionRun.started_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    for run in high_variance:
+        consumption: dict = run.actual_ingredient_consumption or {}
+        max_var = max(
+            (abs(float(v.get("variance_pct", 0))) for v in consumption.values() if isinstance(v, dict)),
+            default=0.0,
+        )
+        if max_var > 10.0:
             alerts.append({
                 "kind": "yield_spike",
-                "severity": "critical" if max_variance > 20.0 else "warning",
-                "title": f"Yield spike on {run.get('line_id', 'unknown')}",
-                "body": f"Run {run['run_id']}: up to {max_variance:.1f}% variance vs plan",
-                "action": f"Why is the yield variance high for run {run['run_id']}?",
-                "ref_id": run["run_id"],
+                "severity": "critical" if max_var > 20.0 else "warning",
+                "title": f"Yield spike on {run.line_id}",
+                "body": f"Run {str(run.run_id)[:8]}: up to {max_var:.1f}% variance vs plan",
+                "action": f"Why is the yield variance high for run {run.run_id}?",
+                "ref_id": str(run.run_id),
             })
 
     return alerts
 
 
 @router.get("")
-async def alert_stream():
-    """SSE stream that emits current alerts once, then a heartbeat every 30 s."""
-
-    async def stream() -> AsyncGenerator[dict, None]:
-        alerts = _build_alerts()
+async def alert_stream(db: AsyncSession = Depends(get_db)):
+    async def stream():
+        alerts = await _build_alerts(db)
         for alert in alerts:
             yield {"event": "alert", "data": json.dumps(alert)}
             await asyncio.sleep(0.05)
-
         yield {"event": "snapshot_done", "data": "{}"}
-
         while True:
             await asyncio.sleep(30)
             yield {"event": "heartbeat", "data": "{}"}
@@ -88,6 +102,5 @@ async def alert_stream():
 
 
 @router.get("/snapshot", response_model=list[dict])
-async def alert_snapshot() -> list[dict]:
-    """REST fallback: returns the same alert list as the SSE stream."""
-    return _build_alerts()
+async def alert_snapshot(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    return await _build_alerts(db)

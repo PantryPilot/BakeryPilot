@@ -1,49 +1,104 @@
-"""Inventory router: lots, spoilage score, substitution candidates, transfers."""
+from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app import mock_data
-from app.models.inventory import IngredientLot, SubstitutionCandidate
+from app.db.models import IngredientLot, Ingredient, ProductionFormula, ProductionSchedule
+from app.db.session import get_db
+from app.models.inventory import IngredientLot as IngredientLotModel, SubstitutionCandidate
+from app.services.spoilage import compute_spoilage_risk
+from app.services.substitution import substitution_candidates
 
 router = APIRouter(prefix="/api/lots", tags=["inventory"])
 
 
-@router.get("", response_model=list[IngredientLot])
+def _scheduled_kg(lot: IngredientLot, schedules_by_ingredient: dict) -> float:
+    return schedules_by_ingredient.get(lot.ingredient_id, 0.0)
+
+
+async def _lots_with_risk(
+    session: AsyncSession,
+    facility_id: str | None = None,
+) -> list[dict]:
+    q = (
+        select(IngredientLot)
+        .options(selectinload(IngredientLot.ingredient))
+        .where(IngredientLot.quantity_kg > 0)
+    )
+    if facility_id:
+        q = q.where(IngredientLot.facility_id == facility_id)
+
+    lots = (await session.execute(q)).scalars().all()
+    today = date.today()
+
+    results = []
+    for lot in lots:
+        risk = compute_spoilage_risk(
+            quantity_kg=float(lot.quantity_kg),
+            expiry_date=lot.expiry_date,
+            kg_scheduled_before_expiry=float(lot.quantity_kg) * 0.7,
+            today=today,
+        )
+        results.append({
+            "lot_id": str(lot.lot_id),
+            "facility_id": lot.facility_id,
+            "ingredient_id": lot.ingredient_id,
+            "ingredient_name": lot.ingredient.name if lot.ingredient else lot.ingredient_id,
+            "quantity_kg": float(lot.quantity_kg),
+            "expiry_date": lot.expiry_date.isoformat(),
+            "storage_zone": lot.storage_zone,
+            "received_date": lot.received_date.isoformat(),
+            "supplier_id": lot.supplier_id,
+            "spoilage_risk_score": risk,
+        })
+    return results
+
+
+@router.get("", response_model=list[IngredientLotModel])
 async def list_lots(
     facility_id: str | None = Query(None),
     sort_by_risk: bool = Query(True),
-) -> list[IngredientLot]:
-    """List ingredient lots with computed spoilage risk score."""
-    rows = mock_data.INGREDIENT_LOTS
-    if facility_id:
-        rows = [r for r in rows if r["facility_id"] == facility_id]
+    db: AsyncSession = Depends(get_db),
+) -> list[IngredientLotModel]:
+    rows = await _lots_with_risk(db, facility_id)
     if sort_by_risk:
         rows = sorted(rows, key=lambda r: r["spoilage_risk_score"], reverse=True)
-    return [IngredientLot(**r) for r in rows]
+    return [IngredientLotModel(**r) for r in rows]
 
 
-@router.get("/{lot_id}", response_model=IngredientLot)
-async def get_lot(lot_id: str) -> IngredientLot:
-    row = next((r for r in mock_data.INGREDIENT_LOTS if r["lot_id"] == lot_id), None)
-    if not row:
+@router.get("/{lot_id}", response_model=IngredientLotModel)
+async def get_lot(lot_id: str, db: AsyncSession = Depends(get_db)) -> IngredientLotModel:
+    lot = await db.get(IngredientLot, lot_id)
+    if not lot:
         raise HTTPException(404, f"lot {lot_id} not found")
-    return IngredientLot(**row)
+    await db.refresh(lot, ["ingredient"])
+    today = date.today()
+    risk = compute_spoilage_risk(
+        float(lot.quantity_kg), lot.expiry_date, float(lot.quantity_kg) * 0.7, today
+    )
+    return IngredientLotModel(
+        lot_id=str(lot.lot_id),
+        facility_id=lot.facility_id,
+        ingredient_id=lot.ingredient_id,
+        ingredient_name=lot.ingredient.name if lot.ingredient else lot.ingredient_id,
+        quantity_kg=float(lot.quantity_kg),
+        expiry_date=lot.expiry_date.isoformat(),
+        storage_zone=lot.storage_zone,
+        received_date=lot.received_date.isoformat(),
+        supplier_id=lot.supplier_id,
+        spoilage_risk_score=risk,
+    )
 
 
 @router.get("/{lot_id}/substitutions", response_model=list[SubstitutionCandidate])
-async def substitution_candidates(lot_id: str) -> list[SubstitutionCandidate]:
-    """Mock substitution candidates when a target SKU is blocked."""
-    if not any(r["lot_id"] == lot_id for r in mock_data.INGREDIENT_LOTS):
+async def substitutions(
+    lot_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[SubstitutionCandidate]:
+    lot = await db.get(IngredientLot, lot_id)
+    if not lot:
         raise HTTPException(404, f"lot {lot_id} not found")
-    return [
-        SubstitutionCandidate(
-            sku_id="sku_lemon_poppy", sku_name="Lemon Poppy Seed Muffin",
-            achievable_quantity=5000, margin_score=0.92,
-            reason="Full capacity on Line 1; flour + sugar in stock; allergen compatible",
-        ),
-        SubstitutionCandidate(
-            sku_id="sku_chocolate_chip", sku_name="Chocolate Chip Muffin",
-            achievable_quantity=4500, margin_score=0.88,
-            reason="Full capacity on Line 2; choc chips and flour in stock",
-        ),
-    ]
+    candidates = await substitution_candidates(lot.ingredient_id, lot.facility_id, db)
+    return [SubstitutionCandidate(**c) for c in candidates]

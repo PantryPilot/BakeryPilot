@@ -106,6 +106,10 @@ interface BackendActionCard {
 // ---------- Adapters: backend -> frontend shapes ----------
 
 const FACILITY_MAP: Record<string, string> = {
+  "plant-toronto": "p1",
+  "plant-mississauga": "p2",
+  "plant-hamilton": "p3",
+  "plant-montreal": "p4",
   plant_1: "p1",
   plant_2: "p2",
   plant_3: "p3",
