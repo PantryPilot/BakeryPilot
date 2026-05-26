@@ -57,6 +57,9 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   const { chatContext, setChatContext } = useApp();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -133,6 +136,36 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
     await sendMessage(u);
   };
 
+  const toggleRecording = useCallback(async () => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const form = new FormData();
+        form.append("file", blob, "voice.webm");
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/voice/upload`, { method: "POST", body: form });
+          const data = await res.json() as { transcription?: string };
+          if (data.transcription) {
+            setInput(data.transcription);
+          }
+        } catch {}
+        setIsRecording(false);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setIsRecording(true);
+    } catch {}
+  }, [isRecording]);
+
   const testPing = () => {
     setMessages(m => [...m, { role: "assistant", agent: "ping", text: "", time: nowTime(), thinking: true }]);
     let text = "";
@@ -203,6 +236,14 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
             className="flex-1 bg-transparent resize-none outline-none text-[13px] text-slate-100 placeholder:text-slate-500 max-h-24"
             style={{ minHeight: 22 }}
           />
+          <button
+            onClick={toggleRecording}
+            disabled={isThinking}
+            title={isRecording ? "Stop recording" : "Voice input"}
+            className={`p-1.5 rounded transition disabled:opacity-40 ${isRecording ? "bg-red-500 hover:bg-red-400 text-white animate-pulse" : "text-slate-400 hover:text-slate-200"}`}
+          >
+            <Icon name="mic" size={14} />
+          </button>
           <button
             onClick={send}
             disabled={isThinking}
