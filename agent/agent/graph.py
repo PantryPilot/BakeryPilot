@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import AsyncIterator
 
 import opik
 from langchain_anthropic import ChatAnthropic
@@ -11,9 +10,12 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.memory import InMemoryStore
 
+from agent.agents.esg import ESGAgent
 from agent.agents.inventory import InventoryAgent
 from agent.agents.orchestrator import classify_intent
 from agent.agents.procurement import ProcurementAgent
+from agent.agents.scheduler import SchedulerAgent
+from agent.agents.yield_intel import YieldAgent
 from agent.config import LANGCHAIN_API_KEY, LANGCHAIN_PROJECT, LANGCHAIN_TRACING_V2, get_model
 from agent.prompts.store import get_prompt_store
 from agent.state import AgentState
@@ -27,15 +29,21 @@ _checkpointer = MemorySaver()
 
 _inventory_agent = InventoryAgent()
 _procurement_agent = ProcurementAgent()
+_scheduler_agent = SchedulerAgent()
+_yield_agent = YieldAgent()
+_esg_agent = ESGAgent()
 
 
 def _route_intent(state: AgentState) -> str:
     intent = state.get("intent", "general")
-    if intent == "inventory":
-        return "inventory_agent"
-    if intent == "procurement":
-        return "procurement_agent"
-    return "respond"
+    routes = {
+        "inventory": "inventory_agent",
+        "procurement": "procurement_agent",
+        "scheduler": "scheduler_agent",
+        "yield": "yield_agent",
+        "esg": "esg_agent",
+    }
+    return routes.get(intent, "respond")
 
 
 @opik.track(name="inventory_agent_node")
@@ -51,6 +59,21 @@ def _inventory_node(state: AgentState) -> AgentState:
 @opik.track(name="procurement_agent_node")
 def _procurement_node(state: AgentState) -> AgentState:
     return _procurement_agent.run(state)
+
+
+@opik.track(name="scheduler_agent_node")
+def _scheduler_node(state: AgentState) -> AgentState:
+    return _scheduler_agent.run(state)
+
+
+@opik.track(name="yield_agent_node")
+def _yield_node(state: AgentState) -> AgentState:
+    return _yield_agent.run(state)
+
+
+@opik.track(name="esg_agent_node")
+def _esg_node(state: AgentState) -> AgentState:
+    return _esg_agent.run(state)
 
 
 @opik.track(name="respond_node")
@@ -95,6 +118,9 @@ def create_graph():
     builder.add_node("classify_intent", classify_intent)
     builder.add_node("inventory_agent", _inventory_node)
     builder.add_node("procurement_agent", _procurement_node)
+    builder.add_node("scheduler_agent", _scheduler_node)
+    builder.add_node("yield_agent", _yield_node)
+    builder.add_node("esg_agent", _esg_node)
     builder.add_node("respond", _respond_node)
 
     builder.add_edge(START, "classify_intent")
@@ -104,11 +130,17 @@ def create_graph():
         {
             "inventory_agent": "inventory_agent",
             "procurement_agent": "procurement_agent",
+            "scheduler_agent": "scheduler_agent",
+            "yield_agent": "yield_agent",
+            "esg_agent": "esg_agent",
             "respond": "respond",
         },
     )
     builder.add_edge("inventory_agent", "respond")
     builder.add_edge("procurement_agent", "respond")
+    builder.add_edge("scheduler_agent", "respond")
+    builder.add_edge("yield_agent", "respond")
+    builder.add_edge("esg_agent", "respond")
     builder.add_edge("respond", END)
 
     return builder.compile(checkpointer=_checkpointer, store=_store)
@@ -133,6 +165,9 @@ if __name__ == "__main__":
     test_messages = [
         ("what can we bake if blueberries are short?", "inventory"),
         ("what is the landed cost for 800 kg from Supplier B?", "procurement"),
+        ("show me the production schedule for plant 1", "scheduler"),
+        ("what is the yield variance for the last run?", "yield"),
+        ("how much waste have we avoided this quarter?", "esg"),
     ]
     for msg, expected_intent in test_messages:
         thread = str(uuid.uuid4())
@@ -141,4 +176,4 @@ if __name__ == "__main__":
             final = chunk
         intent = final.get("intent", "?") if final else "?"
         status = "PASS" if intent == expected_intent else f"FAIL (got {intent})"
-        print(f"  [{status}] '{msg[:50]}' -> intent={intent}")
+        print(f"  [{status}] '{msg[:55]}' -> intent={intent}")
