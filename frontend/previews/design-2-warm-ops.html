@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BakeryPilot — Design 2: Warm Ops</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f0f2f5; color: #111827; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Shell ──────────────────────────────────────────── */
+  .shell   { display: flex; flex: 1; overflow: hidden; }
+  .sidebar { width: 232px; flex-shrink: 0; background: #0f172a; display: flex; flex-direction: column; }
+  .main    { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Sidebar ────────────────────────────────────────── */
+  .logo-area { height: 64px; display: flex; align-items: center; padding: 0 20px; gap: 12px; border-bottom: 1px solid #1e293b; }
+  .logo-mark { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(145deg, #f97316 0%, #dc2626 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 12px rgba(249,115,22,0.35); }
+  .logo-name { font-size: 16px; font-weight: 800; color: #f1f5f9; letter-spacing: -0.02em; }
+  .logo-sub  { font-size: 9px; font-weight: 500; color: #64748b; letter-spacing: 0.14em; text-transform: uppercase; margin-top: 1px; }
+
+  nav { flex: 1; padding: 16px 12px 8px; }
+  .nav-group-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: #334155; padding: 0 8px 6px; }
+
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; color: #64748b; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; margin-bottom: 2px; }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: #cbd5e1; }
+  .nav-item.active { background: rgba(249,115,22,0.14); color: #fb923c; }
+  .nav-item.active .ni { color: #f97316; }
+  .ni { width: 16px; height: 16px; flex-shrink: 0; }
+  .nav-chip { margin-left: auto; background: rgba(239,68,68,0.2); color: #fca5a5; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+
+  .sidebar-footer { padding: 12px; border-top: 1px solid #1e293b; }
+  .status-row { display: flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.18); border-radius: 8px; padding: 8px 12px; }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; position: relative; }
+  .pulse::after { content:''; position:absolute; inset:-3px; border-radius:50%; background:#10b981; opacity:.4; animation:ping 1.5s ease infinite; }
+  @keyframes ping { 0%{transform:scale(1);opacity:.6} 75%,100%{transform:scale(2);opacity:0} }
+  .status-text { font-size: 11px; font-family: ui-monospace, monospace; color: #34d399; font-weight: 600; }
+  .status-lat  { font-size: 10px; color: #475569; font-family: ui-monospace, monospace; margin-left: auto; }
+
+  /* ── Topbar ─────────────────────────────────────────── */
+  .topbar { height: 64px; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; padding: 0 24px; gap: 16px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .page-title { font-size: 18px; font-weight: 700; color: #111827; letter-spacing: -0.02em; }
+  .page-sub   { font-size: 12px; color: #9ca3af; margin-left: 8px; font-weight: 400; }
+  .spacer { flex: 1; }
+
+  .fac-select { display: flex; align-items: center; gap: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 12px; font-size: 13px; color: #374151; cursor: pointer; font-weight: 500; }
+  .fac-select:hover { border-color: #d1d5db; }
+  .fac-chip { font-size: 11px; background: #eff6ff; color: #3b82f6; border-radius: 4px; padding: 1px 6px; font-weight: 600; }
+
+  .topbar-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.12s; }
+  .topbar-btn.primary { background: #f97316; color: #fff; border: none; box-shadow: 0 2px 8px rgba(249,115,22,0.3); }
+  .topbar-btn.primary:hover { background: #ea6c08; }
+  .topbar-btn.ghost { background: transparent; border: 1px solid #e5e7eb; color: #6b7280; }
+  .topbar-btn.ghost:hover { border-color: #d1d5db; color: #374151; }
+
+  .bell-btn { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #9ca3af; cursor: pointer; background: #f9fafb; border: 1px solid #e5e7eb; position: relative; }
+  .bell-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: #f97316; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #f97316, #dc2626); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; }
+
+  /* ── Content ─────────────────────────────────────────── */
+  .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+  /* ── Tabs ────────────────────────────────────────────── */
+  .tab-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .tabs { display: flex; border-bottom: 2px solid #e5e7eb; }
+  .tab { padding: 10px 18px; font-size: 13px; font-weight: 500; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+  .tab.active { color: #f97316; border-bottom-color: #f97316; font-weight: 600; }
+  .tab:hover:not(.active) { color: #6b7280; }
+  .tab-right { display: flex; gap: 8px; padding-bottom: 8px; }
+
+  /* ── KPI cards ───────────────────────────────────────── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  .kpi-card { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 14px; }
+  .kpi-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ki-blue   { background: #eff6ff; color: #3b82f6; }
+  .ki-orange { background: #fff7ed; color: #f97316; }
+  .ki-red    { background: #fef2f2; color: #ef4444; }
+  .ki-green  { background: #f0fdf4; color: #22c55e; }
+  .ki-amber  { background: #fffbeb; color: #f59e0b; }
+  .kpi-body {}
+  .kpi-num  { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .kpi-lbl  { font-size: 11px; color: #9ca3af; margin-top: 3px; font-weight: 500; }
+  .kn-blue { color: #3b82f6; } .kn-orange { color: #f97316; } .kn-red { color: #ef4444; } .kn-amber { color: #f59e0b; }
+
+  /* ── Section header ──────────────────────────────────── */
+  .sec-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .sec-title { font-size: 13px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.06em; }
+  .filter-row { display: flex; gap: 6px; }
+  .filter-chip { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid #e5e7eb; background: #f9fafb; color: #9ca3af; transition: all 0.12s; }
+  .filter-chip.active { background: #111827; color: #fff; border-color: #111827; }
+
+  /* ── Supplier cards ──────────────────────────────────── */
+  .sup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+  .sup-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04); overflow: hidden; cursor: pointer; transition: all 0.18s; }
+  .sup-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.06); transform: translateY(-1px); }
+  .sup-card.warn { box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1.5px #fde68a; }
+  .sup-card.alert { box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1.5px #fca5a5; }
+
+  .sup-card-header { padding: 16px 18px 12px; display: flex; align-items: flex-start; gap: 12px; }
+  .sup-halo { width: 40px; height: 40px; border-radius: 50%; border: 3px solid; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .sh-ok   { border-color: #22c55e; color: #16a34a; background: #f0fdf4; }
+  .sh-warn { border-color: #f59e0b; color: #d97706; background: #fffbeb; }
+  .sh-red  { border-color: #ef4444; color: #dc2626; background: #fef2f2; }
+
+  .sup-info { flex: 1; }
+  .sup-name { font-size: 14px; font-weight: 700; color: #111827; }
+  .sup-meta { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .sb-ok   { background: #f0fdf4; color: #16a34a; }
+  .sb-warn { background: #fffbeb; color: #d97706; }
+  .sb-red  { background: #fef2f2; color: #dc2626; }
+  .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .sup-card-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid #f3f4f6; }
+  .metric { padding: 10px 14px; border-right: 1px solid #f3f4f6; }
+  .metric:last-child { border-right: none; }
+  .m-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #9ca3af; }
+  .m-value { font-size: 16px; font-weight: 800; margin-top: 2px; font-family: ui-monospace, monospace; letter-spacing: -0.02em; }
+  .mv-green { color: #16a34a; } .mv-amber { color: #d97706; } .mv-red { color: #dc2626; } .mv-default { color: #374151; }
+
+  .sup-card-footer { padding: 10px 18px; background: #fafafa; border-top: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
+  .contract-info { font-size: 11px; color: #9ca3af; }
+  .contract-warn { color: #d97706; font-weight: 600; }
+  .card-actions { display: flex; gap: 6px; }
+  .ca-btn { padding: 5px 12px; border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid #e5e7eb; background: #fff; color: #6b7280; transition: all 0.12s; }
+  .ca-btn:hover { border-color: #f97316; color: #f97316; }
+  .ca-btn.alert { border-color: #fca5a5; background: #fef2f2; color: #dc2626; }
+
+  .moq-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; padding: 2px 7px; }
+
+  /* ── Bottom strip ────────────────────────────────────── */
+  .bottomstrip { height: 52px; background: #0f172a; display: flex; align-items: stretch; flex-shrink: 0; }
+  .strip-item { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; border-right: 1px solid #1e293b; }
+  .strip-item:last-child { border-right: none; }
+  .strip-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: #475569; font-weight: 600; }
+  .strip-val { font-size: 15px; font-weight: 800; font-family: ui-monospace, monospace; letter-spacing: -0.02em; }
+  .sv-green  { color: #34d399; }
+  .sv-amber  { color: #fbbf24; }
+  .sv-red    { color: #f87171; }
+  .sv-white  { color: #f1f5f9; }
+
+  /* ── Design note ─────────────────────────────────────── */
+  .design-note { position: fixed; bottom: 64px; right: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; font-size: 11px; color: #6b7280; max-width: 280px; line-height: 1.6; z-index: 99; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+  .design-note strong { color: #111827; display: block; margin-bottom: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div>
+    <span class="page-title">Suppliers</span>
+    <span class="page-sub">5 suppliers · 2 need attention</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="fac-select">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#9ca3af"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    All Plants
+    <span class="fac-chip">ALL</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#9ca3af"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+  <button class="topbar-btn ghost">Export CSV</button>
+  <button class="topbar-btn primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New negotiation
+  </button>
+  <div class="bell-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    <span class="bell-dot"></span>
+  </div>
+  <div class="avatar">JD</div>
+</div>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo-area">
+      <div class="logo-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M4 14c0-5 4-9 8-9s8 4 8 9c0 3-3 5-8 5s-8-2-8-5z"/><path d="M9 11v-1M15 11v-1M12 11v-2"/></svg>
+      </div>
+      <div><div class="logo-name">BakeryPilot</div><div class="logo-sub">Ops copilot</div></div>
+    </div>
+
+    <nav>
+      <div class="nav-group-title">Workspace</div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>FlowSight
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Inventory
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedule
+      </div>
+
+      <div class="nav-group-title" style="margin-top:12px">Intelligence</div>
+      <div class="nav-item active">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 6v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Suppliers
+        <span class="nav-chip">2</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Scorecard
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="status-row">
+        <span class="pulse"></span>
+        <span class="status-text">Live</span>
+        <span class="status-lat">42ms</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="content">
+
+      <!-- Tabs -->
+      <div class="tab-row">
+        <div class="tabs">
+          <div class="tab active">Suppliers</div>
+          <div class="tab">ESG & Waste</div>
+          <div class="tab">Yield Intel</div>
+          <div class="tab">Demand Forecast</div>
+        </div>
+        <div class="tab-right">
+          <div class="filter-row">
+            <div class="filter-chip active">All</div>
+            <div class="filter-chip">Healthy</div>
+            <div class="filter-chip">Watch</div>
+            <div class="filter-chip">Disrupted</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-icon ki-blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 6v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+          <div class="kpi-body"><div class="kpi-num">5</div><div class="kpi-lbl">Active suppliers</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+          <div class="kpi-body"><div class="kpi-num kn-amber">2</div><div class="kpi-lbl">Need attention</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-orange"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div class="kpi-body"><div class="kpi-num kn-orange">2</div><div class="kpi-lbl">Drafts pending</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="kpi-body"><div class="kpi-num kn-red">3</div><div class="kpi-lbl">Contracts expiring &lt;60d</div></div>
+        </div>
+      </div>
+
+      <!-- Supplier cards instead of table — each card scales independently, no overflow -->
+      <div class="sec-header">
+        <div class="sec-title">Supplier Network</div>
+      </div>
+
+      <div class="sup-grid">
+
+        <!-- Card 1: Disrupted — shown first for urgency -->
+        <div class="sup-card alert">
+          <div class="sup-card-header">
+            <div class="sup-halo sh-red">GS</div>
+            <div class="sup-info">
+              <div class="sup-name">GrainSource Ltd.</div>
+              <div class="sup-meta">Specialty grains · T2 · Vancouver</div>
+            </div>
+            <div>
+              <div class="status-badge sb-red"><span class="sdot"></span>Disrupted</div>
+              <div class="moq-tag" style="margin-top:4px">$4,890 MOQ</div>
+            </div>
+          </div>
+          <div class="sup-card-metrics">
+            <div class="metric">
+              <div class="m-label">On-time</div>
+              <div class="m-value mv-red">65%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Fill rate</div>
+              <div class="m-value mv-amber">81%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Price vs bench</div>
+              <div class="m-value mv-red">+5.1%</div>
+            </div>
+          </div>
+          <div class="sup-card-footer">
+            <div class="contract-info contract-warn">⚠ Contract expires 2026-08-15</div>
+            <div class="card-actions">
+              <button class="ca-btn alert">View draft</button>
+              <button class="ca-btn">Place PO</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Watch — expiring contract -->
+        <div class="sup-card warn">
+          <div class="sup-card-header">
+            <div class="sup-halo sh-warn">PE</div>
+            <div class="sup-info">
+              <div class="sup-name">PureEdge Dairy</div>
+              <div class="sup-meta">Dairy & fats · T1 · Calgary</div>
+            </div>
+            <div>
+              <div class="status-badge sb-warn"><span class="sdot"></span>Watch</div>
+            </div>
+          </div>
+          <div class="sup-card-metrics">
+            <div class="metric">
+              <div class="m-label">On-time</div>
+              <div class="m-value mv-green">97%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Fill rate</div>
+              <div class="m-value mv-green">99%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Price vs bench</div>
+              <div class="m-value mv-default">+0.5%</div>
+            </div>
+          </div>
+          <div class="sup-card-footer">
+            <div class="contract-info contract-warn">⚠ Expires 2026-06-30 · 36d left</div>
+            <div class="card-actions"><button class="ca-btn">Place PO</button></div>
+          </div>
+        </div>
+
+        <!-- Card 3: Healthy -->
+        <div class="sup-card">
+          <div class="sup-card-header">
+            <div class="sup-halo sh-ok">MG</div>
+            <div class="sup-info">
+              <div class="sup-name">Maple Grain Co.</div>
+              <div class="sup-meta">Grain & flour · T1 · Toronto</div>
+            </div>
+            <div>
+              <div class="status-badge sb-ok"><span class="sdot"></span>Healthy</div>
+            </div>
+          </div>
+          <div class="sup-card-metrics">
+            <div class="metric">
+              <div class="m-label">On-time</div>
+              <div class="m-value mv-green">94%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Fill rate</div>
+              <div class="m-value mv-green">96%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Price vs bench</div>
+              <div class="m-value mv-green">−1.2%</div>
+            </div>
+          </div>
+          <div class="sup-card-footer">
+            <div class="contract-info">Contract until 2026-09-30</div>
+            <div class="card-actions"><button class="ca-btn">Place PO</button></div>
+          </div>
+        </div>
+
+        <!-- Card 4: Watch (late delivery) -->
+        <div class="sup-card warn">
+          <div class="sup-card-header">
+            <div class="sup-halo sh-warn">CN</div>
+            <div class="sup-info">
+              <div class="sup-name">Cheap N Fast</div>
+              <div class="sup-meta">Packaging · T2 · Montreal</div>
+            </div>
+            <div>
+              <div class="status-badge sb-warn"><span class="sdot"></span>Watch</div>
+              <div class="moq-tag" style="margin-top:4px">$1,240 MOQ</div>
+            </div>
+          </div>
+          <div class="sup-card-metrics">
+            <div class="metric">
+              <div class="m-label">On-time</div>
+              <div class="m-value mv-amber">78%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Fill rate</div>
+              <div class="m-value mv-default">88%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Price vs bench</div>
+              <div class="m-value mv-green">−3.8%</div>
+            </div>
+          </div>
+          <div class="sup-card-footer">
+            <div class="contract-info">Contract until 2026-12-31</div>
+            <div class="card-actions"><button class="ca-btn">Place PO</button></div>
+          </div>
+        </div>
+
+        <!-- Card 5: Healthy -->
+        <div class="sup-card">
+          <div class="sup-card-header">
+            <div class="sup-halo sh-ok">NF</div>
+            <div class="sup-info">
+              <div class="sup-name">NorthFarm Organics</div>
+              <div class="sup-meta">Organic ingredients · T3 · Ottawa</div>
+            </div>
+            <div>
+              <div class="status-badge sb-ok"><span class="sdot"></span>Healthy</div>
+            </div>
+          </div>
+          <div class="sup-card-metrics">
+            <div class="metric">
+              <div class="m-label">On-time</div>
+              <div class="m-value mv-green">91%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Fill rate</div>
+              <div class="m-value mv-green">93%</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Price vs bench</div>
+              <div class="m-value mv-amber">+2.3%</div>
+            </div>
+          </div>
+          <div class="sup-card-footer">
+            <div class="contract-info">Contract until 2027-03-01</div>
+            <div class="card-actions"><button class="ca-btn">Place PO</button></div>
+          </div>
+        </div>
+
+      </div><!-- /sup-grid -->
+    </div><!-- /content -->
+
+    <!-- Bottom strip: dark anchor grounding a light page -->
+    <div class="bottomstrip">
+      <div class="strip-item"><span class="strip-lbl">Waste avoided</span><span class="strip-val sv-green">$12,480</span></div>
+      <div class="strip-item"><span class="strip-lbl">CO2e saved</span><span class="strip-val sv-green">9.8 t</span></div>
+      <div class="strip-item"><span class="strip-lbl">Active disruptions</span><span class="strip-val sv-amber">2</span></div>
+      <div class="strip-item"><span class="strip-lbl">MOQ-tax YTD</span><span class="strip-val sv-red">$6,950</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="design-note">
+  <strong>Design 2 — Warm Ops</strong>
+  Light background (easier daytime use) · warm orange brand accent · supplier cards instead of wide table → naturally responsive, no overflow · urgent items sorted first · filter chips for status · live status anchored in sidebar footer · dark bottom strip for contrast.
+</div>
+
+</body>
+</html>

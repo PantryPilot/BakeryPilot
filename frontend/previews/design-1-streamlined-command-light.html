@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BakeryPilot — Design 1 Light: Streamlined Command</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f1f5f9; color: #0f172a; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-size: 14px; }
+
+  /* ── Layout ─────────────────────────────────────────── */
+  .shell    { display: flex; flex: 1; overflow: hidden; }
+  .sidebar  { width: 220px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+  .main     { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar   { height: 56px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 20px; gap: 12px; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .content  { flex: 1; overflow-y: auto; padding: 24px; }
+  .bottomstrip { height: 48px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: stretch; flex-shrink: 0; }
+
+  /* ── Sidebar (light) ────────────────────────────────── */
+  .logo-area { height: 56px; display: flex; align-items: center; padding: 0 16px; gap: 10px; border-bottom: 1px solid #e2e8f0; }
+  .logo-icon { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .logo-name { font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+  .logo-sub  { font-size: 9px; color: #94a3b8; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 1px; }
+
+  nav { flex: 1; padding: 8px; }
+  .nav-section { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: #94a3b8; padding: 12px 8px 4px; font-weight: 600; }
+
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; color: #64748b; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.12s; margin-bottom: 1px; }
+  .nav-item:hover { background: #f1f5f9; color: #374151; }
+  .nav-item.active { background: #eff6ff; color: #1d4ed8; }
+  .nav-item.active .ni { color: #2563eb; }
+  .ni { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .nav-badge { margin-left: auto; font-size: 10px; background: #fef2f2; color: #dc2626; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+  .nav-badge.amber { background: #fffbeb; color: #d97706; }
+
+  .sidebar-footer { padding: 12px; border-top: 1px solid #e2e8f0; }
+  .user-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; }
+  .user-row:hover { background: #f1f5f9; }
+  .avatar-sm { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .user-name { font-size: 12px; font-weight: 600; color: #374151; }
+  .user-role { font-size: 10px; color: #94a3b8; }
+
+  /* ── Topbar ─────────────────────────────────────────── */
+  .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .bc-parent  { color: #94a3b8; }
+  .bc-sep     { color: #cbd5e1; }
+  .bc-current { color: #0f172a; font-weight: 700; }
+
+  .spacer { flex: 1; }
+
+  .search-box { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 12px; color: #94a3b8; cursor: text; }
+  .search-box:hover { border-color: #cbd5e1; }
+  .search-kbd { background: #e2e8f0; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: ui-monospace, monospace; color: #64748b; }
+
+  .live-pill { display: flex; align-items: center; gap: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 20px; padding: 4px 10px; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; position: relative; }
+  .pulse::after { content:''; position:absolute; inset:-2px; border-radius:50%; background:#22c55e; opacity:.5; animation:ping 1.5s ease infinite; }
+  @keyframes ping { 0%{transform:scale(1);opacity:.7} 75%,100%{transform:scale(2);opacity:0} }
+  .live-text { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #16a34a; font-family: ui-monospace, monospace; }
+  .live-lat  { font-size: 10px; color: #94a3b8; font-family: ui-monospace, monospace; }
+
+  .icon-btn { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; cursor: pointer; background: #f8fafc; border: 1px solid #e2e8f0; position: relative; }
+  .icon-btn:hover { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .notif-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; border: 1.5px solid #fff; }
+
+  .topbar-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+
+  /* ── Page header ─────────────────────────────────────── */
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .page-title  { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.03em; }
+  .page-sub    { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+  .header-actions { display: flex; gap: 8px; }
+  .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.12s; }
+  .btn-ghost   { background: #fff; border: 1px solid #e2e8f0; color: #64748b; }
+  .btn-ghost:hover { border-color: #cbd5e1; color: #374151; }
+  .btn-primary { background: #2563eb; border: 1px solid #1d4ed8; color: #fff; box-shadow: 0 1px 4px rgba(37,99,235,0.25); }
+  .btn-primary:hover { background: #1d4ed8; }
+
+  /* ── Tabs (pill group) ───────────────────────────────── */
+  .tabs { display: flex; gap: 2px; background: #e2e8f0; border-radius: 10px; padding: 3px; margin-bottom: 20px; width: fit-content; }
+  .tab { padding: 6px 16px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; transition: all 0.12s; }
+  .tab.active { background: #ffffff; color: #0f172a; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .tab:hover:not(.active) { color: #374151; }
+
+  /* ── KPI row ─────────────────────────────────────────── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .kpi-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ki-blue  { background: #eff6ff; color: #2563eb; }
+  .ki-amber { background: #fffbeb; color: #d97706; }
+  .ki-red   { background: #fef2f2; color: #dc2626; }
+  .ki-indigo{ background: #eef2ff; color: #4f46e5; }
+  .kpi-body {}
+  .kpi-value { font-size: 24px; font-weight: 800; font-family: ui-monospace, monospace; line-height: 1; color: #0f172a; letter-spacing: -0.02em; }
+  .kpi-value.amber { color: #d97706; }
+  .kpi-value.red   { color: #dc2626; }
+  .kpi-value.blue  { color: #2563eb; }
+  .kpi-label { font-size: 11px; color: #94a3b8; margin-top: 3px; font-weight: 500; }
+
+  /* ── Table ───────────────────────────────────────────── */
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 10px; }
+  .table-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 10px 14px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; font-weight: 700; text-align: left; border-bottom: 1px solid #f1f5f9; white-space: nowrap; background: #f8fafc; }
+  th.r { text-align: right; }
+  td { padding: 12px 14px; border-bottom: 1px solid #f8fafc; vertical-align: middle; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; cursor: pointer; }
+  tr.row-warn td { background: #fffbeb; }
+  tr.row-warn:hover td { background: #fef9c3; }
+  tr.row-red  td { background: #fef2f2; }
+  tr.row-red:hover  td { background: #fee2e2; }
+
+  .sup-cell { display: flex; align-items: center; gap: 10px; }
+  .halo { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .halo.ok   { border-color: #22c55e; color: #16a34a; background: #f0fdf4; }
+  .halo.warn { border-color: #f59e0b; color: #d97706; background: #fffbeb; }
+  .halo.red  { border-color: #ef4444; color: #dc2626; background: #fef2f2; }
+  .sup-name  { font-weight: 600; color: #0f172a; }
+  .sup-sub   { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+
+  .mono { font-family: ui-monospace, monospace; }
+  .r { text-align: right; }
+  .clr-green { color: #16a34a; font-weight: 600; }
+  .clr-amber { color: #d97706; font-weight: 600; }
+  .clr-red   { color: #dc2626; font-weight: 600; }
+  .clr-dim   { color: #cbd5e1; }
+
+  /* Status pill */
+  .status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .status.ok   { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .status.warn { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+  .status.red  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; animation: rpulse 2s ease infinite; }
+  @keyframes rpulse { 0%,100%{opacity:1} 50%{opacity:.75} }
+  .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* Tier badge */
+  .tier { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .tier.t1 { background: #eff6ff; color: #2563eb; }
+  .tier.t2 { background: #f1f5f9; color: #64748b; }
+  .tier.t3 { background: #f8fafc; color: #94a3b8; }
+
+  /* Mini progress bar */
+  .risk-bar-wrap { width: 48px; height: 4px; background: #f1f5f9; border-radius: 2px; overflow: hidden; margin-left: auto; margin-top: 3px; }
+  .risk-bar-fill { height: 100%; border-radius: 2px; }
+
+  /* Row actions */
+  .row-actions { display: flex; align-items: center; gap: 6px; }
+  .action-btn { padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all 0.12s; }
+  .action-btn.po    { background: #fff; border: 1px solid #e2e8f0; color: #64748b; }
+  .action-btn.po:hover { border-color: #2563eb; color: #2563eb; }
+  .action-btn.draft { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+
+  /* Contract expiry */
+  .exp-warn { color: #d97706; font-weight: 600; }
+
+  /* ── Bottom strip (light) ────────────────────────────── */
+  .strip-item { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; border-right: 1px solid #e2e8f0; }
+  .strip-item:last-child { border-right: none; }
+  .strip-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: #94a3b8; font-weight: 600; }
+  .strip-value { font-size: 14px; font-weight: 700; font-family: ui-monospace, monospace; letter-spacing: -0.01em; }
+  .sv-green { color: #16a34a; } .sv-amber { color: #d97706; } .sv-red { color: #dc2626; }
+
+  /* ── Design note ─────────────────────────────────────── */
+  .design-note { position: fixed; bottom: 60px; right: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #64748b; max-width: 270px; line-height: 1.6; z-index: 99; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .design-note strong { color: #0f172a; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="breadcrumb">
+    <span class="bc-parent">BakeryPilot</span>
+    <span class="bc-sep">/</span>
+    <span class="bc-current">Suppliers</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="search-box">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    Search suppliers…
+    <span class="search-kbd">⌘K</span>
+  </div>
+  <div class="live-pill">
+    <span class="pulse"></span>
+    <span class="live-text">Live</span>
+    <span class="live-lat">42ms</span>
+  </div>
+  <div class="icon-btn">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    <span class="notif-dot"></span>
+  </div>
+  <div class="topbar-avatar">JD</div>
+</div>
+
+<div class="shell">
+  <!-- Sidebar stays dark — contrast with light content -->
+  <aside class="sidebar">
+    <div class="logo-area">
+      <div class="logo-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M4 14c0-5 4-9 8-9s8 4 8 9c0 3-3 5-8 5s-8-2-8-5z"/><path d="M9 11v-1M15 11v-1M12 11v-2"/></svg>
+      </div>
+      <div><div class="logo-name">BakeryPilot</div><div class="logo-sub">Ops copilot</div></div>
+    </div>
+    <nav>
+      <div class="nav-section">Operations</div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>FlowSight
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Inventory
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedule
+      </div>
+      <div class="nav-section">Intelligence</div>
+      <div class="nav-item active">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 6v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Suppliers
+        <span class="nav-badge amber">2</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Scorecard
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-row">
+        <div class="avatar-sm">JD</div>
+        <div><div class="user-name">James Doe</div><div class="user-role">Ops Manager</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main — light -->
+  <div class="main">
+    <div class="content">
+
+      <!-- Page header -->
+      <div class="page-header">
+        <div>
+          <div class="page-title">Supplier Network</div>
+          <div class="page-sub">5 suppliers · Last synced 42ms ago</div>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-ghost">Export CSV</button>
+          <button class="btn btn-primary">+ New negotiation</button>
+        </div>
+      </div>
+
+      <!-- Tabs — pill style on light gray track -->
+      <div class="tabs">
+        <div class="tab active">Suppliers</div>
+        <div class="tab">ESG & Waste</div>
+        <div class="tab">Yield Intel</div>
+        <div class="tab">Demand Forecast</div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-icon ki-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 6v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+          <div class="kpi-body"><div class="kpi-value">5</div><div class="kpi-label">Active suppliers</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+          <div class="kpi-body"><div class="kpi-value amber">2</div><div class="kpi-label">At risk</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-indigo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div class="kpi-body"><div class="kpi-value blue">2</div><div class="kpi-label">Negotiation drafts</div></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon ki-red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="kpi-body"><div class="kpi-value red">3</div><div class="kpi-label">Contracts expiring &lt;60d</div></div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="section-label">All suppliers — click row for detail</div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="min-width:190px">Supplier</th>
+                <th>Tier</th>
+                <th class="r" style="min-width:80px">On-time</th>
+                <th class="r" style="min-width:80px">Fill rate</th>
+                <th class="r" style="min-width:110px">MOQ-tax QTD</th>
+                <th style="min-width:130px">Contract</th>
+                <th style="min-width:110px">Status</th>
+                <th style="min-width:140px">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Disrupted first -->
+              <tr class="row-red">
+                <td>
+                  <div class="sup-cell">
+                    <div class="halo red">GS</div>
+                    <div><div class="sup-name">GrainSource Ltd.</div><div class="sup-sub">Specialty grains · Vancouver</div></div>
+                  </div>
+                </td>
+                <td><span class="tier t2">T2</span></td>
+                <td class="r mono clr-red">65%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:65%;background:#ef4444"></div></div></td>
+                <td class="r mono clr-amber">81%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:81%;background:#f59e0b"></div></div></td>
+                <td class="r mono clr-red">$4,890</td>
+                <td class="mono exp-warn" style="font-size:12px">2026-08-15 ⚠</td>
+                <td><span class="status red"><span class="sdot"></span>Disrupted</span></td>
+                <td><div class="row-actions"><button class="action-btn draft">View draft</button><button class="action-btn po">Place PO</button></div></td>
+              </tr>
+              <!-- Watch — expiring -->
+              <tr class="row-warn">
+                <td>
+                  <div class="sup-cell">
+                    <div class="halo warn">PE</div>
+                    <div><div class="sup-name">PureEdge Dairy</div><div class="sup-sub">Dairy & fats · Calgary</div></div>
+                  </div>
+                </td>
+                <td><span class="tier t1">T1</span></td>
+                <td class="r mono clr-green">97%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:97%;background:#22c55e"></div></div></td>
+                <td class="r mono clr-green">99%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:99%;background:#22c55e"></div></div></td>
+                <td class="r mono clr-dim">—</td>
+                <td class="mono exp-warn" style="font-size:12px">2026-06-30 ⚠</td>
+                <td><span class="status warn"><span class="sdot"></span>Watch</span></td>
+                <td><div class="row-actions"><button class="action-btn po">Place PO</button></div></td>
+              </tr>
+              <!-- Watch — late -->
+              <tr class="row-warn">
+                <td>
+                  <div class="sup-cell">
+                    <div class="halo warn">CN</div>
+                    <div><div class="sup-name">Cheap N Fast</div><div class="sup-sub">Packaging · Montreal</div></div>
+                  </div>
+                </td>
+                <td><span class="tier t2">T2</span></td>
+                <td class="r mono clr-amber">78%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:78%;background:#f59e0b"></div></div></td>
+                <td class="r mono">88%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:88%;background:#3b82f6"></div></div></td>
+                <td class="r mono clr-amber">$1,240</td>
+                <td class="mono" style="color:#94a3b8;font-size:12px">2026-12-31</td>
+                <td><span class="status warn"><span class="sdot"></span>Watch</span></td>
+                <td><div class="row-actions"><button class="action-btn po">Place PO</button></div></td>
+              </tr>
+              <!-- Healthy -->
+              <tr>
+                <td>
+                  <div class="sup-cell">
+                    <div class="halo ok">MG</div>
+                    <div><div class="sup-name">Maple Grain Co.</div><div class="sup-sub">Grain & flour · Toronto</div></div>
+                  </div>
+                </td>
+                <td><span class="tier t1">T1</span></td>
+                <td class="r mono clr-green">94%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:94%;background:#22c55e"></div></div></td>
+                <td class="r mono">96%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:96%;background:#3b82f6"></div></div></td>
+                <td class="r mono clr-dim">—</td>
+                <td class="mono" style="color:#94a3b8;font-size:12px">2026-09-30</td>
+                <td><span class="status ok"><span class="sdot"></span>Healthy</span></td>
+                <td><div class="row-actions"><button class="action-btn po">Place PO</button></div></td>
+              </tr>
+              <!-- Healthy -->
+              <tr>
+                <td>
+                  <div class="sup-cell">
+                    <div class="halo ok">NF</div>
+                    <div><div class="sup-name">NorthFarm Organics</div><div class="sup-sub">Organic ingredients · Ottawa</div></div>
+                  </div>
+                </td>
+                <td><span class="tier t3">T3</span></td>
+                <td class="r mono clr-green">91%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:91%;background:#22c55e"></div></div></td>
+                <td class="r mono">93%<div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:93%;background:#3b82f6"></div></div></td>
+                <td class="r mono clr-amber">$820</td>
+                <td class="mono" style="color:#94a3b8;font-size:12px">2027-03-01</td>
+                <td><span class="status ok"><span class="sdot"></span>Healthy</span></td>
+                <td><div class="row-actions"><button class="action-btn po">Place PO</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+
+    <!-- Dark bottom strip — grounds the light layout -->
+    <div class="bottomstrip">
+      <div class="strip-item"><span class="strip-label">Waste avoided</span><span class="strip-value sv-green">$12,480</span></div>
+      <div class="strip-item"><span class="strip-label">CO2e saved</span><span class="strip-value sv-green">9.8 t</span></div>
+      <div class="strip-item"><span class="strip-label">Active disruptions</span><span class="strip-value sv-amber">2</span></div>
+      <div class="strip-item"><span class="strip-label">MOQ-tax YTD</span><span class="strip-value sv-red">$6,950</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="design-note">
+  <strong>Design 1 Light — Streamlined Command</strong>
+  Same structure as Design 1 (pill tabs · 8-col scroll table · icon KPI cards · breadcrumb) with a light content area. Dark sidebar provides contrast and keeps nav legible. Rows color-coded by severity. Urgent suppliers sorted first. Dark bottom strip anchors the layout.
+</div>
+
+</body>
+</html>

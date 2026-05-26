@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
@@ -439,7 +439,7 @@ function PerformanceTab() {
   );
 }
 
-export default function ScorecardPage() {
+function ScorecardInner() {
   const { openChatContext } = useApp();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState("performance");
@@ -465,5 +465,13 @@ export default function ScorecardPage() {
         {tab === "suppliers" ? <SuppliersTab openChatContext={openChatContext}/> : <PerformanceTab/>}
       </div>
     </div>
+  );
+}
+
+export default function ScorecardPage() {
+  return (
+    <Suspense fallback={<div className="h-full bg-[#0a0d14]" />}>
+      <ScorecardInner />
+    </Suspense>
   );
 }

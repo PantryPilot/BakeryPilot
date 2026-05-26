@@ -43,3 +43,4 @@ yarn-error.log*
 
 # Docker volumes (if any are bind-mounted)
 .docker-data/
+image.png

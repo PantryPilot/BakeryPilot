@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BakeryPilot — Design 3: Split Master-Detail</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f8fafc; color: #0f172a; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Chrome ─────────────────────────────────────────── */
+  .topbar { height: 52px; background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 16px; gap: 10px; flex-shrink: 0; }
+  .logo-mark { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg,#60a5fa,#1d4ed8); display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+  .logo-name { font-size: 14px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; }
+  .topbar-sep { width: 1px; height: 20px; background: #e2e8f0; margin: 0 4px; }
+  .page-label { font-size: 13px; color: #64748b; font-weight: 500; }
+  .spacer { flex: 1; }
+  .live-pill { display:flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:3px 10px; }
+  .pulse { width:7px;height:7px;border-radius:50%;background:#22c55e;position:relative; }
+  .pulse::after { content:'';position:absolute;inset:-2px;border-radius:50%;background:#22c55e;opacity:.5;animation:ping 1.5s ease infinite; }
+  @keyframes ping { 0%{transform:scale(1);opacity:.7} 75%,100%{transform:scale(2);opacity:0} }
+  .live-text { font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#16a34a;font-family:ui-monospace,monospace; }
+  .topbar-btn { padding:6px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer; }
+  .tb-ghost { background:#fff;border:1px solid #e2e8f0;color:#64748b; }
+  .tb-primary { background:#2563eb;border:none;color:#fff;box-shadow:0 1px 4px rgba(37,99,235,.25); }
+  .avatar { width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff; }
+
+  /* ── Three-pane body ─────────────────────────────────── */
+  /* Nav rail | supplier list | detail panel */
+  .body { display: flex; flex: 1; overflow: hidden; }
+
+  /* Narrow icon rail */
+  .rail { width: 56px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; flex-shrink: 0; }
+  .ri { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #94a3b8; cursor: pointer; transition: all .12s; position: relative; }
+  .ri:hover { background: #f1f5f9; color: #475569; }
+  .ri.active { background: #eff6ff; color: #2563eb; }
+  .ri-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; }
+  .rail-spacer { flex: 1; }
+
+  /* Supplier list panel */
+  .list-panel { width: 300px; flex-shrink: 0; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
+  .list-header { padding: 14px 16px 10px; border-bottom: 1px solid #f1f5f9; }
+  .list-title { font-size: 14px; font-weight: 700; color: #0f172a; }
+  .list-sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+  .list-search { margin: 10px 12px; display: flex; align-items: center; gap: 7px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: #94a3b8; }
+  .list-filters { display: flex; gap: 4px; padding: 0 12px 10px; }
+  .lf { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid #e2e8f0; color: #94a3b8; background: #fff; }
+  .lf.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+
+  .list-body { flex: 1; overflow-y: auto; }
+  .sup-row { padding: 12px 16px; border-bottom: 1px solid #f8fafc; cursor: pointer; transition: background .1s; display: flex; align-items: center; gap: 10px; }
+  .sup-row:hover { background: #f8fafc; }
+  .sup-row.selected { background: #eff6ff; border-left: 3px solid #2563eb; padding-left: 13px; }
+  .sup-row.selected .sr-name { color: #1d4ed8; }
+  .sup-row.row-red { border-left: 3px solid #ef4444; padding-left: 13px; }
+  .sup-row.row-warn { border-left: 3px solid #f59e0b; padding-left: 13px; }
+  .sup-row.selected.row-red { background: #fef2f2; }
+  .sup-row.selected.row-warn { background: #fffbeb; }
+
+  .halo { width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .h-ok   { border-color: #22c55e; color: #16a34a; background: #f0fdf4; }
+  .h-warn { border-color: #f59e0b; color: #d97706; background: #fffbeb; }
+  .h-red  { border-color: #ef4444; color: #dc2626; background: #fef2f2; }
+  .sr-body { flex: 1; min-width: 0; }
+  .sr-name { font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sr-meta { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+  .sr-right { text-align: right; flex-shrink: 0; }
+  .sr-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+  .sb-ok   { background: #f0fdf4; color: #16a34a; }
+  .sb-warn { background: #fffbeb; color: #d97706; }
+  .sb-red  { background: #fef2f2; color: #dc2626; }
+  .sr-perf { font-size: 11px; color: #94a3b8; margin-top: 3px; font-family: ui-monospace, monospace; }
+
+  /* Detail panel */
+  .detail-panel { flex: 1; overflow-y: auto; background: #f8fafc; }
+  .dp-header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 20px 28px 16px; display: flex; align-items: flex-start; gap: 16px; }
+  .dp-halo { width: 48px; height: 48px; border-radius: 50%; border: 3px solid; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .dp-title { font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; }
+  .dp-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .dp-badges { display: flex; gap: 8px; margin-top: 8px; }
+  .dp-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .dpb-red  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .dpb-amr  { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+  .dpb-blu  { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+  .dpb-ok   { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .dp-actions { margin-left: auto; display: flex; gap: 8px; align-items: flex-start; }
+  .dp-btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .dpb-ghost { background: #fff; border: 1px solid #e2e8f0; color: #64748b; }
+  .dpb-primary { background: #2563eb; border: none; color: #fff; }
+  .dpb-warn { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+
+  .dp-body { padding: 20px 28px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* Metric strip */
+  .metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .metric-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .mc-label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #94a3b8; font-weight: 600; }
+  .mc-value { font-size: 22px; font-weight: 800; font-family: ui-monospace,monospace; letter-spacing: -0.02em; margin-top: 4px; }
+  .mv-g { color: #16a34a; } .mv-a { color: #d97706; } .mv-r { color: #dc2626; } .mv-n { color: #0f172a; }
+  .mc-bar { height: 4px; background: #f1f5f9; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .mc-fill { height: 100%; border-radius: 2px; }
+
+  /* Section */
+  .dp-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .ds-head { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; font-size: 12px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; justify-content: space-between; }
+  .ds-live { font-size: 10px; font-weight: 600; color: #16a34a; background: #f0fdf4; padding: 2px 7px; border-radius: 10px; text-transform: none; letter-spacing: 0; }
+
+  /* Sparkline placeholder */
+  .spark-wrap { padding: 16px; }
+  svg.spark { width: 100%; }
+
+  /* Order rows */
+  .order-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #f8fafc; font-size: 12px; }
+  .order-row:last-child { border-bottom: none; }
+  .or-id { font-family: ui-monospace,monospace; color: #94a3b8; width: 100px; flex-shrink: 0; }
+  .or-item { color: #374151; flex: 1; }
+  .or-qty { font-family: ui-monospace,monospace; color: #0f172a; width: 80px; text-align: right; }
+  .or-date { color: #94a3b8; width: 100px; text-align: right; font-family: ui-monospace,monospace; }
+  .pill { display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700; }
+  .p-blue { background:#eff6ff;color:#2563eb; }
+  .p-green { background:#f0fdf4;color:#16a34a; }
+  .p-amber { background:#fffbeb;color:#d97706; }
+
+  /* Draft box */
+  .draft-box { margin: 16px; border: 1.5px solid #fde68a; background: #fffbeb; border-radius: 8px; padding: 14px 16px; }
+  .db-title { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 6px; }
+  .db-body { font-size: 12px; color: #78350f; line-height: 1.6; margin-bottom: 12px; }
+  .db-actions { display: flex; gap: 8px; }
+  .db-btn { padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .db-send { background: #2563eb; color: #fff; border: none; }
+  .db-edit { background: #fff; border: 1px solid #e2e8f0; color: #374151; }
+  .db-discard { background: transparent; border: none; color: #dc2626; }
+
+  /* Bottom strip */
+  .bottomstrip { height: 44px; background: #fff; border-top: 1px solid #e2e8f0; display: flex; align-items: stretch; flex-shrink: 0; }
+  .strip-item { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; border-right: 1px solid #f1f5f9; }
+  .strip-item:last-child { border-right: none; }
+  .sl { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #94a3b8; font-weight: 600; }
+  .sv { font-size: 13px; font-weight: 700; font-family: ui-monospace,monospace; }
+  .sv-g { color: #16a34a; } .sv-a { color: #d97706; } .sv-r { color: #dc2626; }
+
+  /* Design note */
+  .note { position:fixed;bottom:56px;right:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:11px;color:#64748b;max-width:260px;line-height:1.6;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,.08); }
+  .note strong { color:#0f172a;display:block;margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="logo-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><path d="M4 14c0-5 4-9 8-9s8 4 8 9c0 3-3 5-8 5s-8-2-8-5z"/><path d="M9 11v-1M15 11v-1M12 11v-2"/></svg></div>
+  <span class="logo-name">BakeryPilot</span>
+  <div class="topbar-sep"></div>
+  <span class="page-label">Suppliers</span>
+  <div class="spacer"></div>
+  <div class="live-pill"><span class="pulse"></span><span class="live-text">Live</span></div>
+  <button class="topbar-btn tb-ghost">Export</button>
+  <button class="topbar-btn tb-primary">+ Negotiation</button>
+  <div class="avatar">JD</div>
+</div>
+
+<div class="body">
+
+  <!-- Icon rail -->
+  <div class="rail">
+    <div class="ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div>
+    <div class="ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+    <div class="ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+    <div class="ri active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 6v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg><span class="ri-dot"></span></div>
+    <div class="ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+    <div class="rail-spacer"></div>
+    <div class="ri"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
+  </div>
+
+  <!-- Supplier list -->
+  <div class="list-panel">
+    <div class="list-header">
+      <div class="list-title">Supplier Network</div>
+      <div class="list-sub">5 suppliers · 2 need attention</div>
+    </div>
+    <div class="list-search">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Filter suppliers…
+    </div>
+    <div class="list-filters">
+      <div class="lf active">All</div>
+      <div class="lf">Watch</div>
+      <div class="lf">Disrupted</div>
+    </div>
+    <div class="list-body">
+      <!-- Disrupted first -->
+      <div class="sup-row row-red selected">
+        <div class="halo h-red">GS</div>
+        <div class="sr-body">
+          <div class="sr-name">GrainSource Ltd.</div>
+          <div class="sr-meta">Specialty grains · T2</div>
+        </div>
+        <div class="sr-right">
+          <div class="sr-badge sb-red">Disrupted</div>
+          <div class="sr-perf">65% on-time</div>
+        </div>
+      </div>
+      <div class="sup-row row-warn">
+        <div class="halo h-warn">PE</div>
+        <div class="sr-body">
+          <div class="sr-name">PureEdge Dairy</div>
+          <div class="sr-meta">Dairy & fats · T1</div>
+        </div>
+        <div class="sr-right">
+          <div class="sr-badge sb-warn">Watch</div>
+          <div class="sr-perf">97% on-time</div>
+        </div>
+      </div>
+      <div class="sup-row row-warn">
+        <div class="halo h-warn">CN</div>
+        <div class="sr-body">
+          <div class="sr-name">Cheap N Fast</div>
+          <div class="sr-meta">Packaging · T2</div>
+        </div>
+        <div class="sr-right">
+          <div class="sr-badge sb-warn">Watch</div>
+          <div class="sr-perf">78% on-time</div>
+        </div>
+      </div>
+      <div class="sup-row">
+        <div class="halo h-ok">MG</div>
+        <div class="sr-body">
+          <div class="sr-name">Maple Grain Co.</div>
+          <div class="sr-meta">Grain & flour · T1</div>
+        </div>
+        <div class="sr-right">
+          <div class="sr-badge sb-ok">Healthy</div>
+          <div class="sr-perf">94% on-time</div>
+        </div>
+      </div>
+      <div class="sup-row">
+        <div class="halo h-ok">NF</div>
+        <div class="sr-body">
+          <div class="sr-name">NorthFarm Organics</div>
+          <div class="sr-meta">Organic · T3</div>
+        </div>
+        <div class="sr-right">
+          <div class="sr-badge sb-ok">Healthy</div>
+          <div class="sr-perf">91% on-time</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail panel -->
+  <div class="detail-panel">
+    <div class="dp-header">
+      <div class="dp-halo h-red" style="width:48px;height:48px;font-size:13px">GS</div>
+      <div>
+        <div class="dp-title">GrainSource Ltd.</div>
+        <div class="dp-sub">Specialty grains · Tier 2 · Vancouver · Contract expires 2026-08-15</div>
+        <div class="dp-badges">
+          <span class="dp-badge dpb-red">● Disrupted</span>
+          <span class="dp-badge dpb-amr">$4,890 MOQ-tax</span>
+          <span class="dp-badge dpb-amr">⚠ Contract expiring</span>
+        </div>
+      </div>
+      <div class="dp-actions">
+        <button class="dp-btn dpb-warn">View draft</button>
+        <button class="dp-btn dpb-ghost">Place PO</button>
+        <button class="dp-btn dpb-primary">Ask Copilot</button>
+      </div>
+    </div>
+
+    <div class="dp-body">
+      <!-- Metrics -->
+      <div class="metric-strip">
+        <div class="metric-card">
+          <div class="mc-label">On-time delivery</div>
+          <div class="mc-value mv-r">65%</div>
+          <div class="mc-bar"><div class="mc-fill" style="width:65%;background:#ef4444"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="mc-label">Fill rate</div>
+          <div class="mc-value mv-a">81%</div>
+          <div class="mc-bar"><div class="mc-fill" style="width:81%;background:#f59e0b"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="mc-label">Price vs bench</div>
+          <div class="mc-value mv-r">+5.1%</div>
+          <div class="mc-bar"><div class="mc-fill" style="width:55%;background:#ef4444"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="mc-label">MOQ-tax QTD</div>
+          <div class="mc-value mv-r">$4,890</div>
+          <div class="mc-bar"><div class="mc-fill" style="width:80%;background:#ef4444"></div></div>
+        </div>
+      </div>
+
+      <!-- Performance chart -->
+      <div class="dp-section">
+        <div class="ds-head">Performance — last 12 weeks<span class="ds-live">live</span></div>
+        <div class="spark-wrap">
+          <svg class="spark" viewBox="0 0 520 90" style="height:90px">
+            <!-- Grid -->
+            <line x1="24" x2="496" y1="15" y2="15" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="24" x2="496" y1="45" y2="45" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="24" x2="496" y1="75" y2="75" stroke="#f1f5f9" stroke-width="1"/>
+            <!-- Target line -->
+            <line x1="24" x2="496" y1="27" y2="27" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="500" y="30" font-size="9" fill="#94a3b8" font-family="ui-monospace,monospace">90%</text>
+            <!-- On-time line (red, declining) -->
+            <polyline points="24,38 68,35 112,41 156,44 200,40 244,48 288,52 332,55 376,58 420,62 464,68 496,72" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round"/>
+            <!-- Fill rate line (amber) -->
+            <polyline points="24,30 68,28 112,32 156,30 200,29 244,33 288,35 332,36 376,38 420,40 464,42 496,44" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
+            <!-- Legend -->
+            <line x1="24" y1="84" x2="40" y2="84" stroke="#ef4444" stroke-width="2"/>
+            <text x="44" y="87" font-size="9" fill="#64748b">On-time</text>
+            <line x1="104" y1="84" x2="120" y2="84" stroke="#f59e0b" stroke-width="2"/>
+            <text x="124" y="87" font-size="9" fill="#64748b">Fill rate</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Active orders -->
+      <div class="dp-section">
+        <div class="ds-head">Active orders<span class="ds-live">live</span></div>
+        <div class="order-row">
+          <span class="or-id">ORD-2891</span>
+          <span class="or-item">T55 flour — 2,400 kg</span>
+          <span class="or-qty">2,400 kg</span>
+          <span class="or-date">2026-06-12</span>
+          <span class="pill p-amber">in-transit</span>
+        </div>
+        <div class="order-row">
+          <span class="or-id">ORD-2744</span>
+          <span class="or-item">Rye flour — 1,800 kg</span>
+          <span class="or-qty">1,800 kg</span>
+          <span class="or-date">2026-05-28</span>
+          <span class="pill p-blue">confirmed</span>
+        </div>
+        <div class="order-row">
+          <span class="or-id">ORD-2611</span>
+          <span class="or-item">Spelt grain — 900 kg</span>
+          <span class="or-qty">900 kg</span>
+          <span class="or-date">2026-05-10</span>
+          <span class="pill p-green">delivered</span>
+        </div>
+      </div>
+
+      <!-- Negotiation draft -->
+      <div class="dp-section">
+        <div class="ds-head">Pending negotiation draft</div>
+        <div class="draft-box">
+          <div class="db-title">Subject: Quarterly MOQ review — T55 flour</div>
+          <div class="db-body">Over the past 90 days we've absorbed $4,890 in MOQ overage on T55 flour orders, driven by a 4,200 kg floor against a 3,610 kg trailing average. Proposing a revised floor of 3,800 kg in exchange for a 0.5% volume rebate at quarter-end.</div>
+          <div class="db-actions">
+            <button class="db-btn db-send">Send</button>
+            <button class="db-btn db-edit">Edit</button>
+            <button class="db-btn db-discard">Discard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom strip -->
+<div class="bottomstrip">
+  <div class="strip-item"><span class="sl">Waste avoided</span><span class="sv sv-g">$12,480</span></div>
+  <div class="strip-item"><span class="sl">CO2e saved</span><span class="sv sv-g">9.8 t</span></div>
+  <div class="strip-item"><span class="sl">Active disruptions</span><span class="sv sv-a">2</span></div>
+  <div class="strip-item"><span class="sl">MOQ-tax YTD</span><span class="sv sv-r">$6,950</span></div>
+</div>
+
+<div class="note">
+  <strong>Design 3 — Split Master-Detail</strong>
+  Icon rail · scrollable supplier list with left-border risk indicators · always-visible detail panel (no slide-in). Clicking a supplier instantly updates the right pane. Detail shows: 4 metrics, performance chart, live orders, negotiation draft — all without leaving the page.
+</div>
+
+</body>
+</html>
