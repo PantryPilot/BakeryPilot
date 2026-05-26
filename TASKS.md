@@ -99,6 +99,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.9 [M3] SQLAlchemy session + base
 
+**Status:** done
 **What:** Implement `backend/app/db/{base,session}.py` with async `DeclarativeBase` and `async_sessionmaker`. `DATABASE_URL` from env.
 **Files:** `backend/app/db/base.py`, `backend/app/db/session.py`
 **Acceptance:**
@@ -107,7 +108,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.10 [M3] `GET /api/lots` endpoint
 
-**Status:** in_progress
+**Status:** done
 **What:** Inventory router returns all lots with computed `spoilage_risk_score` (delegated to `services/spoilage.py`), sortable by risk desc.
 **Files:** `backend/app/api/inventory.py`
 **Acceptance:**
@@ -117,6 +118,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.11 [M1] Spoilage risk score service
 
+**Status:** done
 **What:** `services/spoilage.py::compute_spoilage_risk(lot)` returns `kg_on_hand / max(1, kg_scheduled_before_expiry)`. Lots >= 1.0 are red.
 **Files:** `backend/app/services/spoilage.py`
 **Acceptance:**
@@ -125,6 +127,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.12 [M1] Substitution candidates service
 
+**Status:** done
 **What:** `services/substitution.py` returns ranked alternative SKUs producible with current stock when the target SKU is blocked. Ranking key: margin contribution (use the seeded margin field).
 **Files:** `backend/app/services/substitution.py`
 **Acceptance:**
@@ -133,6 +136,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.13 [M3] Landed cost service
 
+**Status:** done
 **What:** `services/landed_cost.py` returns `landed_cost = unit_price * quantity + overage_qty * holding_cost_per_day * expected_days_held`. Pure function.
 **Files:** `backend/app/services/landed_cost.py`
 **Acceptance:**
@@ -141,7 +145,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.14 [M3] `POST /api/orders/draft` endpoint
 
-**Status:** in_progress
+**Status:** done
 **What:** Accepts a draft PO (`supplier_id`, `items[]`, `delivery_date`), computes landed cost via the service, inserts an `action_card` with the proposed PO as payload, returns `{action_card_id, landed_cost_breakdown}`. Does NOT write to `supplier_orders` -- that's the confirm step.
 **Files:** `backend/app/api/orders.py`
 **Acceptance:**
@@ -151,7 +155,7 @@ Every later phase layers on top of this path; if Phase 1 isn't green, nothing el
 
 ### F1.15 [M3] `POST /api/action_cards/{id}/confirm` endpoint
 
-**Status:** in_progress
+**Status:** done
 **What:** Marks the action_card as confirmed and applies its payload (inserts the `supplier_order` with `status='confirmed'`).
 **Files:** `backend/app/api/orders.py`
 **Acceptance:**
@@ -425,6 +429,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.1 [M3] Extend `suppliers` with MOQ + window + discount tier columns
 
+**Status:** done
 **What:** ALTER TABLE adds `moq_kg numeric`, `lead_time_mean_days`, `lead_time_std_days`, `window_earliest_day_of_week int`, `window_latest_day_of_week int`, `discount_tiers jsonb`.
 **Files:** `infra/supabase/schema.sql` (new additive migration block)
 **Acceptance:**
@@ -433,6 +438,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.2 [M3] Define `dock_schedules` table
 
+**Status:** done
 **What:** `(facility_id, slot_date, slot_index)` PK; `booking_id nullable`, `supplier_id nullable`, `capacity_remaining_kg`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -441,6 +447,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.3 [M3] Define `moq_tax_ledger` table (append-only)
 
+**Status:** done
 **What:** `(ledger_id PK, supplier_id, quarter, overage_kg, holding_cost, recorded_at)`. Never UPDATE -- corrections are new rows.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -449,6 +456,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.4 [M3] Define `disruption_signals` table
 
+**Status:** done
 **What:** `(signal_id, supplier_id nullable, ingredient_id nullable, kind, severity, source, message, observed_at)`. Sources: news / weather / commodity / miss.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -457,6 +465,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F3.5 [M3] Define `negotiation_drafts` table
 
+**Status:** done
 **What:** `(draft_id, supplier_id, trigger_kind, body_md, status ('pending'|'sent'|'discarded'), created_at, sent_at, action_card_id)`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -581,6 +590,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.1 [M3] Define `production_runs` table
 
+**Status:** done
 **What:** Per-run actual outcomes: `run_id`, `schedule_id FK`, `line_id`, `started_at`, `ended_at`, `planned_kg`, `actual_kg`, `actual_ingredient_consumption jsonb`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -589,6 +599,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.2 [M3] Define `waste_events` table (append-only)
 
+**Status:** done
 **What:** `waste_event_id`, `event_at`, `kind` (`spoilage|yield_loss|moq_overage|expired_pallet`), `kg`, `dollar_value`, `co2e_kg`, `source_table`, `source_id`, `avoided bool`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -597,6 +608,7 @@ Delivery window optimizer, MOQ-tax ledger, disruption risk, negotiation drafts.
 
 ### F4.3 [M3] Define `finished_goods_pallets` table
 
+**Status:** done
 **What:** `pallet_id`, `sku_id`, `facility_id`, `produced_at`, `shelf_life_days`, `quantity`, `status` (`in_warehouse|shipped|donated|written_off`), `committed_order_id nullable`.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -901,6 +913,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.6 [M3] `notification_drafts` audit table + endpoint
 
+**Status:** done
 **What:** Append-only table tracking every draft ever created: `draft_id PK, kind, recipients[], subject, body_md, gmail_draft_url, action_card_id FK, created_at`. `GET /api/notifications/drafts` lists them in reverse-chronological order.
 **Files:** `infra/supabase/schema.sql`, `backend/app/api/notifications.py` (NEW)
 **Acceptance:**
@@ -910,6 +923,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.R.7 [M3] `stakeholders` table + seed
 
+**Status:** done
 **What:** Stakeholder directory. Columns: `stakeholder_id, name, email, role, organization, tags[]`. Seed 10-20 sample contacts covering supplier reps, plant managers, account managers, ESG officer, retailer buyers.
 **Why:** Agent tools that propose outbound communication need a typed source of truth for "who could receive this." `tags` lets the agent filter by domain (`supplier_negotiation`, `retailer_negotiation`, `contract_lifecycle`, `weekly_summary`).
 **Files:** `infra/supabase/schema.sql`, `infra/supabase/seed.sql`
@@ -960,6 +974,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.O.1 [M3] Weekly activity aggregation service
 
+**Status:** done
 **What:** `backend/app/services/weekly_summary.py::aggregate(week_start, week_end)` returns structured stats from the prior week: action cards confirmed by kind, dollar waste avoided, MOQ-tax accumulated per supplier, supplier disruptions caught, top 3 yield anomalies, schedule changes confirmed, new supplier orders, new retailer orders.
 **Why:** A trustworthy weekly summary needs deterministic numbers separate from any LLM narration -- so the same input always produces the same numeric output.
 **Files:** `backend/app/services/weekly_summary.py` (NEW)
@@ -989,6 +1004,7 @@ but they're the guarantees the README's "Non-functional features" table promises
 
 ### NF.O.4 [M3] `weekly_summaries` table
 
+**Status:** done
 **What:** Persist every generated summary. Columns: `summary_id PK, week_start, week_end, stats jsonb, narration_md, gmail_draft_url, created_at`. Append-only.
 **Files:** `infra/supabase/schema.sql`
 **Acceptance:**
@@ -1462,13 +1478,13 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F1.6 | M3 | Seed `facilities`, `suppliers`, `warehouse_costs` | done |
 | F1.7 | M5 | Seed 150+ ingredient lots | done |
 | F1.8 | M3 | FastAPI app entrypoint | done |
-| F1.9 | M3 | SQLAlchemy session + base | todo |
-| F1.10 | M3 | `GET /api/lots` endpoint | in_progress |
-| F1.11 | M1 | Spoilage risk score service | todo |
-| F1.12 | M1 | Substitution candidates service | todo |
-| F1.13 | M3 | Landed cost service | todo |
-| F1.14 | M3 | `POST /api/orders/draft` endpoint | in_progress |
-| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | in_progress |
+| F1.9 | M3 | SQLAlchemy session + base | done |
+| F1.10 | M3 | `GET /api/lots` endpoint | done |
+| F1.11 | M1 | Spoilage risk score service | done |
+| F1.12 | M1 | Substitution candidates service | done |
+| F1.13 | M3 | Landed cost service | done |
+| F1.14 | M3 | `POST /api/orders/draft` endpoint | done |
+| F1.15 | M3 | `POST /api/action_cards/{id}/confirm` endpoint | done |
 | F1.16 | M2 | LangGraph orchestrator skeleton | done |
 | F1.17 | M2 | InventoryAgent with 2 tools | done |
 | F1.18 | M2 | ProcurementAgent with 2 tools | done |
@@ -1498,11 +1514,11 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F2.15 | M3 | Fill in `schedule_diff.schema.json` | done |
 | F2.16 | M3 | `mes_mock.py`: POST approved schedule | todo |
 | F2.17 | M5 | Update walking-skeleton test for Phase 2 | todo |
-| F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers | todo |
-| F3.2 | M3 | Define `dock_schedules` table | todo |
-| F3.3 | M3 | Define `moq_tax_ledger` table (append-only) | todo |
-| F3.4 | M3 | Define `disruption_signals` table | todo |
-| F3.5 | M3 | Define `negotiation_drafts` table | todo |
+| F3.1 | M3 | Extend `suppliers` with MOQ + window + discount tiers | done |
+| F3.2 | M3 | Define `dock_schedules` table | done |
+| F3.3 | M3 | Define `moq_tax_ledger` table (append-only) | done |
+| F3.4 | M3 | Define `disruption_signals` table | done |
+| F3.5 | M3 | Define `negotiation_drafts` table | done |
 | F3.6 | M3 | MOQ engine service | todo |
 | F3.7 | M3 | Delivery window optimizer (OR-Tools) | todo |
 | F3.8 | M3 | Dock schedule checker service | todo |
@@ -1517,9 +1533,9 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | F3.17 | M4 | `SupplierCard` with window + MOQ-tax indicators | todo |
 | F3.18 | M3 | `sap_mock.py`: POST PO + confirmation | todo |
 | F3.19 | M3 | Fill `supplier_order` + `negotiation_draft` schemas | todo |
-| F4.1 | M3 | Define `production_runs` table | todo |
-| F4.2 | M3 | Define `waste_events` table (append-only) | todo |
-| F4.3 | M3 | Define `finished_goods_pallets` table | todo |
+| F4.1 | M3 | Define `production_runs` table | done |
+| F4.2 | M3 | Define `waste_events` table (append-only) | done |
+| F4.3 | M3 | Define `finished_goods_pallets` table | done |
 | F4.4 | M1 | Yield variance service | todo |
 | F4.5 | M1 | Yield anomaly diagnosis service | todo |
 | F4.6 | M3 | `cmms_mock.py`: stub work-order creation | todo |
@@ -1554,16 +1570,16 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | NF.R.3 | M3 | Action card confirm idempotency | done |
 | NF.R.4 | M5 | Nightly green-build gate | todo |
 | NF.R.5 | M3 | Gmail draft integration (no auto-send) | done |
-| NF.R.6 | M3 | `notification_drafts` audit table + endpoint | todo |
-| NF.R.7 | M3 | `stakeholders` table + seed | todo |
+| NF.R.6 | M3 | `notification_drafts` audit table + endpoint | done |
+| NF.R.7 | M3 | `stakeholders` table + seed | done |
 | NF.R.8 | M2 | Stakeholder identification tool | done |
 | NF.R.9 | M2 | `notify` action card kind | done |
 | NF.R.10 | M4 | `StakeholderSelector` component | todo |
 | NF.R.11 | M5 | No-direct-send lint rule | todo |
-| NF.O.1 | M3 | Weekly activity aggregation service | todo |
+| NF.O.1 | M3 | Weekly activity aggregation service | done |
 | NF.O.2 | M2 | Weekly summary narration via Claude | done |
 | NF.O.3 | M3 | Monday scheduled job | todo |
-| NF.O.4 | M3 | `weekly_summaries` table | todo |
+| NF.O.4 | M3 | `weekly_summaries` table | done |
 | NF.O.5 | M4 | `/summaries` archive page | todo |
 | NF.P.1 | M1 | Pin ML deps to CPU-only | done |
 | NF.P.2 | M1 | faster-whisper small model only | todo |

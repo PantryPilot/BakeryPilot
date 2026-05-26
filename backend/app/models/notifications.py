@@ -8,7 +8,7 @@ class Stakeholder(BaseModel):
     name: str
     email: str
     role: str
-    organization: str
+    organization: str | None = None
     tags: list[str]
     relevance_reason: str | None = None
 

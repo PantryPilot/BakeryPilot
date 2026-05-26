@@ -250,3 +250,191 @@ DROP TRIGGER IF EXISTS inventory_events_append_only ON inventory_events;
 CREATE TRIGGER inventory_events_append_only
   BEFORE UPDATE OR DELETE ON inventory_events
   FOR EACH ROW EXECUTE FUNCTION raise_append_only();
+
+-- ============================================================================
+-- Phase 3 tables
+-- ============================================================================
+
+-- F3.1: Extend suppliers with MOQ / window / discount fields
+ALTER TABLE suppliers
+  ADD COLUMN IF NOT EXISTS moq_kg                      numeric,
+  ADD COLUMN IF NOT EXISTS lead_time_mean_days         numeric,
+  ADD COLUMN IF NOT EXISTS lead_time_std_days          numeric,
+  ADD COLUMN IF NOT EXISTS window_earliest_day         int,
+  ADD COLUMN IF NOT EXISTS window_latest_day           int,
+  ADD COLUMN IF NOT EXISTS on_time_rate                numeric,
+  ADD COLUMN IF NOT EXISTS fill_rate                   numeric,
+  ADD COLUMN IF NOT EXISTS window_compliance_rate      numeric,
+  ADD COLUMN IF NOT EXISTS price_variance_vs_benchmark numeric,
+  ADD COLUMN IF NOT EXISTS discount_tiers              jsonb;
+
+-- F3.2: dock_schedules
+CREATE TABLE IF NOT EXISTS dock_schedules (
+  facility_id          text NOT NULL REFERENCES facilities(facility_id),
+  slot_date            date NOT NULL,
+  slot_index           int  NOT NULL DEFAULT 0,
+  booking_id           uuid,
+  supplier_id          text REFERENCES suppliers(supplier_id),
+  capacity_remaining_kg numeric NOT NULL DEFAULT 20000,
+  PRIMARY KEY (facility_id, slot_date, slot_index)
+);
+
+CREATE INDEX IF NOT EXISTS dock_schedules_facility_date_idx ON dock_schedules (facility_id, slot_date);
+
+-- F3.3: moq_tax_ledger (append-only)
+CREATE TABLE IF NOT EXISTS moq_tax_ledger (
+  ledger_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier_id  text NOT NULL REFERENCES suppliers(supplier_id),
+  quarter      text NOT NULL,
+  overage_kg   numeric NOT NULL,
+  holding_cost numeric NOT NULL,
+  recorded_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS moq_tax_ledger_supplier_quarter_idx ON moq_tax_ledger (supplier_id, quarter);
+
+DROP TRIGGER IF EXISTS moq_tax_ledger_append_only ON moq_tax_ledger;
+CREATE TRIGGER moq_tax_ledger_append_only
+  BEFORE UPDATE OR DELETE ON moq_tax_ledger
+  FOR EACH ROW EXECUTE FUNCTION raise_append_only();
+
+-- F3.4: disruption_signals
+CREATE TABLE IF NOT EXISTS disruption_signals (
+  signal_id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier_id  text REFERENCES suppliers(supplier_id),
+  ingredient_id text REFERENCES ingredients(ingredient_id),
+  kind         text NOT NULL,
+  severity     numeric NOT NULL CHECK (severity >= 0 AND severity <= 1),
+  source       text NOT NULL,
+  message      text NOT NULL,
+  observed_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS disruption_signals_observed_at_idx ON disruption_signals (observed_at DESC);
+CREATE INDEX IF NOT EXISTS disruption_signals_supplier_idx ON disruption_signals (supplier_id);
+
+-- F3.5: negotiation_drafts
+CREATE TABLE IF NOT EXISTS negotiation_drafts (
+  draft_id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier_id    text NOT NULL REFERENCES suppliers(supplier_id),
+  trigger_kind   text NOT NULL,
+  body_md        text NOT NULL,
+  status         text NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','sent','discarded')),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  sent_at        timestamptz,
+  action_card_id uuid REFERENCES action_cards(card_id)
+);
+
+-- ============================================================================
+-- Phase 4 tables
+-- ============================================================================
+
+-- F4.1: production_runs
+CREATE TABLE IF NOT EXISTS production_runs (
+  run_id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  schedule_id                   uuid REFERENCES production_schedules(schedule_id),
+  line_id                       text NOT NULL REFERENCES production_lines(line_id),
+  facility_id                   text NOT NULL REFERENCES facilities(facility_id),
+  sku_id                        text NOT NULL REFERENCES skus(sku_id),
+  operator_id                   text,
+  started_at                    timestamptz NOT NULL,
+  ended_at                      timestamptz,
+  planned_kg                    numeric,
+  actual_kg                     numeric,
+  actual_ingredient_consumption jsonb,
+  status                        text NOT NULL DEFAULT 'in_progress',
+  equipment_notes               text
+);
+
+CREATE INDEX IF NOT EXISTS production_runs_line_started_idx ON production_runs (line_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS production_runs_facility_idx ON production_runs (facility_id);
+
+-- F4.2: waste_events (append-only)
+CREATE TABLE IF NOT EXISTS waste_events (
+  waste_event_id  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_at        timestamptz NOT NULL DEFAULT now(),
+  kind            text NOT NULL CHECK (kind IN
+                    ('spoilage','yield_loss','moq_overage','expired_pallet')),
+  kg              numeric NOT NULL,
+  dollar_value    numeric,
+  co2e_kg         numeric,
+  source_table    text,
+  source_id       text,
+  avoided         bool NOT NULL DEFAULT false,
+  facility_id     text REFERENCES facilities(facility_id),
+  ingredient_id   text REFERENCES ingredients(ingredient_id)
+);
+
+CREATE INDEX IF NOT EXISTS waste_events_at_kind_idx ON waste_events (event_at, kind);
+
+DROP TRIGGER IF EXISTS waste_events_append_only ON waste_events;
+CREATE TRIGGER waste_events_append_only
+  BEFORE UPDATE OR DELETE ON waste_events
+  FOR EACH ROW EXECUTE FUNCTION raise_append_only();
+
+-- F4.3: finished_goods_pallets
+CREATE TABLE IF NOT EXISTS finished_goods_pallets (
+  pallet_id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku_id              text NOT NULL REFERENCES skus(sku_id),
+  facility_id         text NOT NULL REFERENCES facilities(facility_id),
+  produced_at         timestamptz NOT NULL DEFAULT now(),
+  shelf_life_days     int NOT NULL,
+  quantity            int NOT NULL CHECK (quantity > 0),
+  status              text NOT NULL DEFAULT 'in_warehouse'
+                      CHECK (status IN ('in_warehouse','shipped','donated','written_off')),
+  committed_order_id  uuid
+);
+
+CREATE INDEX IF NOT EXISTS finished_goods_pallets_facility_status_idx ON finished_goods_pallets (facility_id, status);
+
+-- ============================================================================
+-- Non-functional / infrastructure tables
+-- ============================================================================
+
+-- NF.R.7: stakeholders directory
+CREATE TABLE IF NOT EXISTS stakeholders (
+  stakeholder_id  text PRIMARY KEY,
+  name            text NOT NULL,
+  email           text NOT NULL,
+  role            text NOT NULL,
+  organization    text,
+  tags            text[] NOT NULL DEFAULT '{}'
+);
+
+-- NF.R.6: notification_drafts audit (append-only)
+CREATE TABLE IF NOT EXISTS notification_drafts (
+  draft_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind            text NOT NULL,
+  recipients      text[] NOT NULL DEFAULT '{}',
+  subject         text NOT NULL,
+  body_md         text NOT NULL,
+  gmail_draft_url text,
+  action_card_id  uuid REFERENCES action_cards(card_id),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS notification_drafts_created_idx ON notification_drafts (created_at DESC);
+
+DROP TRIGGER IF EXISTS notification_drafts_append_only ON notification_drafts;
+CREATE TRIGGER notification_drafts_append_only
+  BEFORE UPDATE OR DELETE ON notification_drafts
+  FOR EACH ROW EXECUTE FUNCTION raise_append_only();
+
+-- NF.O.4: weekly_summaries (append-only)
+CREATE TABLE IF NOT EXISTS weekly_summaries (
+  summary_id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  week_start      date NOT NULL UNIQUE,
+  week_end        date NOT NULL,
+  stats           jsonb NOT NULL,
+  narration_md    text,
+  gmail_draft_url text,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS weekly_summaries_week_start_idx ON weekly_summaries (week_start DESC);
+
+DROP TRIGGER IF EXISTS weekly_summaries_append_only ON weekly_summaries;
+CREATE TRIGGER weekly_summaries_append_only
+  BEFORE UPDATE OR DELETE ON weekly_summaries
+  FOR EACH ROW EXECUTE FUNCTION raise_append_only();

@@ -1,10 +1,11 @@
-"""Yield router: variance per line/shift, anomaly diagnosis, CMMS work order."""
+from datetime import date, datetime, timedelta, timezone
 
-from datetime import timedelta
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi import APIRouter, HTTPException
-
-from app import mock_data
+from app.db.models import ActionCard as ActionCardORM, ProductionRun
+from app.db.session import get_db
 from app.models.yield_intel import (
     AnomalyDiagnosis,
     CandidateCause,
@@ -12,142 +13,161 @@ from app.models.yield_intel import (
     WorkOrderResponse,
     YieldRun,
     YieldTelemetryPoint,
+    YieldVarianceItem,
 )
+from app.services.yield_intel import compute_variance
 
 router = APIRouter(prefix="/api/yield", tags=["yield"])
 
 
+async def _resolve_run(run_id: str, db: AsyncSession) -> ProductionRun | None:
+    run = await db.get(ProductionRun, run_id)
+    if run:
+        return run
+    normalised = run_id.strip().lower().replace(" ", "-")
+    if not normalised.startswith("line-"):
+        normalised = normalised.replace("line", "line-", 1)
+    q = (
+        select(ProductionRun)
+        .where(ProductionRun.line_id == normalised)
+        .order_by(ProductionRun.started_at.desc())
+    )
+    return (await db.execute(q)).scalars().first()
+
+
+def _run_to_model(run: ProductionRun) -> YieldRun:
+    consumption: dict = run.actual_ingredient_consumption or {}
+    items = [
+        YieldVarianceItem(
+            ingredient_id=k,
+            theoretical_kg=float(v.get("theoretical_kg", 0)),
+            actual_kg=float(v.get("actual_kg", 0)),
+            variance_pct=float(v.get("variance_pct", 0)),
+            dollar_leak=float(v.get("dollar_leak", 0)),
+        )
+        for k, v in consumption.items()
+        if isinstance(v, dict)
+    ]
+    total_leak = sum(i.dollar_leak for i in items)
+    return YieldRun(
+        run_id=str(run.run_id),
+        line_id=run.line_id,
+        facility_id=run.facility_id,
+        sku_id=run.sku_id,
+        operator_id=run.operator_id,
+        started_at=run.started_at.isoformat(),
+        ended_at=run.ended_at.isoformat() if run.ended_at else None,
+        actual_vs_theoretical=items,
+        total_dollar_leak=round(total_leak, 2),
+        status=run.status,
+        equipment_notes=run.equipment_notes,
+    )
+
+
 @router.get("", response_model=list[YieldRun])
-async def list_yield_runs() -> list[YieldRun]:
-    return [YieldRun(**r) for r in mock_data.YIELD_RUNS]
+async def list_yield_runs(db: AsyncSession = Depends(get_db)) -> list[YieldRun]:
+    runs = (
+        await db.execute(
+            select(ProductionRun).order_by(ProductionRun.started_at.desc()).limit(50)
+        )
+    ).scalars().all()
+    return [_run_to_model(r) for r in runs]
 
 
 @router.get("/telemetry", response_model=list[YieldTelemetryPoint])
 async def yield_telemetry(
-    line_id: str | None = None,
-    facility_id: str | None = None,
-    days: int = 14,
+    line_id: str | None = Query(None),
+    facility_id: str | None = Query(None),
+    days: int = Query(14, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
 ) -> list[YieldTelemetryPoint]:
-    rows = mock_data.YIELD_TELEMETRY
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    q = select(ProductionRun).where(
+        ProductionRun.started_at >= since,
+        ProductionRun.actual_kg.isnot(None),
+        ProductionRun.planned_kg.isnot(None),
+    )
     if line_id:
-        rows = [r for r in rows if r["line_id"] == line_id]
+        q = q.where(ProductionRun.line_id == line_id)
     if facility_id:
-        rows = [r for r in rows if r["facility_id"] == facility_id]
-    return [YieldTelemetryPoint(**r) for r in rows[:days * 4]]
+        q = q.where(ProductionRun.facility_id == facility_id)
+    q = q.order_by(ProductionRun.started_at)
+
+    runs = (await db.execute(q)).scalars().all()
+    points = []
+    for r in runs:
+        actual = float(r.actual_kg) if r.actual_kg else 0
+        planned = float(r.planned_kg) if r.planned_kg else 1
+        actual_pct = round((actual / planned) * 100, 1) if planned > 0 else 0
+        points.append(
+            YieldTelemetryPoint(
+                date=r.started_at.date().isoformat(),
+                line_id=r.line_id,
+                facility_id=r.facility_id,
+                actual_pct=actual_pct,
+                target_pct=100.0,
+            )
+        )
+    return points
 
 
 @router.get("/{run_id}", response_model=YieldRun)
-async def get_yield_run(run_id: str) -> YieldRun:
-    row = _resolve_run(run_id)
-    if not row:
+async def get_yield_run(run_id: str, db: AsyncSession = Depends(get_db)) -> YieldRun:
+    run = await _resolve_run(run_id, db)
+    if not run:
         raise HTTPException(404, f"yield run {run_id} not found")
-    return YieldRun(**row)
-
-
-_DIAGNOSES: dict[str, dict] = {
-    "yrun_line2_001": {
-        "candidate_causes": [
-            CandidateCause(
-                cause="Dough divider calibration drift",
-                confidence=0.78,
-                supporting_data=[
-                    "divider_a last calibrated 47 days ago — spec is 30 days",
-                    "Same operator (op_martinez) reported similar variance on yrun_line2_002 yesterday",
-                    "Flour over-dispense pattern consistent with worn portioning gate",
-                ],
-            ),
-            CandidateCause(
-                cause="Recipe ratio drift",
-                confidence=0.22,
-                supporting_data=[
-                    "Flour actual/theoretical ratio 1.09x across last 3 blueberry muffin runs",
-                ],
-            ),
-        ],
-        "recommendation": "Schedule corrective maintenance for line_2/divider_a within next downtime window.",
-    },
-    "yrun_line2_002": {
-        "candidate_causes": [
-            CandidateCause(
-                cause="Dough divider calibration drift (recurring)",
-                confidence=0.85,
-                supporting_data=[
-                    "divider_a drift confirmed across two consecutive shifts",
-                    "7.3% flour variance — below yesterday's 9% but same root cause pattern",
-                ],
-            ),
-        ],
-        "recommendation": "Expedite divider_a calibration — two consecutive affected shifts.",
-    },
-    "yrun_line3_001": {
-        "candidate_causes": [
-            CandidateCause(
-                cause="Sesame hopper sensor mis-dispense",
-                confidence=0.91,
-                supporting_data=[
-                    "2 mis-dispense events logged by hopper sensor during this run",
-                    "Hopper last cleaned 12 days ago — spec is 7 days",
-                    "23.3% sesame variance — highest of any ingredient across all recent runs",
-                ],
-            ),
-        ],
-        "recommendation": "Raise CMMS work order for line_3/sesame_hopper cleaning and sensor recalibration.",
-    },
-    "yrun_line1_001": {
-        "candidate_causes": [
-            CandidateCause(
-                cause="Minor butter weighing variance — within tolerance",
-                confidence=0.95,
-                supporting_data=[
-                    "2.1% butter variance — below 5% alert threshold",
-                    "No equipment anomalies recorded for this shift",
-                ],
-            ),
-        ],
-        "recommendation": "No action required — variance within normal operating range.",
-    },
-}
-
-_DEFAULT_DIAGNOSIS = {
-    "candidate_causes": [
-        CandidateCause(
-            cause="Insufficient data for root cause analysis",
-            confidence=0.5,
-            supporting_data=["No equipment notes or historical pattern available for this run"],
-        ),
-    ],
-    "recommendation": "Review run logs manually and check equipment calibration records.",
-}
-
-
-def _resolve_run(run_id: str) -> dict | None:
-    """Accept run_id or a bare line name (e.g. 'line2', 'line_2', 'Line 2')."""
-    # Exact match first
-    exact = next((r for r in mock_data.YIELD_RUNS if r["run_id"] == run_id), None)
-    if exact:
-        return exact
-    # Normalise: "line2" / "Line 2" / "line_2" -> "line_2"
-    normalised = run_id.strip().lower().replace(" ", "_")
-    if not normalised.startswith("line_"):
-        normalised = normalised.replace("line", "line_", 1)
-    # Return the most recent run matching that line_id
-    candidates = [r for r in mock_data.YIELD_RUNS if r["line_id"] == normalised]
-    if candidates:
-        return max(candidates, key=lambda r: r["started_at"])
-    return None
+    return _run_to_model(run)
 
 
 @router.get("/{run_id}/diagnose", response_model=AnomalyDiagnosis)
-async def diagnose_anomaly(run_id: str) -> AnomalyDiagnosis:
-    run = _resolve_run(run_id)
+async def diagnose_anomaly(run_id: str, db: AsyncSession = Depends(get_db)) -> AnomalyDiagnosis:
+    run = await _resolve_run(run_id, db)
     if not run:
         raise HTTPException(404, f"yield run {run_id} not found")
-    resolved_id = run["run_id"]
-    d = _DIAGNOSES.get(resolved_id, _DEFAULT_DIAGNOSIS)
+
+    consumption: dict = run.actual_ingredient_consumption or {}
+    worst_ingredient = ""
+    worst_pct = 0.0
+    for k, v in consumption.items():
+        if isinstance(v, dict) and abs(float(v.get("variance_pct", 0))) > abs(worst_pct):
+            worst_pct = float(v.get("variance_pct", 0))
+            worst_ingredient = k
+
+    if not worst_ingredient:
+        return AnomalyDiagnosis(
+            run_id=str(run.run_id),
+            candidate_causes=[
+                CandidateCause(
+                    cause="Insufficient variance data",
+                    confidence=0.5,
+                    supporting_data=["No ingredient consumption data recorded for this run"],
+                )
+            ],
+            recommendation="Review run logs manually and check equipment calibration records.",
+        )
+
+    causes = [
+        CandidateCause(
+            cause=f"Equipment calibration drift affecting {worst_ingredient}",
+            confidence=min(0.95, abs(worst_pct) / 30),
+            supporting_data=[
+                f"{worst_ingredient}: {worst_pct:+.1f}% variance vs theoretical",
+                run.equipment_notes or "No equipment notes recorded",
+                f"Run on {run.line_id} at {run.facility_id}",
+            ],
+        )
+    ]
+    if abs(worst_pct) < 5:
+        recommendation = "No action required — variance within normal operating range."
+    elif abs(worst_pct) < 10:
+        recommendation = f"Schedule preventive check on {run.line_id} during next downtime window."
+    else:
+        recommendation = f"Expedite maintenance on {run.line_id}; {abs(worst_pct):.0f}% variance exceeds alert threshold."
+
     return AnomalyDiagnosis(
-        run_id=resolved_id,
-        candidate_causes=d["candidate_causes"],
-        recommendation=d["recommendation"],
+        run_id=str(run.run_id),
+        candidate_causes=causes,
+        recommendation=recommendation,
     )
 
 
@@ -155,11 +175,25 @@ cmms_router = APIRouter(prefix="/api/cmms", tags=["cmms"])
 
 
 @cmms_router.post("/work_orders", response_model=WorkOrderResponse)
-async def create_work_order(req: WorkOrderRequest) -> WorkOrderResponse:
-    """Mock CMMS: returns a work order id + scheduled window."""
+async def create_work_order(
+    req: WorkOrderRequest,
+    db: AsyncSession = Depends(get_db),
+) -> WorkOrderResponse:
+    card = ActionCardORM(
+        kind="work_order",
+        payload={
+            "equipment_id": req.equipment_id,
+            "suggested_window": req.suggested_window,
+            "reason": req.reason,
+            "title": f"Work order — {req.equipment_id}",
+            "agent": "YieldAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
     return WorkOrderResponse(
-        work_order_id=mock_data.new_id("wo"),
-        scheduled_at=(mock_data.NOW + timedelta(hours=18)).isoformat(),
+        work_order_id=f"wo-{str(card.card_id)[:8]}",
+        scheduled_at=(datetime.now(timezone.utc) + timedelta(hours=18)).isoformat(),
     )
 
 

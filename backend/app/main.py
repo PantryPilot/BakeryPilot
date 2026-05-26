@@ -1,16 +1,3 @@
-"""FastAPI application entrypoint.
-
-Mock-data mode: endpoints return deterministic stub data without touching the
-database or the LangGraph agent. To switch to wired-up mode, swap the imports in
-`app.api.*` to call services + agents.
-
-Run locally:
-    uv sync
-    uv run uvicorn app.main:app --reload --port 8000
-
-Then visit http://localhost:8000/docs for the auto-generated OpenAPI UI.
-"""
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -38,12 +25,8 @@ from app.config import settings
 
 app = FastAPI(
     title="BakeryPilot API",
-    version="0.0.1",
-    description=(
-        "Agentic operations copilot for FGF Brands. "
-        "Mock mode: endpoints return deterministic stub data; "
-        "no DB or LangGraph agent calls yet."
-    ),
+    version="0.1.0",
+    description="Agentic operations copilot for FGF Brands.",
 )
 
 app.add_middleware(
@@ -57,8 +40,7 @@ app.add_middleware(
 
 @app.get("/healthz", tags=["meta"])
 async def healthz() -> dict:
-    """Liveness probe."""
-    return {"status": "ok", "mode": "mock"}
+    return {"status": "ok"}
 
 
 for _router in [

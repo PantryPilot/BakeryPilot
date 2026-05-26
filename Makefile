@@ -1,5 +1,5 @@
 .PHONY: up up.full down reset \
-        schema.migrate schema.seed seed.lots seed.events \
+        schema.migrate schema.seed seed.lots seed.events seed.demo \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -44,6 +44,9 @@ seed.lots:
 seed.events:
 	uv run infra/event_stream.py
 
+seed.demo:
+	uv run infra/seed_demo.py
+
 # Convenience: open a psql shell against the running postgres container.
 db.psql:
 	docker compose exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
@@ -52,17 +55,25 @@ db.psql:
 db.status:
 	@docker compose exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c "\
 		SELECT 'facilities' AS table, count(*) FROM facilities \
-		UNION ALL SELECT 'suppliers',         count(*) FROM suppliers \
-		UNION ALL SELECT 'retailers',         count(*) FROM retailers \
-		UNION ALL SELECT 'ingredients',       count(*) FROM ingredients \
-		UNION ALL SELECT 'skus',              count(*) FROM skus \
-		UNION ALL SELECT 'production_lines',  count(*) FROM production_lines \
-		UNION ALL SELECT 'production_formulas', count(*) FROM production_formulas \
-		UNION ALL SELECT 'warehouse_costs',   count(*) FROM warehouse_costs \
-		UNION ALL SELECT 'allergen_changeovers', count(*) FROM allergen_changeovers \
-		UNION ALL SELECT 'retailer_orders',   count(*) FROM retailer_orders \
-		UNION ALL SELECT 'ingredient_lots',   count(*) FROM ingredient_lots \
-		UNION ALL SELECT 'inventory_events',  count(*) FROM inventory_events;"
+		UNION ALL SELECT 'suppliers',              count(*) FROM suppliers \
+		UNION ALL SELECT 'ingredients',            count(*) FROM ingredients \
+		UNION ALL SELECT 'skus',                   count(*) FROM skus \
+		UNION ALL SELECT 'production_lines',       count(*) FROM production_lines \
+		UNION ALL SELECT 'ingredient_lots',        count(*) FROM ingredient_lots \
+		UNION ALL SELECT 'retailer_orders',        count(*) FROM retailer_orders \
+		UNION ALL SELECT 'demand_forecasts',       count(*) FROM demand_forecasts \
+		UNION ALL SELECT 'disruption_signals',     count(*) FROM disruption_signals \
+		UNION ALL SELECT 'stakeholders',           count(*) FROM stakeholders \
+		UNION ALL SELECT 'production_schedules',   count(*) FROM production_schedules \
+		UNION ALL SELECT 'production_runs',        count(*) FROM production_runs \
+		UNION ALL SELECT 'supplier_orders',        count(*) FROM supplier_orders \
+		UNION ALL SELECT 'action_cards',           count(*) FROM action_cards \
+		UNION ALL SELECT 'waste_events',           count(*) FROM waste_events \
+		UNION ALL SELECT 'finished_goods_pallets', count(*) FROM finished_goods_pallets \
+		UNION ALL SELECT 'moq_tax_ledger',         count(*) FROM moq_tax_ledger \
+		UNION ALL SELECT 'negotiation_drafts',     count(*) FROM negotiation_drafts \
+		UNION ALL SELECT 'dock_schedules',         count(*) FROM dock_schedules \
+		UNION ALL SELECT 'weekly_summaries',       count(*) FROM weekly_summaries;"
 
 # --- Backend ---
 

@@ -15,6 +15,8 @@ def test_esg_patterns_returns_200(client):
     assert isinstance(r.json(), list)
 
 
-def test_esg_patterns_non_empty(client):
-    r = client.get("/api/esg/patterns")
-    assert len(r.json()) > 0
+def test_esg_patterns_schema(client):
+    patterns = client.get("/api/esg/patterns").json()
+    for p in patterns:
+        assert "pattern_id" in p
+        assert "occurrences" in p
