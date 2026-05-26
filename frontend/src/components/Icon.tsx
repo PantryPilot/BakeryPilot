@@ -44,6 +44,7 @@ export function Icon({ name, size = 16, className = "" }: IconProps) {
     case "wave":     return <svg {...common}><path d="M3 12c2 0 2-5 4-5s2 10 4 10 2-7 4-7 2 5 4 5 2-3 2-3"/></svg>;
     case "drop":     return <svg {...common}><path d="M12 3s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13z"/></svg>;
     case "zap":      return <svg {...common}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>;
+    case "download": return <svg {...common}><path d="M12 3v12M8 11l4 4 4-4M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/></svg>;
     default: return null;
   }
 }

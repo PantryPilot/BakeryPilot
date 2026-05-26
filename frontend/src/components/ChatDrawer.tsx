@@ -215,6 +215,18 @@ function CopilotPopup({ onClose }: { onClose: () => void }) {
   );
 }
 
+function downloadMarkdown(text: string, agent: string) {
+  const slug = agent.toLowerCase().replace(/\s+/g, "-");
+  const ts = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+  const blob = new Blob([text], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `bakery-report_${slug}_${ts}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function PopupMessage({ m }: { m: Message }) {
   if (m.role === "user") {
     return (
@@ -266,6 +278,17 @@ function PopupMessage({ m }: { m: Message }) {
         )}
       </div>
       {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
+      {!m.thinking && m.text && (
+        <div className="pl-6 pt-1">
+          <button
+            onClick={() => downloadMarkdown(m.text, m.agent || "copilot")}
+            className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
+          >
+            <Icon name="download" size={11} />
+            Download report
+          </button>
+        </div>
+      )}
     </div>
   );
 }
