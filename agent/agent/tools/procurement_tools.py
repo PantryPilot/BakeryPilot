@@ -4,9 +4,12 @@ from typing import Annotated
 
 import httpx
 import opik
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool, ToolException
 
-from agent.config import BACKEND_URL
+from agent.config import BACKEND_URL, get_model
+from agent.prompts.store import get_prompt_store
 
 
 class _OrderItem:
@@ -63,3 +66,39 @@ def build_order_draft(
         "action_card_id": data["action_card_id"],
         "landed_cost_breakdown": data["landed_cost_breakdown"],
     }
+
+
+@tool
+@opik.track(name="draft_negotiation")
+def draft_negotiation(
+    trigger_kind: Annotated[str, "One of: moq_tax | late_window | price_drift"],
+    supplier_name: Annotated[str, "Supplier name for the email greeting"],
+    supporting_data: Annotated[dict, "Key metrics to reference — e.g. {moq_tax_usd, on_time_rate, price_gap_pct}"],
+) -> dict:
+    """Draft a supplier negotiation email using Claude Opus 4.7.
+
+    Returns {subject, body_md} for human review — never sent automatically.
+    Every number in the body is grounded in supporting_data.
+    """
+    valid = {"moq_tax", "late_window", "price_drift"}
+    if trigger_kind not in valid:
+        raise ToolException(f"trigger_kind must be one of {valid}, got '{trigger_kind}'")
+
+    store = get_prompt_store()
+    system_prompt = store.get("negotiation")
+    llm = ChatAnthropic(model=get_model("negotiation"), temperature=0.3)
+
+    user_msg = (
+        f"Trigger: {trigger_kind}\n"
+        f"Supplier: {supplier_name}\n"
+        f"Data: {supporting_data}\n\n"
+        "Draft the negotiation email now."
+    )
+    response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_msg)])
+    body = response.content.strip()
+
+    lines = body.splitlines()
+    subject = next((l.replace("Subject:", "").strip() for l in lines if l.startswith("Subject:")), f"Re: {trigger_kind.replace('_', ' ').title()} — FGF Brands")
+    body_without_subject = "\n".join(l for l in lines if not l.startswith("Subject:")).strip()
+
+    return {"subject": subject, "body_md": body_without_subject, "trigger_kind": trigger_kind}
