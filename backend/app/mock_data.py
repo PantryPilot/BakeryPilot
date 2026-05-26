@@ -250,14 +250,85 @@ YIELD_RUNS: list[dict[str, Any]] = [
     {
         "run_id": "yrun_line2_001", "schedule_id": "sched_current",
         "line_id": "line_2", "facility_id": "plant_1",
-        "started_at": (NOW - timedelta(hours=3)).isoformat(), "ended_at": None,
+        "sku_id": "sku_blueberry_muffin",
+        "operator_id": "op_martinez",
+        "started_at": (NOW - timedelta(hours=3)).isoformat(),
+        "ended_at": NOW.isoformat(),
         "actual_vs_theoretical": [
             {
-                "ingredient_id": "ing_flour", "theoretical_kg": 150.0,
-                "actual_kg": 163.5, "variance_pct": 0.09, "dollar_leak": 14.0,
+                "ingredient_id": "ing_flour", "ingredient_name": "Flour",
+                "theoretical_kg": 150.0, "actual_kg": 163.5,
+                "variance_pct": 0.09, "dollar_leak": 14.0,
+            },
+            {
+                "ingredient_id": "ing_butter", "ingredient_name": "Butter",
+                "theoretical_kg": 42.0, "actual_kg": 43.1,
+                "variance_pct": 0.026, "dollar_leak": 2.2,
             },
         ],
-        "total_dollar_leak": 14.0, "status": "running",
+        "total_dollar_leak": 16.2, "status": "completed",
+        "equipment_notes": "Dough divider divider_a last calibrated 47 days ago (spec: 30 days)",
+    },
+    {
+        "run_id": "yrun_line1_001", "schedule_id": "sched_current",
+        "line_id": "line_1", "facility_id": "plant_1",
+        "sku_id": "sku_croissant",
+        "operator_id": "op_chen",
+        "started_at": (NOW - timedelta(hours=8)).isoformat(),
+        "ended_at": (NOW - timedelta(hours=5)).isoformat(),
+        "actual_vs_theoretical": [
+            {
+                "ingredient_id": "ing_butter", "ingredient_name": "Butter",
+                "theoretical_kg": 68.0, "actual_kg": 69.4,
+                "variance_pct": 0.021, "dollar_leak": 4.5,
+            },
+            {
+                "ingredient_id": "ing_flour", "ingredient_name": "Flour",
+                "theoretical_kg": 120.0, "actual_kg": 121.2,
+                "variance_pct": 0.01, "dollar_leak": 1.5,
+            },
+        ],
+        "total_dollar_leak": 6.0, "status": "completed",
+        "equipment_notes": "All equipment within spec",
+    },
+    {
+        "run_id": "yrun_line3_001", "schedule_id": "sched_current",
+        "line_id": "line_3", "facility_id": "plant_2",
+        "sku_id": "sku_sesame_bagel",
+        "operator_id": "op_patel",
+        "started_at": (NOW - timedelta(hours=6)).isoformat(),
+        "ended_at": (NOW - timedelta(hours=3)).isoformat(),
+        "actual_vs_theoretical": [
+            {
+                "ingredient_id": "ing_sesame", "ingredient_name": "Sesame Seeds",
+                "theoretical_kg": 12.0, "actual_kg": 14.8,
+                "variance_pct": 0.233, "dollar_leak": 8.4,
+            },
+            {
+                "ingredient_id": "ing_flour", "ingredient_name": "Flour",
+                "theoretical_kg": 95.0, "actual_kg": 96.0,
+                "variance_pct": 0.011, "dollar_leak": 1.2,
+            },
+        ],
+        "total_dollar_leak": 9.6, "status": "completed",
+        "equipment_notes": "Sesame hopper sensor flagged 2 mis-dispense events; last cleaned 12 days ago",
+    },
+    {
+        "run_id": "yrun_line2_002", "schedule_id": "sched_current",
+        "line_id": "line_2", "facility_id": "plant_1",
+        "sku_id": "sku_blueberry_muffin",
+        "operator_id": "op_martinez",
+        "started_at": (NOW - timedelta(days=1, hours=2)).isoformat(),
+        "ended_at": (NOW - timedelta(days=1)).isoformat(),
+        "actual_vs_theoretical": [
+            {
+                "ingredient_id": "ing_flour", "ingredient_name": "Flour",
+                "theoretical_kg": 150.0, "actual_kg": 161.0,
+                "variance_pct": 0.073, "dollar_leak": 11.0,
+            },
+        ],
+        "total_dollar_leak": 11.0, "status": "completed",
+        "equipment_notes": "Dough divider divider_a — same drift pattern as yrun_line2_001",
     },
 ]
 
