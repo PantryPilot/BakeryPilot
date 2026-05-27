@@ -144,6 +144,8 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         });
       },
       onDone: () => {
+        inflightRef.current = false;
+        cancelStreamRef.current = null;
         setIsThinking(false);
         setMessages(m => {
           const next = [...m];
@@ -155,6 +157,8 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         });
       },
       onError: () => {
+        inflightRef.current = false;
+        cancelStreamRef.current = null;
         setIsThinking(false);
         setMessages(m => {
           const next = [...m];
@@ -165,7 +169,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         });
       },
     });
-  }, [isThinking]);
+  }, []);
 
   useEffect(() => {
     if (chatContext) {
@@ -241,10 +245,30 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   return (
     <div
       style={{ animation: isClosing ? "popup-out 220ms ease forwards" : "popup-in 220ms ease forwards" }}
-      className="fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
+      className={
+        expanded
+          ? "fixed top-4 left-4 right-4 bottom-4 sm:top-8 sm:left-8 sm:right-8 sm:bottom-8 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
+          : "fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
+      }
     >
       <div className="h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+            title={expanded ? "Collapse" : "Expand"}
+            aria-label={expanded ? "Collapse chat" : "Expand chat"}
+          >
+            {expanded ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+            )}
+          </button>
           <span className="w-6 h-6 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">
             <Icon name="zap" size={12} />
           </span>
