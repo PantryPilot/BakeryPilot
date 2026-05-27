@@ -12,8 +12,9 @@ export function providerBadge(provider: string): string {
   switch (provider) {
     case "google":
       return "Gemini";
+    case "meta":
     case "groq":
-      return "Groq";
+      return "Meta Llama";
     case "anthropic":
       return "Claude";
     case "openai":

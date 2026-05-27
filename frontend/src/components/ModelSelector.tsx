@@ -79,7 +79,7 @@ export function ModelSelector({
     (acc[m.provider] ||= []).push(m);
     return acc;
   }, {});
-  const providerOrder = ["anthropic", "openai", "google", "groq"];
+  const providerOrder = ["anthropic", "openai", "google", "meta", "groq"];
   const orderedProviders = [
     ...providerOrder.filter((p) => grouped[p]),
     ...Object.keys(grouped).filter((p) => !providerOrder.includes(p)),

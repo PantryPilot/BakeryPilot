@@ -73,30 +73,30 @@ MODEL_CATALOG: dict[str, ModelSpec] = {
     ),
     "llama-3.3-70b-versatile": ModelSpec(
         id="llama-3.3-70b-versatile",
-        label="Llama 3.3 70B",
-        provider="groq",
+        label="Meta Llama 3.3 70B",
+        provider="meta",
         model="llama-3.3-70b-versatile",
         tier="free",
         key_env="GROQ_API_KEY",
-        description="Meta Llama 3.3 — free via Groq cloud",
+        description="Meta Llama 3.3 — free tier",
     ),
     "llama-3.1-8b-instant": ModelSpec(
         id="llama-3.1-8b-instant",
-        label="Llama 3.1 8B Instant",
-        provider="groq",
+        label="Meta Llama 3.1 8B",
+        provider="meta",
         model="llama-3.1-8b-instant",
         tier="free",
         key_env="GROQ_API_KEY",
-        description="Fast small model — free via Groq cloud",
+        description="Fast Meta Llama model — free tier",
     ),
     "gemma2-9b-it": ModelSpec(
         id="gemma2-9b-it",
         label="Gemma 2 9B",
-        provider="groq",
+        provider="meta",
         model="gemma2-9b-it",
         tier="free",
         key_env="GROQ_API_KEY",
-        description="Google Gemma 2 — free via Groq cloud",
+        description="Google Gemma 2 — free tier",
     ),
 }
 
@@ -190,7 +190,7 @@ def make_chat_llm(*, purpose: str = "default", temperature: float = 0) -> BaseCh
 
         return ChatGoogleGenerativeAI(model=spec.model, temperature=temperature)
 
-    if spec.provider == "groq":
+    if spec.provider in ("groq", "meta"):
         from langchain_groq import ChatGroq
 
         return ChatGroq(model=spec.model, temperature=temperature)
