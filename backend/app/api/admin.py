@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.models.chat import ChatModelInfo
+from app.services import data_refresh
+from app.services.admin_filters import TABLE_FILTER_DEFS, filter_columns_for_table, option_label
 from app.services.app_settings import (
     COPILOT_MODEL_KEY,
     get_copilot_model,
@@ -32,6 +34,24 @@ class TableRowsResponse(BaseModel):
     total: int
     page: int
     per_page: int
+    active_filters: dict[str, str] = {}
+
+
+class TableFilterOption(BaseModel):
+    value: str
+    label: str
+    count: int
+
+
+class TableFilterSpec(BaseModel):
+    column: str
+    label: str
+    options: list[TableFilterOption]
+
+
+class TableFiltersResponse(BaseModel):
+    table: str
+    filters: list[TableFilterSpec]
 
 
 class CopilotModelSettings(BaseModel):
@@ -41,6 +61,24 @@ class CopilotModelSettings(BaseModel):
 
 class CopilotModelUpdate(BaseModel):
     model_id: str
+
+
+class DataSourceMetaResponse(BaseModel):
+    id: str
+    label: str
+    description: str
+    target_tables: list[str]
+    typical_runtime_seconds: int
+    last_at: str | None = None
+    last_status: str | None = None
+    last_message: str | None = None
+    last_rows: int | None = None
+    interval_seconds: int
+    running: bool
+
+
+class DataSourceIntervalUpdate(BaseModel):
+    interval_seconds: int = Field(ge=0, description="0 disables auto-refresh.")
 
 
 def _sync_llm_env() -> None:
@@ -133,9 +171,77 @@ async def _table_columns(db: AsyncSession, table_name: str) -> list[ColumnInfo]:
     return [ColumnInfo(name=r[0], type=r[1]) for r in result.fetchall()]
 
 
+def _parse_table_filters(table_name: str, query_params) -> dict[str, str]:
+    allowed = filter_columns_for_table(table_name)
+    if not allowed:
+        return {}
+    out: dict[str, str] = {}
+    for key, val in query_params.multi_items():
+        if not key.startswith("filter_") or not val:
+            continue
+        column = key.removeprefix("filter_")
+        if column in allowed:
+            out[column] = val
+    return out
+
+
+def _where_clause(table_name: str, filters: dict[str, str]) -> tuple[str, dict[str, object]]:
+    allowed = filter_columns_for_table(table_name)
+    parts: list[str] = []
+    params: dict[str, object] = {}
+    for i, (column, value) in enumerate(filters.items()):
+        if column not in allowed:
+            continue
+        param = f"filter_{i}"
+        parts.append(f"\"{column}\" = :{param}")
+        params[param] = value
+    if not parts:
+        return "", params
+    return " WHERE " + " AND ".join(parts), params
+
+
+@router.get("/tables/{table_name}/filters", response_model=TableFiltersResponse)
+async def list_table_filters(
+    table_name: str,
+    db: AsyncSession = Depends(get_db),
+) -> TableFiltersResponse:
+    valid_tables = await _public_table_names(db)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    defs = TABLE_FILTER_DEFS.get(table_name, ())
+    filters_out: list[TableFilterSpec] = []
+    for fdef in defs:
+        result = await db.execute(
+            text(
+                f"SELECT \"{fdef.column}\", COUNT(*) "
+                f"FROM \"{table_name}\" "
+                f"GROUP BY 1 ORDER BY 1 NULLS LAST"  # noqa: S608
+            )
+        )
+        options: list[TableFilterOption] = []
+        for row in result.fetchall():
+            if row[0] is None:
+                continue
+            val = str(row[0])
+            options.append(
+                TableFilterOption(
+                    value=val,
+                    label=option_label(table_name, fdef.column, val),
+                    count=int(row[1]),
+                )
+            )
+        filters_out.append(
+            TableFilterSpec(column=fdef.column, label=fdef.label, options=options)
+        )
+
+    return TableFiltersResponse(table=table_name, filters=filters_out)
+
+
 @router.get("/tables/{table_name}/rows", response_model=TableRowsResponse)
 async def list_table_rows(
     table_name: str,
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=500),
     sort: str | None = Query(None),
@@ -146,10 +252,16 @@ async def list_table_rows(
     if table_name not in valid_tables:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
+    active_filters = _parse_table_filters(table_name, request.query_params)
+    where_sql, filter_params = _where_clause(table_name, active_filters)
+
     columns = await _table_columns(db, table_name)
     column_names = {c.name for c in columns}
 
-    count_result = await db.execute(text(f"SELECT COUNT(*) FROM \"{table_name}\""))  # noqa: S608
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) FROM \"{table_name}\"{where_sql}"),  # noqa: S608
+        filter_params,
+    )
     total = count_result.scalar_one()
 
     order_clause = ""
@@ -162,9 +274,10 @@ async def list_table_rows(
         order_clause = f" ORDER BY \"{sort}\" {direction}"
 
     offset = (page - 1) * per_page
+    query_params = {**filter_params, "lim": per_page, "off": offset}
     result = await db.execute(
-        text(f"SELECT * FROM \"{table_name}\"{order_clause} LIMIT :lim OFFSET :off"),  # noqa: S608
-        {"lim": per_page, "off": offset},
+        text(f"SELECT * FROM \"{table_name}\"{where_sql}{order_clause} LIMIT :lim OFFSET :off"),  # noqa: S608
+        query_params,
     )
     raw_rows = result.fetchall()
     col_keys = list(result.keys())
@@ -180,6 +293,7 @@ async def list_table_rows(
         total=total,
         page=page,
         per_page=per_page,
+        active_filters=active_filters,
     )
 
 
@@ -192,3 +306,78 @@ def _serialize(value: object) -> object:
     if isinstance(value, (list, dict)):
         return value
     return str(value)
+
+
+# --- Data sources (manual refresh + auto-refresh interval) --------------
+
+def _meta_to_response(m: data_refresh.DataSourceMeta) -> DataSourceMetaResponse:
+    return DataSourceMetaResponse(
+        id=m.id,
+        label=m.label,
+        description=m.description,
+        target_tables=m.target_tables,
+        typical_runtime_seconds=m.typical_runtime_seconds,
+        last_at=m.last_at,
+        last_status=m.last_status,
+        last_message=m.last_message,
+        last_rows=m.last_rows,
+        interval_seconds=m.interval_seconds,
+        running=m.running,
+    )
+
+
+@router.get("/data-sources", response_model=list[DataSourceMetaResponse])
+async def list_data_sources(db: AsyncSession = Depends(get_db)) -> list[DataSourceMetaResponse]:
+    metas = await data_refresh.list_meta(db)
+    return [_meta_to_response(m) for m in metas]
+
+
+@router.post("/data-sources/{source_id}/refresh", response_model=DataSourceMetaResponse)
+async def refresh_data_source(
+    source_id: str,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> DataSourceMetaResponse:
+    if source_id not in data_refresh.DATA_SOURCES:
+        raise HTTPException(status_code=404, detail=f"Unknown data source '{source_id}'")
+    if data_refresh.is_running(source_id):
+        meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+        return _meta_to_response(meta)
+
+    # Fire-and-forget the long-running subprocess. The endpoint returns
+    # immediately with `running=True` so the UI can poll status.
+    background.add_task(_run_refresh_task, source_id)
+
+    meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+    # Force the running flag in the immediate response — the BackgroundTask
+    # hasn't actually started yet but logically the refresh has been queued.
+    response = _meta_to_response(meta)
+    response.running = True
+    return response
+
+
+async def _run_refresh_task(source_id: str) -> None:
+    """Background task: open its own DB session so the request-scoped one is freed."""
+    import logging
+
+    from app.db.session import session_scope
+
+    log = logging.getLogger("uvicorn.error")  # uses uvicorn's configured handler
+    try:
+        async with session_scope() as bg_db:
+            await data_refresh.trigger_refresh(bg_db, source_id)
+    except Exception:
+        log.exception("background refresh failed for %s", source_id)
+
+
+@router.put("/data-sources/{source_id}/interval", response_model=DataSourceMetaResponse)
+async def update_data_source_interval(
+    source_id: str,
+    req: DataSourceIntervalUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> DataSourceMetaResponse:
+    if source_id not in data_refresh.DATA_SOURCES:
+        raise HTTPException(status_code=404, detail=f"Unknown data source '{source_id}'")
+    await data_refresh.set_interval(db, source_id, req.interval_seconds)
+    meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+    return _meta_to_response(meta)

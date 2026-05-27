@@ -1,0 +1,409 @@
+{
+  "data": {
+    "articles": [
+      {
+        "domain": "thehindu.com",
+        "language": "English",
+        "seendate": "20260527T161500Z",
+        "sourcecountry": "India",
+        "title": "Cyberabad civic body cracks down on eateries in Madeenaguda , Moosapet over food safety violations",
+        "url": "https://www.thehindu.com/news/cities/Hyderabad/cyberabad-civic-body-cracks-down-on-eateries-in-madeenaguda-moosapet-over-food-safety-violations/article71029613.ece"
+      },
+      {
+        "domain": "siasat.com",
+        "language": "English",
+        "seendate": "20260525T173000Z",
+        "sourcecountry": "India",
+        "title": "Pest infestation , unhygienic conditions found at Madhapur restaurant",
+        "url": "https://www.siasat.com/pest-infestation-unhygienic-conditions-found-at-madhapur-restaurant-3477195/"
+      },
+      {
+        "domain": "thehindu.com",
+        "language": "English",
+        "seendate": "20260524T153000Z",
+        "sourcecountry": "India",
+        "title": "Salem traders warned against selling banned tobacco products",
+        "url": "https://www.thehindu.com/news/cities/Coimbatore/salem-traders-warned-against-selling-banned-tobacco-products/article71017557.ece"
+      },
+      {
+        "domain": "economictimes.indiatimes.com",
+        "language": "English",
+        "seendate": "20260524T084500Z",
+        "sourcecountry": "India",
+        "title": "200 kg of unhygienic peda found near Vrindavan Banke Bihari Temple ; Authorities launch strict crackdown",
+        "url": "https://economictimes.indiatimes.com/news/new-updates/200-kg-of-unhygienic-peda-found-near-vrindavans-banke-bihari-temple-authorities-launch-strict-crackdown/articleshow/131290040.cms"
+      },
+      {
+        "domain": "economictimes.indiatimes.com",
+        "language": "English",
+        "seendate": "20260524T070000Z",
+        "sourcecountry": "India",
+        "title": "Gujarat saunf adulteration : 3 , 500 kg of fennel seeds dyed with unsafe chemicals seized in major raid",
+        "url": "https://economictimes.indiatimes.com/news/new-updates/gujarat-saunf-adulteration-3500-kg-of-fennel-seeds-allegedly-dyed-with-unsafe-chemicals-seized-in-major-raid/articleshow/131289115.cms"
+      },
+      {
+        "domain": "siasat.com",
+        "language": "English",
+        "seendate": "20260521T174500Z",
+        "sourcecountry": "India",
+        "title": "Police lacks authority to investigate food safety cases : Telangana HC",
+        "url": "https://www.siasat.com/police-lacks-authority-to-investigate-food-safety-cases-telangana-hc-3474969/"
+      },
+      {
+        "domain": "jacarandafm.com",
+        "language": "English",
+        "seendate": "20260521T151500Z",
+        "sourcecountry": "South Africa",
+        "title": "Foodborne disease threat looms over SA schools",
+        "url": "https://www.jacarandafm.com/news/news/foodborne-disease-threat-looms-over-sa-schools/"
+      },
+      {
+        "domain": "bssnews.net",
+        "language": "English",
+        "seendate": "20260523T183000Z",
+        "sourcecountry": "Bangladesh",
+        "title": "Use of organic fertiliser must be increased to ensure safe food production : Abdul Bari",
+        "url": "https://www.bssnews.net/others/389899"
+      },
+      {
+        "domain": "stcatharinesstandard.ca",
+        "language": "English",
+        "seendate": "20260520T203000Z",
+        "sourcecountry": "Canada",
+        "title": "Opposition , unions fear federal cuts could undermine food security",
+        "url": "https://www.stcatharinesstandard.ca/business/opposition-unions-fear-federal-cuts-could-undermine-food-security/article_6f5c8c76-ff80-5649-acab-ea0a13ba117e.html"
+      },
+      {
+        "domain": "scmp.com",
+        "language": "English",
+        "seendate": "20260521T161500Z",
+        "sourcecountry": "China",
+        "title": "Mobile ice cream vendor in Central told to stop selling product due to bacteria",
+        "url": "https://www.scmp.com/news/hong-kong/society/article/3354424/mobile-ice-cream-vendor-central-told-stop-selling-product-due-bacteria"
+      },
+      {
+        "domain": "prokerala.com",
+        "language": "English",
+        "seendate": "20260521T180000Z",
+        "sourcecountry": "India",
+        "title": "Gujarat : Over 2500 kg of adulterated mawa seized in dairy raid , licence suspended",
+        "url": "https://www.prokerala.com/news/articles/a1765797.html"
+      },
+      {
+        "domain": "economictimes.indiatimes.com",
+        "language": "English",
+        "seendate": "20260527T074500Z",
+        "sourcecountry": "India",
+        "title": "Nearly 1 , 000 kg fake chilli , garam masala , turmeric and coriander found in Delhi Khari Baoli , Asia largest wholesale spice market",
+        "url": "https://economictimes.indiatimes.com/news/new-updates/nearly-1000-kg-fake-chilli-garam-masala-turmeric-and-coriander-found-in-delhis-khari-baoli-asias-largest-wholesale-spice-market/articleshow/131343711.cms"
+      },
+      {
+        "domain": "livelaw.in",
+        "language": "English",
+        "seendate": "20260521T151500Z",
+        "sourcecountry": "India",
+        "title": "Karnataka HC Stays FSSAI Advisory , AYUSH Directive Restricting Use Of Ashwagandha Leaves",
+        "url": "https://www.livelaw.in/law-firms/litigation/karnataka-hc-stays-fssai-advisory-ayush-directive-restricting-use-ashwagandha-leaves-535180"
+      },
+      {
+        "domain": "timesofindia.indiatimes.com",
+        "language": "English",
+        "seendate": "20260524T171500Z",
+        "sourcecountry": "India",
+        "title": "Ranchi Gutka Ban Ignored : Paan Shops Continue Sales Despite Health Department Prohibition | Ranchi News",
+        "url": "https://timesofindia.indiatimes.com/city/ranchi/ranchi-gutka-ban-ignored-paan-shops-continue-sales-despite-health-department-prohibition/articleshow/131294730.cms"
+      },
+      {
+        "domain": "cheknews.ca",
+        "language": "English",
+        "seendate": "20260521T020000Z",
+        "sourcecountry": "Canada",
+        "title": "Opposition , unions fear federal cuts could undermine food security",
+        "url": "https://cheknews.ca/opposition-unions-fear-federal-cuts-could-undermine-food-security-1325504/"
+      },
+      {
+        "domain": "niagarafallsreview.ca",
+        "language": "English",
+        "seendate": "20260520T231500Z",
+        "sourcecountry": "Canada",
+        "title": "Opposition , unions fear federal cuts could undermine food security",
+        "url": "https://www.niagarafallsreview.ca/business/opposition-unions-fear-federal-cuts-could-undermine-food-security/article_7dda563e-b23f-5b27-aae7-2767f4f2ed77.html"
+      },
+      {
+        "domain": "prnewswire.com",
+        "language": "English",
+        "seendate": "20260527T023000Z",
+        "sourcecountry": "United States",
+        "title": "Press Advisory : Food Safety Advocate available to speak about recent E . coli Outbreak linked to Kebab Shop Restaurant",
+        "url": "https://www.prnewswire.com/news-releases/press-advisory-food-safety-advocate-available-to-speak-about-recent-e-coli-outbreak-linked-to-kebab-shop-restaurant-302782480.html"
+      },
+      {
+        "domain": "kcrg.com",
+        "language": "English",
+        "seendate": "20260523T061500Z",
+        "sourcecountry": "United States",
+        "title": "Rodent droppings , shrimp in stagnant water among Iowa restaurant violations",
+        "url": "https://www.kcrg.com/2026/05/23/rodent-droppings-shrimp-stagnant-water-among-iowa-restaurant-violations/"
+      },
+      {
+        "domain": "local10.com",
+        "language": "English",
+        "seendate": "20260522T181500Z",
+        "sourcecountry": "United States",
+        "title": "Dirty 30 ! Restaurants with 30 violations or more ! ",
+        "url": "https://www.local10.com/food/dirty-dining/2026/05/22/dirty-30-restaurants-with-30-violations-or-more/"
+      },
+      {
+        "domain": "fox4news.com",
+        "language": "English",
+        "seendate": "20260525T171500Z",
+        "sourcecountry": "United States",
+        "title": "USDA : Health alert for beef served at The Kebab Shop restaurants due to possible E . Coli contamination",
+        "url": "https://www.fox4news.com/news/usda-health-alert-beef-served-kebab-shop-restaurants-due-possible-e-coli-contamination"
+      },
+      {
+        "domain": "fox5atlanta.com",
+        "language": "English",
+        "seendate": "20260525T164500Z",
+        "sourcecountry": "United States",
+        "title": "USDA : Health alert for beef served at The Kebab Shop restaurants due to possible E . Coli contamination",
+        "url": "https://www.fox5atlanta.com/news/usda-health-alert-beef-served-kebab-shop-restaurants-due-possible-e-coli-contamination"
+      },
+      {
+        "domain": "ktvu.com",
+        "language": "English",
+        "seendate": "20260525T190000Z",
+        "sourcecountry": "United States",
+        "title": "USDA : Health alert for beef served at The Kebab Shop restaurants due to possible E . Coli contamination",
+        "url": "https://www.ktvu.com/news/usda-health-alert-beef-served-kebab-shop-restaurants-due-possible-e-coli-contamination"
+      },
+      {
+        "domain": "timesofindia.indiatimes.com",
+        "language": "English",
+        "seendate": "20260525T191500Z",
+        "sourcecountry": "India",
+        "title": "Health team visits village at heart of  food poisoning  deaths | Bhubaneswar News",
+        "url": "https://timesofindia.indiatimes.com/city/bhubaneswar/health-team-visits-village-at-heart-of-food-poisoning-deaths/articleshow/131314955.cms"
+      },
+      {
+        "domain": "retail.economictimes.indiatimes.com",
+        "language": "English",
+        "seendate": "20260527T084500Z",
+        "sourcecountry": "India",
+        "title": "Itc : Food Companies Tweak Labels Amid FSSAI Delay on Front Pack Regulations , ETRetail",
+        "url": "https://retail.economictimes.indiatimes.com/news/food-entertainment/personal-care-pet-supplies-liquor/food-packs-still-dont-tell-the-full-story-firms-make-selective-label-changes-as-fssai-rules-gather-dust/131341459"
+      },
+      {
+        "domain": "foxla.com",
+        "language": "English",
+        "seendate": "20260525T164500Z",
+        "sourcecountry": "United States",
+        "title": "USDA : Health alert for beef served at The Kebab Shop restaurants due to possible E . Coli contamination",
+        "url": "https://www.foxla.com/news/usda-health-alert-beef-served-kebab-shop-restaurants-due-possible-e-coli-contamination"
+      },
+      {
+        "domain": "globalnews.ca",
+        "language": "English",
+        "seendate": "20260522T180000Z",
+        "sourcecountry": "Canada",
+        "title": "Montreal farm recalls broccoli microgreens for possible E . coli contamination",
+        "url": "https://globalnews.ca/news/11860479/montreal-broccoli-microgreen-e-coli/"
+      },
+      {
+        "domain": "asiaone.com",
+        "language": "English",
+        "seendate": "20260521T070000Z",
+        "sourcecountry": "Singapore",
+        "title": "Irish baby food recalled over mould , spoilage fears : SFA",
+        "url": "https://www.asiaone.com:443/singapore/irish-baby-food-recalled-over-mould-spoilage-fears-sfa"
+      },
+      {
+        "domain": "asiaone.com",
+        "language": "English",
+        "seendate": "20260521T073000Z",
+        "sourcecountry": "Singapore",
+        "title": "Irish baby food recalled over mould , spoilage fears : SFA",
+        "url": "https://www.asiaone.com/singapore/irish-baby-food-recalled-over-mould-spoilage-fears-sfa"
+      },
+      {
+        "domain": "newson6.com",
+        "language": "English",
+        "seendate": "20260521T063000Z",
+        "sourcecountry": "United States",
+        "title": "Tulsa Food Not Bombs resumes weekly meals after downtown arrests",
+        "url": "https://www.newson6.com/tulsa-oklahoma-news/tulsa-food-not-bombs-resumes-weekly-meals-after-downtown-arrests"
+      },
+      {
+        "domain": "montrealgazette.com",
+        "language": "English",
+        "seendate": "20260522T121500Z",
+        "sourcecountry": "Canada",
+        "title": "Lufa Farms broccoli microgreens recalled for possible E . coli contamination",
+        "url": "https://montrealgazette.com/news/lufa-farms-broccoli-microgreens-recalled-for-possible-e-coli-contamination/"
+      },
+      {
+        "domain": "rte.ie",
+        "language": "English",
+        "seendate": "20260526T111500Z",
+        "sourcecountry": "Ireland",
+        "title": "Under 10s should not drink slushies with glycerol",
+        "url": "https://www.rte.ie/news/ireland/2026/0526/1575316-glycerol-fsai/"
+      },
+      {
+        "domain": "oxfordmail.co.uk",
+        "language": "English",
+        "seendate": "20260521T124500Z",
+        "sourcecountry": "United Kingdom",
+        "title": "Emergency hygiene shutdown of Oxford burger joint explained",
+        "url": "https://www.oxfordmail.co.uk/news/26127685.emergency-hygiene-shutdown-oxford-burger-joint-explained/"
+      },
+      {
+        "domain": "dailyexcelsior.com",
+        "language": "English",
+        "seendate": "20260527T000000Z",
+        "sourcecountry": "India",
+        "title": "War Against Drugs or Food Adulteration Which battle will save more lives ? ",
+        "url": "https://www.dailyexcelsior.com/war-against-drugs-or-food-adulteration-which-battle-will-save-more-lives-2/"
+      },
+      {
+        "domain": "breakingnews.ie",
+        "language": "English",
+        "seendate": "20260526T140000Z",
+        "sourcecountry": "Ireland",
+        "title": "  It could lead to severe symptom : FSAI warns against slushies for children under 10",
+        "url": "https://www.breakingnews.ie/ireland/it-could-lead-to-severe-symptoms-fsai-warns-against-slushies-for-children-under-10-1905178.html"
+      },
+      {
+        "domain": "birminghammail.co.uk",
+        "language": "English",
+        "seendate": "20260523T070000Z",
+        "sourcecountry": "United Kingdom",
+        "title": "Popular Midlands restaurant scores zero food hygiene rating after  explosion risk  found",
+        "url": "https://www.birminghammail.co.uk/news/midlands-news/popular-midlands-restaurant-scores-zero-33986425"
+      },
+      {
+        "domain": "thehindu.com",
+        "language": "English",
+        "seendate": "20260522T183000Z",
+        "sourcecountry": "India",
+        "title": "HC quashes FIR over food adulteration",
+        "url": "https://www.thehindu.com/news/national/telangana/hc-quashes-fir-over-food-adulteration/article71011806.ece"
+      },
+      {
+        "domain": "news.webindia123.com",
+        "language": "English",
+        "seendate": "20260526T140000Z",
+        "sourcecountry": "India",
+        "title": "Delhi : Crime Branch busts illegal adulterated spice manufacturing unit in Khari Baoli ; one arrested",
+        "url": "https://news.webindia123.com/news/Articles/India/20260526/4454757.html"
+      },
+      {
+        "domain": "globaltimes.cn",
+        "language": "English",
+        "seendate": "20260525T040000Z",
+        "sourcecountry": "China",
+        "title": "Fujian holds 23 officials accountable over additive - soaked bayberry scandal",
+        "url": "https://www.globaltimes.cn/page/202605/1361851.shtml"
+      },
+      {
+        "domain": "birminghammail.co.uk",
+        "language": "English",
+        "seendate": "20260520T194500Z",
+        "sourcecountry": "United Kingdom",
+        "title": "Alum Rock food court suddenly slapped with stop trading order",
+        "url": "https://www.birminghammail.co.uk/news/midlands-news/alum-rock-food-court-suddenly-33983714"
+      },
+      {
+        "domain": "wsmv.com",
+        "language": "English",
+        "seendate": "20260522T180000Z",
+        "sourcecountry": "United States",
+        "title": "  Please use caution : Police warn of bear sighting in Cookeville",
+        "url": "https://www.wsmv.com/2026/05/22/please-use-caution-police-warn-bear-sighting-cookeville/"
+      },
+      {
+        "domain": "dailypioneer.com",
+        "language": "English",
+        "seendate": "20260527T031500Z",
+        "sourcecountry": "India",
+        "title": "Eliminating Trans Fats in India : FSSAI Policy , Enforcement Gaps & Public Health Challenge",
+        "url": "https://dailypioneer.com/news/its-time-to-get-industrial-trans-fats-out-of-our-kitchens"
+      },
+      {
+        "domain": "timeslive.co.za",
+        "language": "English",
+        "seendate": "20260521T073000Z",
+        "sourcecountry": "South Africa",
+        "title": "  Dont blame grieving granny  Ramathuba on food poisoning case",
+        "url": "https://www.timeslive.co.za/news/south-africa/2026-05-21-dont-blame-grieving-granny-ramathuba-on-food-poisoning-case/"
+      },
+      {
+        "domain": "thetelegraphandargus.co.uk",
+        "language": "English",
+        "seendate": "20260524T044500Z",
+        "sourcecountry": "United Kingdom",
+        "title": "On This Day : Taste : BD Festival in Bradford cancelled | Bradford Telegraph and Argus",
+        "url": "https://www.thetelegraphandargus.co.uk/news/26128251.day-taste-bd-festival-bradford-cancelled/"
+      },
+      {
+        "domain": "wlwt.com",
+        "language": "English",
+        "seendate": "20260527T153000Z",
+        "sourcecountry": "United States",
+        "title": "Seasoning sold at Walmart recalled due to salmonella risk",
+        "url": "https://www.wlwt.com/article/walmart-blackstone-seasoning-recall-salmonella/71420202"
+      },
+      {
+        "domain": "newkerala.com",
+        "language": "English",
+        "seendate": "20260523T100000Z",
+        "sourcecountry": "India",
+        "title": "Gujarat Seizes Adulterated Fennel Seeds in Unjha",
+        "url": "https://www.newkerala.com/news/a/gujarat-3548-kg-fennel-seeds-mixed-prohibited-colour-488.htm"
+      },
+      {
+        "domain": "yahoo.com",
+        "language": "English",
+        "seendate": "20260525T191500Z",
+        "sourcecountry": "United States",
+        "title": "Recall alert ! Check your refrigerators and garages for these 4 products",
+        "url": "https://www.yahoo.com/news/us/articles/recall-alert-check-refrigerators-garages-121539007.html"
+      },
+      {
+        "domain": "healio.com",
+        "language": "English",
+        "seendate": "20260526T170000Z",
+        "sourcecountry": "United States",
+        "title": "What you need to know about flying with food allergies",
+        "url": "https://www.healio.com/news/allergy-asthma/20260526/what-patients-clinicians-need-to-know-about-flying-with-food-allergies"
+      },
+      {
+        "domain": "sunstar.com.ph",
+        "language": "English",
+        "seendate": "20260520T180000Z",
+        "sourcecountry": "Philippines",
+        "title": "Davao Flood Leaves 1 Dead , Collapses Callawa Bridge",
+        "url": "https://www.sunstar.com.ph/davao/davao-flood-leaves-1-dead-collapses-callawa-bridge"
+      },
+      {
+        "domain": "kentonline.co.uk",
+        "language": "English",
+        "seendate": "20260522T023000Z",
+        "sourcecountry": "United Kingdom",
+        "title": "Coffee Goat in Station Approach , Dartford , given one - star hygiene rating after inspection",
+        "url": "https://www.kentonline.co.uk/dartford/news/coffee-shop-handed-one-star-hygiene-rating-after-inspectors-340513/"
+      },
+      {
+        "domain": "punchng.com",
+        "language": "English",
+        "seendate": "20260525T131500Z",
+        "sourcecountry": "Nigeria",
+        "title": "Aproko Doctor Warns Nigerians Against Spoiled Tomatoes",
+        "url": "https://punchng.com/aproko-doctor-warns-nigerians-against-consumption-of-spoiled-tomatoes/"
+      }
+    ],
+    "query": "food safety sourcelang:english tone<-2"
+  },
+  "fetched_at": "2026-05-27T17:56:32Z",
+  "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=food+safety+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
+}

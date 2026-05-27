@@ -1,6 +1,8 @@
 .PHONY: up up.full down reset \
         schema.migrate schema.seed seed.lots seed.events seed.demo seed.synthetic \
         seed.toronto seed.toronto.retailers seed.toronto.facilities seed.toronto.skus \
+        seed.commodity_prices seed.fx_rates seed.fx_world seed.fred_prices \
+        seed.weather_signals seed.news_signals \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -10,8 +12,13 @@
 POSTGRES_USER ?= bakery
 POSTGRES_DB   ?= bakery
 
-# uv command — auto-detect; override with UV=/path/to/uv make ...
-UV ?= $(shell which uv 2>/dev/null || echo ~/.local/bin/uv)
+# uv command — auto-detect; override with UV="..." make ...
+# Windows lacks `which` and the ~/.local/bin/uv fallback isn't a real path there.
+ifeq ($(OS),Windows_NT)
+    UV ?= python -m uv
+else
+    UV ?= $(shell command -v uv 2>/dev/null || echo ~/.local/bin/uv)
+endif
 
 # --- Infra ---
 
@@ -47,9 +54,12 @@ schema.migrate:
 #   3. seed_synthetic.py            -- production_lines, warehouse_costs,
 #                                       allergen_changeovers, production_formulas
 #                                       (engineering_judgment_demo_only)
-#   4. seed_lots.py                 -- ingredient_lots (curated scenarios +
+#   4. seed.sql (again)             -- production_orders + finished_goods_pallets +
+#                                       app_users DO blocks depend on facilities
+#                                       being present, so re-apply once seeded.
+#   5. seed_lots.py                 -- ingredient_lots (curated scenarios +
 #                                       Faker bulk fill)
-#   5. seed_demo.py                 -- transactional layer: action_cards,
+#   6. seed_demo.py                 -- transactional layer: action_cards,
 #                                       supplier_orders, production_schedules,
 #                                       production_runs, waste_events,
 #                                       finished_goods_pallets (with
@@ -62,8 +72,6 @@ schema.seed:
 		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_toronto_facilities.py
 	$(UV) run infra/seed_synthetic.py
-	# Re-apply seed.sql so the production_orders + finished_goods_pallets +
-	# app_users DO blocks (which depend on facilities being present) can run.
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_lots.py
@@ -98,6 +106,41 @@ seed.toronto.facilities:
 
 seed.toronto.skus:
 	$(UV) run infra/seed_toronto_skus.py
+
+# Live-fetches daily commodity OHLCV from Yahoo Finance (wheat, sugar, corn,
+# soybean oil, natural gas, crude) and upserts into commodity_prices. No API
+# key required. Re-run any time to refresh.
+seed.commodity_prices:
+	$(UV) run infra/seed_commodity_prices.py
+
+# Live-fetches daily FX reference rates (CAD/USD, CAD/EUR) from the
+# Bank of Canada Valet API into commodity_prices. No API key required.
+seed.fx_rates:
+	$(UV) run infra/seed_fx_rates.py
+
+# Live-fetches 21-day weather (7 past + 14 forecast) per facility from
+# Open-Meteo and writes weather-risk rows to disruption_signals. No API
+# key required. Requires facilities.latitude/longitude (seed.toronto.facilities).
+seed.weather_signals:
+	$(UV) run infra/seed_weather_signals.py
+
+# Live-queries the GDELT 2.0 DOC API for negative-tone news on supply-chain
+# keywords (wheat shortage, port congestion, freight strike, ...) and writes
+# news-risk rows to disruption_signals. No API key required.
+seed.news_signals:
+	$(UV) run infra/seed_news_signals.py
+
+# Live-fetches daily ECB reference FX rates for 8 USD pairs (EUR, GBP, JPY,
+# CHF, CAD, MXN, CNY, AUD) from Frankfurter.app. Documented public API,
+# no API key required. Complements seed.fx_rates (which is CAD-base only).
+seed.fx_world:
+	$(UV) run infra/seed_fx_world.py
+
+# Live-fetches official US Federal Reserve commodity + macro series (WTI crude,
+# Henry Hub natgas, IMF wheat, US food CPI, CAD/USD) into commodity_prices.
+# Requires FRED_API_KEY in .env (free signup at fred.stlouisfed.org).
+seed.fred_prices:
+	$(UV) run infra/seed_fred_prices.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:

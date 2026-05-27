@@ -1,0 +1,217 @@
+{
+  "data": {
+    "articles": [
+      {
+        "domain": "tribune.com.pk",
+        "language": "English",
+        "seendate": "20260522T063000Z",
+        "sourcecountry": "Pakistan",
+        "title": "Wheat devolution fuelling agri crisis",
+        "url": "https://tribune.com.pk/story/2609443/wheat-devolution-fuelling-agri-crisis"
+      },
+      {
+        "domain": "aninews.in",
+        "language": "English",
+        "seendate": "20260524T124500Z",
+        "sourcecountry": "India",
+        "title": "Pakistan wheat crisis deepens as policy failures trigger fear of shortages",
+        "url": "https://aninews.in/news/world/asia/pakistans-wheat-crisis-deepens-as-policy-failures-trigger-fear-of-shortages20260524164152/"
+      },
+      {
+        "domain": "adn.com",
+        "language": "English",
+        "seendate": "20260521T054500Z",
+        "sourcecountry": "United States",
+        "title": "As farmers are hit hard by weather extremes and growing costs , wheat crop could be worst since 1972",
+        "url": "https://www.adn.com/nation-world/2026/05/20/as-farmers-are-hit-hard-by-weather-extremes-and-growing-costs-wheat-crop-could-be-worst-since-1972/"
+      },
+      {
+        "domain": "sun-sentinel.com",
+        "language": "English",
+        "seendate": "20260520T191500Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.sun-sentinel.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "insurancejournal.com",
+        "language": "English",
+        "seendate": "20260526T174500Z",
+        "sourcecountry": "United States",
+        "title": "Record - Setting Drought Devastates Wheat Crop in Kansas",
+        "url": "https://www.insurancejournal.com/news/midwest/2026/05/26/871364.htm"
+      },
+      {
+        "domain": "theoaklandpress.com",
+        "language": "English",
+        "seendate": "20260522T141500Z",
+        "sourcecountry": "United States",
+        "title": "Kansas farmers hit hard by weather extremes and growing costs , wheat crop could be worst since 1972",
+        "url": "https://www.theoaklandpress.com/2026/05/22/kansas-farmers-hit-hard-by-weather-extremes-and-growing-costs-wheat-crop-could-be-worst-since-1972/"
+      },
+      {
+        "domain": "timescall.com",
+        "language": "English",
+        "seendate": "20260520T200000Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.timescall.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "readingeagle.com",
+        "language": "English",
+        "seendate": "20260520T200000Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.readingeagle.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "zerohedge.com",
+        "language": "English",
+        "seendate": "20260522T000000Z",
+        "sourcecountry": "United States",
+        "title": "We Are 6 Months From Global Food Shortages Because Farmers Are Facing A Quadruple Whammy Crisis",
+        "url": "https://www.zerohedge.com/personal-finance/we-are-6-months-global-food-shortages-because-farmers-are-facing-quadruple-whammy"
+      },
+      {
+        "domain": "sanantoniopost.com",
+        "language": "English",
+        "seendate": "20260524T160000Z",
+        "sourcecountry": "United States",
+        "title": "Pakistan wheat crisis deepens as policy failures trigger fear of shortages",
+        "url": "http://www.sanantoniopost.com/news/279072881/pakistan-wheat-crisis-deepens-as-policy-failures-trigger-fear-of-shortages"
+      },
+      {
+        "domain": "mexicostar.com",
+        "language": "English",
+        "seendate": "20260524T144500Z",
+        "sourcecountry": "Mexico",
+        "title": "Pakistan wheat crisis deepens as policy failures trigger fear of shortages",
+        "url": "http://www.mexicostar.com/news/279072881/pakistan-wheat-crisis-deepens-as-policy-failures-trigger-fear-of-shortages"
+      },
+      {
+        "domain": "pakistantelegraph.com",
+        "language": "English",
+        "seendate": "20260524T154500Z",
+        "sourcecountry": "Pakistan",
+        "title": "Pakistan wheat crisis deepens as policy failures trigger fear of shortages",
+        "url": "http://www.pakistantelegraph.com/news/279072881/pakistan-wheat-crisis-deepens-as-policy-failures-trigger-fear-of-shortages"
+      },
+      {
+        "domain": "milwaukeesun.com",
+        "language": "English",
+        "seendate": "20260524T131500Z",
+        "sourcecountry": "United States",
+        "title": "Pakistan wheat crisis deepens as policy failures trigger fear of shortages",
+        "url": "http://www.milwaukeesun.com/news/279072881/pakistan-wheat-crisis-deepens-as-policy-failures-trigger-fear-of-shortages"
+      },
+      {
+        "domain": "theeconomiccollapseblog.com",
+        "language": "English",
+        "seendate": "20260520T223000Z",
+        "sourcecountry": "United States",
+        "title": "We Are 6 Months From Global Food Shortages Because Farmers Are Facing A Quadruple Whammy Crisis",
+        "url": "http://theeconomiccollapseblog.com/we-are-6-months-from-global-food-shortages-because-farmers-are-facing-a-quadruple-whammy-crisis/"
+      },
+      {
+        "domain": "newindianexpress.com",
+        "language": "English",
+        "seendate": "20260521T131500Z",
+        "sourcecountry": "India",
+        "title": "Petrol pumps in Punjab run dry , dealers seek immediate govt intervention to increase fuel supply",
+        "url": "https://www.newindianexpress.com/india/2026/May/21/petrol-pumps-in-punjab-run-dry-dealers-seek-immediate-govt-intervention-to-increase-fuel-supply"
+      },
+      {
+        "domain": "agweek.com",
+        "language": "English",
+        "seendate": "20260522T143000Z",
+        "sourcecountry": "United States",
+        "title": "The wheat market risk map is expanding",
+        "url": "https://www.agweek.com/business/markets/the-wheat-markets-risk-map-is-expanding"
+      },
+      {
+        "domain": "tribtoday.com",
+        "language": "English",
+        "seendate": "20260523T050000Z",
+        "sourcecountry": "United States",
+        "title": "Trouble on the farm | News , Sports , Jobs - Tribune Chronicle",
+        "url": "https://www.tribtoday.com/news/business/2026/05/trouble-on-the-farm/"
+      },
+      {
+        "domain": "lockhaven.com",
+        "language": "English",
+        "seendate": "20260521T044500Z",
+        "sourcecountry": "United States",
+        "title": "Kansas farmers hit hard by weather extremes and growing costs , wheat crop could be worst since 1972 | News , Sports , Jobs",
+        "url": "https://www.lockhaven.com/uncategorized/2026/05/kansas-farmers-hit-hard-by-weather-extremes-and-growing-costs-wheat-crop-could-be-worst-since-1972/"
+      },
+      {
+        "domain": "akronnewsreporter.com",
+        "language": "English",
+        "seendate": "20260520T180000Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.akronnewsreporter.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "dailydemocrat.com",
+        "language": "English",
+        "seendate": "20260520T180000Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.dailydemocrat.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "greeleytribune.com",
+        "language": "English",
+        "seendate": "20260520T180000Z",
+        "sourcecountry": "United States",
+        "title": "Kansas wheat farmers hit hard by weather extremes and growing costs",
+        "url": "https://www.greeleytribune.com/2026/05/20/climate-drought-wheat-farmers/"
+      },
+      {
+        "domain": "moroccoworldnews.com",
+        "language": "English",
+        "seendate": "20260523T014500Z",
+        "sourcecountry": "Morocco",
+        "title": "Inside Morocco  Fraqchia  Crisis and the Billions That Failed Consumers",
+        "url": "https://www.moroccoworldnews.com/2026/05/306903/inside-moroccos-fraqchia-crisis-and-the-billions-that-failed-consumers/"
+      },
+      {
+        "domain": "stuyspec.com",
+        "language": "English",
+        "seendate": "20260523T060000Z",
+        "sourcecountry": "United States",
+        "title": "The Cost of Craze : How Trends Exploit Cultural Ingredients",
+        "url": "https://stuyspec.com/article/the-cost-of-craze-how-trends-exploit-cultural-ingredients"
+      },
+      {
+        "domain": "gavi.org",
+        "language": "English",
+        "seendate": "20260521T180000Z",
+        "sourcecountry": "United States",
+        "title": "What a list of Black Death survivors reveals about the way people recovered from plague",
+        "url": "https://www.gavi.org/vaccineswork/what-list-black-death-survivors-reveals-about-way-people-recovered-plague"
+      },
+      {
+        "domain": "punchng.com",
+        "language": "English",
+        "seendate": "20260523T010000Z",
+        "sourcecountry": "Nigeria",
+        "title": "Rising Poultry Costs Push Eggs , Chicken Beyond Reach in Nige",
+        "url": "https://punchng.com/rising-poultry-costs-push-eggs-chicken-beyond-reach/"
+      },
+      {
+        "domain": "asianews.network",
+        "language": "English",
+        "seendate": "20260525T040000Z",
+        "sourcecountry": "China",
+        "title": "Rhino sightings in urban areas in Nepal Chitwan raise conservation concerns – Asia News Network",
+        "url": "https://asianews.network/rhino-sightings-in-urban-areas-in-nepals-chitwan-raise-conservation-concerns/"
+      }
+    ],
+    "query": "wheat shortage sourcelang:english tone<-2"
+  },
+  "fetched_at": "2026-05-27T17:48:45Z",
+  "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=wheat+shortage+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
+}

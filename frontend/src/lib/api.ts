@@ -440,10 +440,38 @@ export interface AdminTableRowsResponse {
   total: number;
   page: number;
   per_page: number;
+  active_filters?: Record<string, string>;
+}
+
+export interface AdminTableFilterOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface AdminTableFilter {
+  column: string;
+  label: string;
+  options: AdminTableFilterOption[];
+}
+
+export interface AdminTableFiltersResponse {
+  table: string;
+  filters: AdminTableFilter[];
 }
 
 export async function fetchAdminTables(): Promise<AdminTableInfo[] | null> {
   return safeFetch<AdminTableInfo[]>("/api/admin/tables", undefined, 10000);
+}
+
+export async function fetchAdminTableFilters(
+  table: string,
+): Promise<AdminTableFiltersResponse | null> {
+  return safeFetch<AdminTableFiltersResponse>(
+    `/api/admin/tables/${encodeURIComponent(table)}/filters`,
+    undefined,
+    10000,
+  );
 }
 
 export async function fetchAdminTableRows(
@@ -452,12 +480,18 @@ export async function fetchAdminTableRows(
   perPage = 50,
   sort?: string,
   order?: "asc" | "desc",
+  filters?: Record<string, string>,
 ): Promise<AdminTableRowsResponse | null> {
   const qs = new URLSearchParams();
   qs.set("page", String(page));
   qs.set("per_page", String(perPage));
   if (sort) qs.set("sort", sort);
   if (order) qs.set("order", order);
+  if (filters) {
+    for (const [column, value] of Object.entries(filters)) {
+      if (value) qs.set(`filter_${column}`, value);
+    }
+  }
   return safeFetch<AdminTableRowsResponse>(
     `/api/admin/tables/${encodeURIComponent(table)}/rows?${qs.toString()}`,
     undefined,
@@ -482,6 +516,49 @@ export async function updateAdminCopilotModel(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model_id: modelId }),
   });
+}
+
+export interface AdminDataSource {
+  id: string;
+  label: string;
+  description: string;
+  target_tables: string[];
+  typical_runtime_seconds: number;
+  last_at: string | null;
+  last_status: "ok" | "failed" | null;
+  last_message: string | null;
+  last_rows: number | null;
+  interval_seconds: number;
+  running: boolean;
+}
+
+export async function fetchAdminDataSources(): Promise<AdminDataSource[] | null> {
+  return safeFetch<AdminDataSource[]>("/api/admin/data-sources", undefined, 10000);
+}
+
+export async function refreshAdminDataSource(
+  sourceId: string,
+): Promise<AdminDataSource | null> {
+  return safeFetch<AdminDataSource>(
+    `/api/admin/data-sources/${encodeURIComponent(sourceId)}/refresh`,
+    { method: "POST" },
+    10000,
+  );
+}
+
+export async function setAdminDataSourceInterval(
+  sourceId: string,
+  intervalSeconds: number,
+): Promise<AdminDataSource | null> {
+  return safeFetch<AdminDataSource>(
+    `/api/admin/data-sources/${encodeURIComponent(sourceId)}/interval`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interval_seconds: intervalSeconds }),
+    },
+    10000,
+  );
 }
 
 // ---------- Users + settings ----------

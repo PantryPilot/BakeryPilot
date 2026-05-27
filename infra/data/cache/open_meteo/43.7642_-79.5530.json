@@ -1,0 +1,158 @@
+{
+  "data": {
+    "daily": [
+      {
+        "date": "2026-05-20",
+        "precip_mm": 0.0,
+        "tmax": 20.9,
+        "tmin": 8.9,
+        "wind_gust_kmh": 55.8
+      },
+      {
+        "date": "2026-05-21",
+        "precip_mm": 0.0,
+        "tmax": 16.3,
+        "tmin": 5.8,
+        "wind_gust_kmh": 41.8
+      },
+      {
+        "date": "2026-05-22",
+        "precip_mm": 0.0,
+        "tmax": 16.1,
+        "tmin": 7.4,
+        "wind_gust_kmh": 44.6
+      },
+      {
+        "date": "2026-05-23",
+        "precip_mm": 26.5,
+        "tmax": 14.7,
+        "tmin": 7.6,
+        "wind_gust_kmh": 63.0
+      },
+      {
+        "date": "2026-05-24",
+        "precip_mm": 0.0,
+        "tmax": 14.6,
+        "tmin": 7.9,
+        "wind_gust_kmh": 46.4
+      },
+      {
+        "date": "2026-05-25",
+        "precip_mm": 0.0,
+        "tmax": 22.0,
+        "tmin": 12.5,
+        "wind_gust_kmh": 26.3
+      },
+      {
+        "date": "2026-05-26",
+        "precip_mm": 0.0,
+        "tmax": 28.9,
+        "tmin": 14.1,
+        "wind_gust_kmh": 34.9
+      },
+      {
+        "date": "2026-05-27",
+        "precip_mm": 0.0,
+        "tmax": 25.5,
+        "tmin": 15.6,
+        "wind_gust_kmh": 46.1
+      },
+      {
+        "date": "2026-05-28",
+        "precip_mm": 0.0,
+        "tmax": 17.7,
+        "tmin": 12.1,
+        "wind_gust_kmh": 40.7
+      },
+      {
+        "date": "2026-05-29",
+        "precip_mm": 0.0,
+        "tmax": 22.3,
+        "tmin": 8.8,
+        "wind_gust_kmh": 56.5
+      },
+      {
+        "date": "2026-05-30",
+        "precip_mm": 0.0,
+        "tmax": 20.2,
+        "tmin": 7.2,
+        "wind_gust_kmh": 47.5
+      },
+      {
+        "date": "2026-05-31",
+        "precip_mm": 0.0,
+        "tmax": 22.0,
+        "tmin": 10.0,
+        "wind_gust_kmh": 25.9
+      },
+      {
+        "date": "2026-06-01",
+        "precip_mm": 0.0,
+        "tmax": 21.5,
+        "tmin": 10.3,
+        "wind_gust_kmh": 34.9
+      },
+      {
+        "date": "2026-06-02",
+        "precip_mm": 0.0,
+        "tmax": 19.4,
+        "tmin": 11.0,
+        "wind_gust_kmh": 47.2
+      },
+      {
+        "date": "2026-06-03",
+        "precip_mm": 0.0,
+        "tmax": 21.9,
+        "tmin": 8.9,
+        "wind_gust_kmh": 44.3
+      },
+      {
+        "date": "2026-06-04",
+        "precip_mm": 0.0,
+        "tmax": 23.8,
+        "tmin": 11.6,
+        "wind_gust_kmh": 44.6
+      },
+      {
+        "date": "2026-06-05",
+        "precip_mm": 0.0,
+        "tmax": 24.8,
+        "tmin": 14.1,
+        "wind_gust_kmh": 50.4
+      },
+      {
+        "date": "2026-06-06",
+        "precip_mm": 0.3,
+        "tmax": 23.3,
+        "tmin": 14.7,
+        "wind_gust_kmh": 47.5
+      },
+      {
+        "date": "2026-06-07",
+        "precip_mm": 0.0,
+        "tmax": 26.3,
+        "tmin": 12.1,
+        "wind_gust_kmh": 30.6
+      },
+      {
+        "date": "2026-06-08",
+        "precip_mm": 0.0,
+        "tmax": 29.0,
+        "tmin": 14.3,
+        "wind_gust_kmh": 43.9
+      },
+      {
+        "date": "2026-06-09",
+        "precip_mm": 0.0,
+        "tmax": 30.6,
+        "tmin": 16.3,
+        "wind_gust_kmh": 42.5
+      }
+    ],
+    "latitude": 43.751816,
+    "longitude": -79.54325,
+    "timezone": "America/Toronto"
+  },
+  "fetched_at": "2026-05-27T18:15:58Z",
+  "source_url": "https://api.open-meteo.com/v1/forecast?latitude=43.7642&longitude=-79.553&daily=temperature_2m_max%2Ctemperature_2m_min%2Cprecipitation_sum%2Cwind_gusts_10m_max&forecast_days=14&past_days=7&timezone=auto"
+}

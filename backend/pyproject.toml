@@ -16,6 +16,9 @@ dependencies = [
     "bakery-pilot-agent",
     "psycopg2-binary>=2.9.12",
     "greenlet>=3.5.1",
+    # `uv` is bundled so the data-refresh service can shell out to
+    # `uv run infra/seed_*.py` regardless of whether uv is on the host PATH.
+    "uv>=0.4",
 ]
 
 [tool.uv.sources]

@@ -1,0 +1,41 @@
+{
+  "data": {
+    "articles": [
+      {
+        "domain": "moneycontrol.com",
+        "language": "English",
+        "seendate": "20260527T093000Z",
+        "sourcecountry": "India",
+        "title": "Book Extract | The Buried City : What Pompeii Says About Us",
+        "url": "https://www.moneycontrol.com/books/book-extract-the-buried-city-what-pompeii-says-about-us-article-13932607.html"
+      },
+      {
+        "domain": "dailypioneer.com",
+        "language": "English",
+        "seendate": "20260527T031500Z",
+        "sourcecountry": "India",
+        "title": "Eliminating Trans Fats in India : FSSAI Policy , Enforcement Gaps & Public Health Challenge",
+        "url": "https://dailypioneer.com/news/its-time-to-get-industrial-trans-fats-out-of-our-kitchens"
+      },
+      {
+        "domain": "jerseyeveningpost.com",
+        "language": "English",
+        "seendate": "20260521T104500Z",
+        "sourcecountry": "United Kingdom",
+        "title": "Mystery of Tuula  disappearance  after waiting alone at rainy bus stop",
+        "url": "https://jerseyeveningpost.com/features/2026/05/19/mystery-of-tuulas-disappearance-after-waiting-alone-at-rainy-bus-stop/"
+      },
+      {
+        "domain": "wgcu.org",
+        "language": "English",
+        "seendate": "20260523T131500Z",
+        "sourcecountry": "United States",
+        "title": "Early settler and Union drummer boy Christian  Dad  Funck to be remembered during Memorial Day ceremony at Old Fort Myers Cemetery",
+        "url": "https://www.wgcu.org/top-story/2026-05-23/early-settler-and-union-drummer-boy-christian-dad-funck-to-be-remembered-during-memorial-day-ceremony-at-old-fort-myers-cemetery"
+      }
+    ],
+    "query": "bakery recall sourcelang:english tone<-2"
+  },
+  "fetched_at": "2026-05-27T17:56:01Z",
+  "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=bakery+recall+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
+}

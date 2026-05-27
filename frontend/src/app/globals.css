@@ -421,6 +421,48 @@ body {
   color: var(--bp-text-subtle) !important;
 }
 
+/* Admin table — zebra rows + bold header in light mode */
+:root[data-theme="light"] .bp-admin-table thead tr {
+  background-color: var(--bp-surface-strong) !important;
+  border-bottom-color: var(--bp-border) !important;
+}
+:root[data-theme="light"] .bp-admin-table thead th {
+  color: var(--bp-text-primary) !important;
+  border-right-color: var(--bp-border) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:nth-child(even) {
+  background-color: var(--bp-surface) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:nth-child(odd) {
+  background-color: rgb(241 245 249 / 0.65) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:hover {
+  background-color: rgb(226 232 240 / 0.85) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody td {
+  border-right-color: var(--bp-border) !important;
+  color: #0f172a !important; /* slate-900 */
+}
+:root[data-theme="light"] .bp-admin-table tbody td.bp-admin-cell a {
+  color: #0f172a !important;
+  text-decoration-color: #94a3b8 !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody td.bp-admin-cell a:hover {
+  color: #1d4ed8 !important;
+  text-decoration-color: #1d4ed8 !important;
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell {
+  color: #e2e8f0 !important; /* slate-200 */
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell a {
+  color: #f1f5f9 !important;
+  text-decoration-color: #64748b !important;
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell a:hover {
+  color: #93c5fd !important;
+  text-decoration-color: #93c5fd !important;
+}
+
 /* FlowSight SVG theme compatibility */
 .bp-flow-canvas {
   --bp-flow-node-bg: #0c111c;
