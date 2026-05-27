@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
@@ -27,6 +28,8 @@ function nowTime() {
 export function CopilotButton() {
   const { chatOpen, setChatOpen } = useApp();
   const [popupClosing, setPopupClosing] = useState(false);
+  const pathname = usePathname();
+  const bottomClass = pathname === '/facilities' ? 'bottom-[132px]' : 'bottom-6';
 
   const handleClose = useCallback(() => {
     setPopupClosing(true);
@@ -42,7 +45,7 @@ export function CopilotButton() {
     <>
       <button
         onClick={handleToggle}
-        className="fixed bottom-[132px] right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
+        className={`fixed ${bottomClass} right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all`}
         title="Copilot"
       >
         {chatOpen

@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
-import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useEsgCounter } from "../lib/hooks";
+import type { BackendYieldTelemetryPoint } from "../lib/api";
+import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 130;
@@ -319,7 +320,7 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
         )}
       </div>
       {/* Controls row */}
-      <div className="flex items-center px-4 gap-3 h-[75px]">
+      <div className="flex items-center pl-8 pr-4 gap-3 h-[75px]">
         {/* Play + speed buttons */}
         <div className="flex items-center gap-1.5">
           <button onClick={handlePlay} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
@@ -327,19 +328,6 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
           </button>
           {[1, 2, 5].map(s => (
             <button key={s} onClick={() => setSpeed(s)} className={`px-2 h-8 rounded-md border text-[11px] font-mono transition ${speed === s ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}>{s}×</button>
-          ))}
-        </div>
-        {/* Vertical flow legend */}
-        <div className="flex flex-col gap-[5px] pl-3 border-l border-slate-800">
-          {[
-            { color: "#3b82f6", label: "inbound" },
-            { color: "#f97316", label: "outbound" },
-            { color: "#94a3b8", label: "transfer" },
-          ].map((f, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <span className="inline-block w-2.5 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
-              <span className="text-[9px] text-slate-500 font-mono">{f.label}</span>
-            </div>
           ))}
         </div>
         {/* Scrubber track */}
@@ -375,6 +363,8 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
   const facility = facilities.find(f => f.short_code === plant.id);
   const facilityId = facility?.facility_id ?? null;
   const { data: util } = useFacilityUtilization(facilityId);
+  const { data: activeRuns, status: runsStatus } = useActiveRuns(facilityId);
+  const { data: yieldPoints } = useYieldTelemetry();
 
   const zoneMap = new Map(util?.zones.map(z => [z.zone, z]) ?? []);
   const frozen = zoneMap.get("frozen");
@@ -388,14 +378,28 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
     { name: "Dry",          pct: dry?.pct    ?? plant.util.dry,    used: dry?.used_kg,    cap: dry?.capacity_kg    ?? 42000, color: "bg-slate-400" },
   ];
 
-  // Demo line snapshot (kept in UI for hackathon — backend active_runs is exposed
-  // via the dashboard endpoints but the visual lane composition stays UI-owned).
+  // Map backend active runs by line number for overlay.
+  const runByLine = new Map(activeRuns.map(r => [r.line_number, r]));
+
+  // Latest yield telemetry per line for this facility.
+  const latestYieldByLine = new Map<number, BackendYieldTelemetryPoint>();
+  for (const pt of yieldPoints) {
+    if (facilityId && pt.facility_id !== facilityId) continue;
+    const lineNum = parseInt(pt.line_id.replace("line_", ""), 10);
+    if (!isNaN(lineNum)) {
+      const existing = latestYieldByLine.get(lineNum);
+      if (!existing || pt.date > existing.date) latestYieldByLine.set(lineNum, pt);
+    }
+  }
+
+  // Fallback line snapshot for when the backend has no active runs.
   const batchByLine: Record<number, { sku: string; qty: number; expiryLot: string; expiryH: number | null; status: string }> = {
     1: { sku: "Blueberry Muffin 12pk", qty: 4800, expiryLot: "LOT-21884", expiryH: 6,   status: "amber" },
     2: { sku: "Butter Croissant 6pk",  qty: 3200, expiryLot: "—",         expiryH: null, status: "ok" },
     3: { sku: "Cinnamon Bagel 8pk",    qty: 6200, expiryLot: "—",         expiryH: null, status: "ok" },
     4: { sku: "Chocolate Cookie 24pk", qty: 7400, expiryLot: "LOT-21999", expiryH: 48,  status: "ok" },
   };
+  const lineCount = facility?.line_count ?? 4;
   return (
     <div
       style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
@@ -436,18 +440,27 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Active production lines · floor view</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+            Active production lines · floor view
+            {runsStatus === "live" && activeRuns.length > 0 && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="rounded-md border border-slate-800 bg-slate-900/30 p-3 space-y-2">
-            {[1, 2, 3, 4].map(lineNum => {
+            {Array.from({ length: lineCount }, (_, i) => i + 1).map(lineNum => {
+              const run = runByLine.get(lineNum);
               const b = batchByLine[lineNum];
+              const sku = run?.sku_name ?? b?.sku ?? `Line ${lineNum}`;
+              const qty = run?.planned_kg ?? run?.actual_kg ?? b?.qty ?? 0;
+              const isLive = !!run;
+              const rowStatus = b?.status ?? "ok";
               return (
                 <div key={lineNum} className="flex items-center gap-2">
                   <div className="w-12 text-[10px] font-mono text-slate-500 shrink-0">Line {lineNum}</div>
                   <div className="flex-1 h-9 rounded bg-slate-800/40 relative overflow-hidden">
-                    <div className={`absolute inset-y-0 left-0 px-2.5 flex items-center gap-2 rounded ${b.status === "amber" ? "border-l-2 border-amber-500 bg-amber-500/5" : "border-l-2 border-emerald-500/60 bg-emerald-500/5"}`} style={{ width: "92%" }}>
-                      <span className="text-[12px] text-slate-100">{b.sku}</span>
-                      <span className="text-[10px] font-mono text-slate-500">{b.qty.toLocaleString()} u</span>
-                      {b.expiryH !== null && (
+                    <div className={`absolute inset-y-0 left-0 px-2.5 flex items-center gap-2 rounded ${rowStatus === "amber" ? "border-l-2 border-amber-500 bg-amber-500/5" : "border-l-2 border-emerald-500/60 bg-emerald-500/5"}`} style={{ width: "92%" }}>
+                      <span className="text-[12px] text-slate-100">{sku}</span>
+                      <span className="text-[10px] font-mono text-slate-500">{qty.toLocaleString()} {isLive ? "kg" : "u"}</span>
+                      {isLive && <span className="text-[9px] font-mono text-emerald-400 ml-auto mr-1">live</span>}
+                      {!isLive && b?.expiryH !== null && b?.expiryH !== undefined && (
                         <Pill tone={b.expiryH < 12 ? "red" : b.expiryH < 24 ? "amber" : "ghost"} className="ml-auto mr-2">{b.expiryLot} · {b.expiryH}h</Pill>
                       )}
                     </div>
@@ -458,12 +471,26 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Yield per line</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+            Yield per line
+            {latestYieldByLine.size > 0 && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <YieldCounter actual={93.4} target={97.1} lostDollars={2341} anomaly={plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null}/>
-            <YieldCounter actual={97.8} target={97.1} lostDollars={0}/>
-            <YieldCounter actual={96.4} target={97.1} lostDollars={420}/>
-            <YieldCounter actual={97.2} target={97.1} lostDollars={0}/>
+            {Array.from({ length: Math.min(lineCount, 4) }, (_, i) => i + 1).map(lineNum => {
+              const pt = latestYieldByLine.get(lineNum);
+              const fallbackYield: Record<number, { actual: number; target: number; lost: number; anomaly: string | null }> = {
+                1: { actual: 93.4, target: 97.1, lost: 2341, anomaly: plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null },
+                2: { actual: 97.8, target: 97.1, lost: 0, anomaly: null },
+                3: { actual: 96.4, target: 97.1, lost: 420, anomaly: null },
+                4: { actual: 97.2, target: 97.1, lost: 0, anomaly: null },
+              };
+              const fb = fallbackYield[lineNum] ?? { actual: 97.0, target: 97.1, lost: 0, anomaly: null };
+              const actual = pt?.actual_pct ?? fb.actual;
+              const target = pt?.target_pct ?? fb.target;
+              const lost = pt ? (actual < target ? Math.round((target - actual) * 100) : 0) : fb.lost;
+              const anomaly = actual < 95 && plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null;
+              return <YieldCounter key={lineNum} actual={actual} target={target} lostDollars={lost} anomaly={anomaly}/>;
+            })}
           </div>
         </div>
         <div className="space-y-2">
@@ -477,6 +504,46 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
         <button onClick={onAskCopilot} className="w-full py-2.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[13px] transition flex items-center justify-center gap-2">
           <Icon name="chat" size={14}/> Ask copilot about {plant.name}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function FlowLegend() {
+  const { data: esg, status: esgStatus } = useEsgCounter();
+  const liveEsg = esgStatus === "live";
+  const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()         : "--";
+  const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`           : "--";
+  const moqVal     = liveEsg && esg.moqTaxYtd       !== undefined ? `$${(esg.moqTaxYtd / 1000).toFixed(1)}k` : "--";
+  const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)           : "--";
+
+  return (
+    <div className="absolute top-14 left-4 z-10 rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur px-3 py-2.5 flex flex-col gap-1.5 shadow-xl">
+      <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
+      {[
+        { color: "#3b82f6", label: "inbound" },
+        { color: "#f97316", label: "outbound" },
+        { color: "#94a3b8", label: "transfer" },
+      ].map((f, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+          <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
+        </div>
+      ))}
+      <div className="border-t border-slate-800 mt-0.5 pt-1.5 flex flex-col gap-1">
+        <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">ESG</span>
+        {[
+          { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
+          { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
+          { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
+          { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
+        ].map((s, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <Icon name={s.icon} size={9} className={s.color}/>
+            <span className="text-[10px] font-mono tabular-nums text-slate-300">{s.value}</span>
+            <span className="text-[9px] text-slate-500">{s.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -571,6 +638,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
       </svg>
+      {/* Legend panel — top-left, theme-aware */}
+      <FlowLegend />
       <LayerToggles layers={layers} setLayer={setLayer}/>
       {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
       <TimeScrubber live={live} setLive={setLive}/>

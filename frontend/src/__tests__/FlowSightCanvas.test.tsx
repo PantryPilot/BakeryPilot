@@ -1,0 +1,169 @@
+import React from 'react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
+import { FlowSightCanvas } from '../components/FlowSightCanvas'
+
+jest.mock('../lib/hooks', () => ({
+  useSuppliers: () => ({
+    data: [
+      { id: 's1', name: 'Maple Grain', tier: 1, onTime: 0.96, moqTaxQtd: 0, status: 'ok' },
+    ],
+  }),
+  useDisruptions: () => ({ data: [] }),
+  useRetailers: () => ({ data: [] }),
+  useFacilities: () => ({ data: [] }),
+  useFacilityUtilization: () => ({ data: null }),
+  useActiveRuns: () => ({ data: [], status: 'idle' }),
+  useYieldTelemetry: () => ({ data: [] }),
+  useEsgCounter: () => ({
+    data: { wasteAvoided: 5200, co2eSaved: 3.4, moqTaxYtd: 8200, disruptionsCaught: 2 },
+    status: 'live',
+  }),
+}))
+
+jest.mock('../lib/context', () => ({
+  useApp: () => ({
+    theme: 'dark',
+    setTheme: jest.fn(),
+  }),
+}))
+
+// ---------- Flow legend overlay ----------
+
+describe('Flow legend overlay', () => {
+  test('renders inbound label', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('inbound')).toBeInTheDocument()
+  })
+
+  test('renders outbound label', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('outbound')).toBeInTheDocument()
+  })
+
+  test('renders transfer label', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('transfer')).toBeInTheDocument()
+  })
+
+  test('renders Flow section header', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('Flow')).toBeInTheDocument()
+  })
+})
+
+// ---------- TimeScrubber ----------
+
+describe('TimeScrubber', () => {
+  test('renders play button', () => {
+    render(<FlowSightCanvas />)
+    // Icon renders as SVG; look for the controls row container instead
+    const { container } = render(<FlowSightCanvas />)
+    // 1× speed button is always visible
+    expect(screen.getAllByText('1×')[0]).toBeInTheDocument()
+  })
+
+  test('renders speed buttons 1×, 2×, 5×', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getAllByText('1×')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('2×')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('5×')[0]).toBeInTheDocument()
+  })
+
+  test('renders LIVE button', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getAllByText('LIVE')[0]).toBeInTheDocument()
+  })
+
+  test('renders time labels', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getAllByText('-24h')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('-12h')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('now')[0]).toBeInTheDocument()
+  })
+
+  test('renders ESG waste saved value', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getAllByText('5,200')[0]).toBeInTheDocument()
+  })
+
+  test('renders CO₂e value', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getAllByText(/3\.4 t/)[0]).toBeInTheDocument()
+  })
+
+  test('1× speed button is active by default', () => {
+    const { container } = render(<FlowSightCanvas />)
+    const speedBtns = container.querySelectorAll('button')
+    const oneX = Array.from(speedBtns).find(b => b.textContent === '1×')
+    expect(oneX?.className).toMatch(/border-blue-500/)
+  })
+
+  test('clicking 2× selects it as active speed', () => {
+    const { container } = render(<FlowSightCanvas />)
+    const speedBtns = container.querySelectorAll('button')
+    const twoX = Array.from(speedBtns).find(b => b.textContent === '2×')
+    fireEvent.click(twoX!)
+    expect(twoX?.className).toMatch(/border-blue-500/)
+  })
+
+  test('clicking 5× selects it as active speed', () => {
+    const { container } = render(<FlowSightCanvas />)
+    const speedBtns = container.querySelectorAll('button')
+    const fiveX = Array.from(speedBtns).find(b => b.textContent === '5×')
+    fireEvent.click(fiveX!)
+    expect(fiveX?.className).toMatch(/border-blue-500/)
+  })
+})
+
+// ---------- LayerToggles ----------
+
+describe('LayerToggles', () => {
+  test('renders Layers heading', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('Layers')).toBeInTheDocument()
+  })
+
+  test('shows layer names when expanded', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('Risk')).toBeInTheDocument()
+    expect(screen.getByText('Yield')).toBeInTheDocument()
+    expect(screen.getByText('Procurement')).toBeInTheDocument()
+  })
+
+  test('collapses on header click and hides layer list', () => {
+    render(<FlowSightCanvas />)
+    const layersBtn = screen.getByText('Layers').closest('button')!
+    fireEvent.click(layersBtn)
+    expect(screen.queryByText('Risk')).not.toBeInTheDocument()
+  })
+
+  test('expands again after second click', () => {
+    render(<FlowSightCanvas />)
+    const layersBtn = screen.getByText('Layers').closest('button')!
+    fireEvent.click(layersBtn)
+    fireEvent.click(layersBtn)
+    expect(screen.getByText('Risk')).toBeInTheDocument()
+  })
+
+  test('shows active layer count', () => {
+    render(<FlowSightCanvas />)
+    // Risk + Procurement are defaultOn=true → "2 on"
+    expect(screen.getByText('2 on')).toBeInTheDocument()
+  })
+
+  test('toggling a layer updates the count', () => {
+    render(<FlowSightCanvas />)
+    const yieldBtn = screen.getByText('Yield').closest('button')!
+    fireEvent.click(yieldBtn)
+    expect(screen.getByText('3 on')).toBeInTheDocument()
+  })
+})
+
+// ---------- FlowSight label ----------
+
+describe('FlowSightCanvas header', () => {
+  test('renders FlowSight pill', () => {
+    render(<FlowSightCanvas />)
+    expect(screen.getByText('FlowSight')).toBeInTheDocument()
+  })
+})
