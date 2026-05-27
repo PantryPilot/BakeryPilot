@@ -32,21 +32,25 @@ jest.mock('../lib/context', () => ({
 describe('Flow legend overlay', () => {
   test('renders inbound label', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getByText('inbound')).toBeInTheDocument()
   })
 
   test('renders outbound label', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getByText('outbound')).toBeInTheDocument()
   })
 
   test('renders transfer label', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getByText('transfer')).toBeInTheDocument()
   })
 
   test('renders Flow section header', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getByText('Flow')).toBeInTheDocument()
   })
 })
@@ -81,11 +85,13 @@ describe('TimeScrubber', () => {
 
   test('renders ESG waste saved value', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getAllByText('5,200')[0]).toBeInTheDocument()
   })
 
   test('renders CO₂e value', () => {
     render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getAllByText(/3\.4 t/)[0]).toBeInTheDocument()
   })
 
@@ -123,6 +129,8 @@ describe('LayerToggles', () => {
 
   test('shows layer names when expanded', () => {
     render(<FlowSightCanvas />)
+    const layersBtn = screen.getByText('Layers').closest('button')!
+    fireEvent.click(layersBtn)
     expect(screen.getByText('Risk')).toBeInTheDocument()
     expect(screen.getByText('Yield')).toBeInTheDocument()
     expect(screen.getByText('Procurement')).toBeInTheDocument()
@@ -132,12 +140,14 @@ describe('LayerToggles', () => {
     render(<FlowSightCanvas />)
     const layersBtn = screen.getByText('Layers').closest('button')!
     fireEvent.click(layersBtn)
-    expect(screen.queryByText('Risk')).not.toBeInTheDocument()
+    fireEvent.click(layersBtn)
+    expect(screen.getByTestId('layers-content')).toHaveAttribute('aria-hidden', 'true')
   })
 
   test('expands again after second click', () => {
     render(<FlowSightCanvas />)
     const layersBtn = screen.getByText('Layers').closest('button')!
+    fireEvent.click(layersBtn)
     fireEvent.click(layersBtn)
     fireEvent.click(layersBtn)
     expect(screen.getByText('Risk')).toBeInTheDocument()
@@ -151,6 +161,8 @@ describe('LayerToggles', () => {
 
   test('toggling a layer updates the count', () => {
     render(<FlowSightCanvas />)
+    const layersBtn = screen.getByText('Layers').closest('button')!
+    fireEvent.click(layersBtn)
     const yieldBtn = screen.getByText('Yield').closest('button')!
     fireEvent.click(yieldBtn)
     expect(screen.getByText('3 on')).toBeInTheDocument()

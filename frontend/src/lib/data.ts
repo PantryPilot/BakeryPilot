@@ -25,6 +25,15 @@ export interface Supplier {
   moqTaxQtd: number;
   contractExpiry: string;
   status: SupplierStatus;
+  contactEmail?: string;
+  contactName?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  notes?: string;
+  paymentTerms?: string;
+  moqKg?: number;
+  leadTimeMean?: number;
 }
 
 export interface Retailer {

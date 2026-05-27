@@ -8,7 +8,6 @@ import { useLots, useLotSubstitutions, useIngredients } from "../../lib/hooks";
 import {
   writeOffLot,
   transferLot,
-  applySubstitution,
   createLot,
   deleteLot,
   createIngredient,
@@ -46,22 +45,6 @@ const FILTER_FACILITY = [
 const FILTER_STORAGE = ["All", "Frozen", "Refrigerated", "Dry"];
 const FILTER_RISK = ["All", "OK", "At Risk", "Critical", "Expired"];
 
-function ChipGroup({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void; options: { id: string; label: string }[];
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-slate-500 mr-1">{label}</span>
-      {options.map(o => (
-        <button key={o.id} onClick={() => onChange(o.id)}
-          className={`px-2 h-7 rounded-md text-[12px] border transition ${value === o.id ? "bg-blue-500/15 text-blue-200 border-blue-500/40" : "bg-transparent text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-200"}`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ── Write-off modal ───────────────────────────────────────────────────────────
 function WriteOffModal({ lot, onClose, onSuccess }: {
   lot: Lot; onClose: () => void; onSuccess: (updated: Lot) => void;
@@ -88,7 +71,7 @@ function WriteOffModal({ lot, onClose, onSuccess }: {
       <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <div className="text-[15px] font-semibold text-slate-100">Write off lot</div>
+            <div className="text-[15px] font-semibold text-slate-100">Write-off lot (dispose)</div>
             <div className="text-[12px] font-mono text-slate-500 mt-0.5">{lot.id} · {lot.ingredient}</div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -251,8 +234,8 @@ function AddLotModal({ onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ animation: "popup-in 180ms ease-out both" }}>
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6" style={{ animation: "popup-in 220ms ease-out both" }}>
         <div className="flex items-center justify-between mb-5">
           <div className="text-[15px] font-semibold text-slate-100">Add Inventory Lot</div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -390,8 +373,8 @@ function IngredientsManagerModal({ onClose }: { onClose: () => void }) {
   const inputCls = "bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-[12px] text-slate-200 focus:border-blue-500 focus:outline-none w-full";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ animation: "popup-in 180ms ease-out both" }}>
+      <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl flex flex-col max-h-[85vh]" style={{ animation: "popup-in 220ms ease-out both" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div className="text-[15px] font-semibold text-slate-100">Manage Ingredients</div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -466,18 +449,15 @@ function IngredientsManagerModal({ onClose }: { onClose: () => void }) {
 
 // ── Lot slide-in ──────────────────────────────────────────────────────────────
 function LotSlideIn({
-  lot, onClose, isClosing, onToast,
+  lot, onClose, isClosing,
 }: {
   lot: Lot;
   onClose: () => void;
   isClosing?: boolean;
   onLotUpdate?: (updated: Lot) => void;
-  onToast: (msg: string, kind: "success" | "error") => void;
 }) {
   const backendLotId = lot.id.toLowerCase();
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
-  const [usingIdx, setUsingIdx] = useState<number | null>(null);
-  const [usedIdx, setUsedIdx] = useState<number | null>(null);
 
   const substitutes = rawSubs.map((s: BackendSubstitutionCandidate, i: number) => ({
     name: s.sku_name,
@@ -488,26 +468,6 @@ function LotSlideIn({
     rank: i + 1,
     sku_id: s.sku_id,
   }));
-
-  const handleUse = async (idx: number, sub: typeof substitutes[0]) => {
-    setUsingIdx(idx);
-    try {
-      const result = await applySubstitution(backendLotId, {
-        substitute_sku_id: sub.sku_id,
-        quantity_kg: lot.qty,
-      });
-      if (!result) {
-        onToast("Failed to apply substitution. Please try again.", "error");
-      } else {
-        setUsedIdx(idx);
-        onToast(`Substitution action card created (${result.action_card_id.slice(0, 8)}…)`, "success");
-      }
-    } catch {
-      onToast("Unexpected error applying substitution.", "error");
-    } finally {
-      setUsingIdx(null);
-    }
-  };
 
   return (
     <div
@@ -559,14 +519,9 @@ function LotSlideIn({
                   <div className="text-[14px] font-mono tabular-nums text-emerald-300">{Math.round(s.compat * 100)}%</div>
                   <div className="text-[10px] text-slate-500">compat</div>
                 </div>
-                <button
-                  onClick={() => handleUse(i, s)}
-                  disabled={usingIdx === i || usedIdx === i}
-                  className="px-2.5 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-60 disabled:cursor-not-allowed text-blue-950 font-semibold text-[12px] flex items-center gap-1.5 transition"
-                >
-                  {usingIdx === i && <span className="w-3 h-3 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
-                  {usedIdx === i ? "Applied" : "Use"}
-                </button>
+                <div className="px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 text-[11px]">
+                  Use in Production
+                </div>
               </div>
             ))}
           </div>
@@ -684,47 +639,49 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block rounded-lg border border-slate-800 overflow-hidden">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-slate-800 bg-slate-900/60">
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Product</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">SKU</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Facility</th>
-              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Qty</th>
-              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Shelf life</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Produced</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p, i) => (
-              <tr key={p.pallet_id} className={`border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition ${i % 2 === 0 ? "" : "bg-slate-900/20"}`}>
-                <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
-                <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
-                <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
-                <td className="px-4 py-2.5 text-right font-mono">
-                  <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
-                    {p.days_remaining}d
-                  </span>
-                  <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
-                </td>
-                <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                <td className="px-4 py-2.5">
-                  <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
-                    {p.status.replace(/_/g, " ")}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+      <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
+        <div className="overflow-x-auto overflow-y-auto max-h-[400px]">
+          <table className="bp-data-table w-full min-w-[860px] text-[13px]">
+            <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+                <th className="text-left px-4 py-2.5 font-semibold">Product</th>
+                <th className="text-left px-4 py-2.5 font-semibold">SKU</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Facility</th>
+                <th className="text-right px-4 py-2.5 font-semibold">Qty</th>
+                <th className="text-right px-4 py-2.5 font-semibold">Shelf life</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Produced</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Status</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((p) => (
+                <tr key={p.pallet_id} className="border-t border-slate-800/80 hover:bg-slate-800/40 transition">
+                  <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
+                  <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
+                  <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono">
+                    <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
+                      {p.days_remaining}d
+                    </span>
+                    <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                      {p.status.replace(/_/g, " ")}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -739,6 +696,7 @@ export default function MaterialsPage() {
   const [risk, setRisk] = useState("All");
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
   const [lotClosing, setLotClosing] = useState(false);
   const [writeOffLotTarget, setWriteOffLotTarget] = useState<Lot | null>(null);
@@ -806,15 +764,35 @@ export default function MaterialsPage() {
   }, [mergedLots, facility, storage, risk, sort, query]);
 
   const horizon = useMemo(() => {
-    const groups: Record<string, { ingredient: string; total: number }> = {};
+    const groups: Record<string, { ingredient: string; total: number; lots: number; expiring3d: number; expiring7d: number; lotsData: { qty: number; daysLeft: number }[] }> = {};
     mergedLots.forEach(l => {
-      if (!groups[l.ingredient]) groups[l.ingredient] = { ingredient: l.ingredient, total: 0 };
+      if (!groups[l.ingredient]) {
+        groups[l.ingredient] = {
+          ingredient: l.ingredient,
+          total: 0,
+          lots: 0,
+          expiring3d: 0,
+          expiring7d: 0,
+          lotsData: [],
+        };
+      }
       groups[l.ingredient].total += l.qty;
+      groups[l.ingredient].lots += 1;
+      if (l.daysLeft <= 3) groups[l.ingredient].expiring3d += l.qty;
+      if (l.daysLeft <= 7) groups[l.ingredient].expiring7d += l.qty;
+      groups[l.ingredient].lotsData.push({ qty: l.qty, daysLeft: l.daysLeft });
     });
     return Object.values(groups).map(g => {
-      const burn = Math.max(0.5, g.total * 0.1);
-      const days = Math.min(60, Math.round(g.total / burn));
-      const leadTime = 5;
+      // Stronger urgency model: each lot contributes depletion pressure by expiry.
+      const lotDrivenBurn = g.lotsData.reduce((sum, lot) => {
+        const horizonDays = Math.max(1, Math.min(45, lot.daysLeft));
+        return sum + (lot.qty / horizonDays);
+      }, 0);
+      // Baseline operational usage so long-dated lots still move.
+      const baselineBurn = Math.max(2.0, (g.total * 0.012) + (g.lots * 0.8));
+      const burn = Math.max(1.0, baselineBurn + (lotDrivenBurn * 0.65));
+      const days = Math.min(60, Math.max(1, Math.round(g.total / burn)));
+      const leadTime = g.expiring3d > 0 ? 2 : g.expiring7d > 0 ? 4 : 7;
       return { ...g, burn, days, leadTime, needReorder: days <= leadTime + 2 };
     }).sort((a, b) => a.days - b.days).slice(0, 10);
   }, [mergedLots]);
@@ -829,20 +807,22 @@ export default function MaterialsPage() {
             : "Finished product inventory from production runs"
           }
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-2 w-full sm:w-auto">
               {activeTab === "ingredients" && (
                 <>
-                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2">
+                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2 whitespace-nowrap">
                     <Icon name="settings" size={13}/> Ingredients
-                  </button>
-                  <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2">
-                    + Add Lot
                   </button>
                 </>
               )}
-              <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
+              <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2 whitespace-nowrap">
                 <Icon name="chat" size={13}/> Ask copilot
               </button>
+              {activeTab === "ingredients" && (
+                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-white font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
+                  + Add Lot
+                </button>
+              )}
             </div>
           }
         />
@@ -864,6 +844,7 @@ export default function MaterialsPage() {
           ))}
         </div>
 
+        <div key={activeTab} className="page-transition">
         {activeTab === "finished" && (
           <FinishedProductsTab facilityFilter={facility} />
         )}
@@ -871,26 +852,82 @@ export default function MaterialsPage() {
         {activeTab === "ingredients" && (<>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
-          <div className="flex flex-wrap items-start gap-3">
-            <ChipGroup label="Facility" value={facility} onChange={setFacility} options={FILTER_FACILITY}/>
-            <span className="w-px h-5 bg-slate-800"/>
-            <ChipGroup label="Storage" value={storage} onChange={setStorage} options={FILTER_STORAGE.map(x => ({ id: x, label: x }))}/>
-            <span className="w-px h-5 bg-slate-800"/>
-            <ChipGroup label="Risk" value={risk} onChange={setRisk} options={FILTER_RISK.map(x => ({ id: x, label: x }))}/>
-            <div className="flex-1"/>
-            <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-9 flex-1 min-w-[220px]">
               <Icon name="search" size={13} className="text-slate-500"/>
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search ingredient or lot ID"
-                     className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-48"/>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search ingredient or lot ID"
+                className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
+              />
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500">
-              <span>Sort</span>
-              <select value={sort} onChange={e => setSort(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-[12px] text-slate-200">
-                <option value="risk">Spoilage Risk</option>
-                <option value="expiry">Expiry Date</option>
-                <option value="qty">Quantity</option>
-                <option value="facility">Facility</option>
-              </select>
+            <button
+              onClick={() => setFiltersOpen(v => !v)}
+              className="sm:hidden h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] flex items-center gap-1.5"
+            >
+              <Icon name="bars" size={12} />
+              Filters
+            </button>
+            <button
+              onClick={() => {
+                setFacility("all");
+                setStorage("All");
+                setRisk("All");
+                setSort("risk");
+                setQuery("");
+              }}
+              className="h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] hover:border-slate-500 transition"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className={`${filtersOpen ? "max-h-96 opacity-100 mt-3" : "max-h-0 opacity-0 mt-0"} sm:max-h-none sm:opacity-100 sm:mt-3 overflow-hidden transition-all duration-300 ease-out`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <label className="text-[11px] text-slate-500">
+                Facility
+                <select
+                  value={facility}
+                  onChange={e => setFacility(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_FACILITY.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Storage
+                <select
+                  value={storage}
+                  onChange={e => setStorage(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_STORAGE.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Risk
+                <select
+                  value={risk}
+                  onChange={e => setRisk(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_RISK.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Sort
+                <select
+                  value={sort}
+                  onChange={e => setSort(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  <option value="risk">Spoilage Risk</option>
+                  <option value="expiry">Expiry Date</option>
+                  <option value="qty">Quantity</option>
+                  <option value="facility">Facility</option>
+                </select>
+              </label>
             </div>
           </div>
         </div>
@@ -920,9 +957,15 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
-                <button onClick={() => setTransferLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
-                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                <button
+                  onClick={() => setTransferLotTarget(l)}
+                  disabled={l.status === "expired"}
+                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Transfer
+                </button>
+                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
               </div>
             </div>
           ))}
@@ -956,9 +999,15 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
-                      <button onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
-                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
+                        disabled={l.status === "expired"}
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Transfer
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
                       <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-500 hover:text-red-400 border border-red-500/30 hover:border-red-500/60">Delete</button>
                     </div>
                   </td>
@@ -976,8 +1025,8 @@ export default function MaterialsPage() {
               <div key={i} className="grid grid-cols-[minmax(120px,200px)_1fr_auto] items-center gap-3">
                 <div className="text-[12px] text-slate-300 truncate">{h.ingredient}</div>
                 <div className="relative h-5 rounded bg-slate-800/60 overflow-hidden">
-                  <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 60) * 100)}%` }}/>
-                  <div className="absolute top-0 bottom-0 w-[2px] bg-red-500" style={{ left: `${(h.leadTime / 60) * 100}%` }}/>
+                  <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 30) * 100)}%` }}/>
+                  <div className="absolute top-0 bottom-0 w-[2px] bg-red-500" style={{ left: `${(h.leadTime / 30) * 100}%` }}/>
                 </div>
                 <div className="text-[11px] font-mono tabular-nums text-slate-300">{h.days}d · {h.burn.toFixed(1)} kg/d</div>
               </div>
@@ -985,6 +1034,7 @@ export default function MaterialsPage() {
           </div>
         </div>
         </>)}
+        </div>
       </div>
 
       {activeLot && (
@@ -994,7 +1044,6 @@ export default function MaterialsPage() {
             lot={activeLot}
             onClose={closeLot}
             isClosing={lotClosing}
-            onToast={showToast}
           />
         </>
       )}

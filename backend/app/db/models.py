@@ -97,9 +97,33 @@ class Supplier(Base):
     fill_rate: Mapped[float | None] = mapped_column(Numeric)
     window_compliance_rate: Mapped[float | None] = mapped_column(Numeric)
     price_variance_vs_benchmark: Mapped[float | None] = mapped_column(Numeric)
+    contact_name: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    website: Mapped[str | None] = mapped_column(Text)
+    address: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
 
     lots: Mapped[list["IngredientLot"]] = relationship(back_populates="supplier")
     orders: Mapped[list["SupplierOrder"]] = relationship(back_populates="supplier")
+    messages: Mapped[list["SupplierMessage"]] = relationship(back_populates="supplier", cascade="all, delete-orphan")
+
+
+class SupplierMessage(Base):
+    __tablename__ = "supplier_messages"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    supplier_id: Mapped[str] = mapped_column(Text, ForeignKey("suppliers.supplier_id", ondelete="CASCADE"), nullable=False)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False, default="email")
+    subject: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    author: Mapped[str | None] = mapped_column(Text)
+    related_order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("supplier_orders.order_id", ondelete="SET NULL"))
+    related_negotiation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("negotiation_drafts.draft_id", ondelete="SET NULL"))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    supplier: Mapped["Supplier"] = relationship(back_populates="messages")
 
 
 class WarehouseCost(Base):

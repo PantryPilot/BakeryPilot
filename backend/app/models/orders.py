@@ -13,6 +13,7 @@ class SupplierOrderDraftRequest(BaseModel):
     supplier_id: str
     items: list[OrderLineItem]
     delivery_date: str
+    facility_id: str | None = None
 
 
 class LandedCostBreakdown(BaseModel):

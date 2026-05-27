@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { fetchFacilities, fetchProductionLines, fetchProducts, createProductionOrder, updateOrderStatus, cancelProductionOrder, markOrderProduced, validateProduction, type BackendProductionLine, type BackendProductionOrder, type BackendProduct, type BackendFacility, type BackendValidationResult } from "../../lib/api";
+import { requestShortfallTransferPlan, requestShortfallSubstitution, confirmActionCard } from "../../lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,13 +78,16 @@ function AssignModal({
   facilityId,
   onClose,
   onSuccess,
+  onToast,
 }: {
   line: BackendProductionLine;
   products: BackendProduct[];
   facilityId: string;
   onClose: () => void;
   onSuccess: () => void;
+  onToast?: (msg: string, kind: "success" | "error") => void;
 }) {
+  const router = useRouter();
   const [selectedSkuId, setSelectedSkuId] = useState("");
   const [quantity, setQuantity] = useState(100);
   const [notes, setNotes] = useState("");
@@ -90,8 +95,20 @@ function AssignModal({
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validation, setValidation] = useState<BackendValidationResult | null>(null);
+  const [requestingKey, setRequestingKey] = useState<string | null>(null);
 
   const selectedProduct = products.find(p => p.sku_id === selectedSkuId);
+
+  const openSupplierOrdering = (ingredientId: string, quantityKg: number) => {
+    const qs = new URLSearchParams({
+      tab: "suppliers",
+      source: "production_shortfall",
+      po_facility_id: facilityId,
+      po_ingredient_id: ingredientId,
+      po_quantity_kg: quantityKg.toFixed(3),
+    });
+    router.push(`/scorecard?${qs.toString()}`);
+  };
 
   const handleValidate = async (skuId: string, qty: number) => {
     if (!skuId || qty <= 0) { setValidation(null); return; }
@@ -133,10 +150,86 @@ function AssignModal({
     onSuccess();
   };
 
+  const handleRequestTransferPlan = async () => {
+    if (!selectedSkuId || !validation?.transfer_plan) return;
+    const items = validation.transfer_plan.items.flatMap(it =>
+      it.sources.map(s => ({
+        ingredient_id: it.ingredient_id,
+        from_facility_id: s.from_facility_id,
+        quantity_kg: s.transfer_kg,
+      })),
+    );
+    if (items.length === 0) return;
+    setRequestingKey("transfer-plan");
+    const res = await requestShortfallTransferPlan({
+      facility_id: facilityId,
+      requested_by_sku_id: selectedSkuId,
+      requested_units: quantity,
+      items,
+    });
+    if (!res?.action_card_id) {
+      setRequestingKey(null);
+      setError("Failed to request transfer plan.");
+      onToast?.("Transfer request failed", "error");
+      return;
+    }
+    const confirmed = await confirmActionCard(res.action_card_id);
+    setRequestingKey(null);
+    setError(null);
+    if (!confirmed) {
+      onToast?.("Transfer plan created but execution failed — check action cards", "error");
+    } else {
+      onToast?.("Transfer executed — lots moved", "success");
+      await handleValidate(selectedSkuId, quantity);
+    }
+  };
+
+  const handleRequestSubstitution = async (substituteSkuId: string) => {
+    if (!selectedSkuId) return;
+    const key = `sub-${substituteSkuId}`;
+    setRequestingKey(key);
+    const blockedIds = (validation?.ingredients ?? [])
+      .filter(i => i.shortfall_kg > 0)
+      .map(i => i.ingredient_id);
+    const res = await requestShortfallSubstitution({
+      facility_id: facilityId,
+      substitute_sku_id: substituteSkuId,
+      requested_by_sku_id: selectedSkuId,
+      requested_units: quantity,
+      blocked_ingredient_ids: blockedIds,
+    });
+    if (!res?.action_card_id) {
+      setRequestingKey(null);
+      setError("Failed to request substitution.");
+      onToast?.("Substitution request failed", "error");
+      return;
+    }
+    const confirmed = await confirmActionCard(res.action_card_id);
+    setRequestingKey(null);
+    setError(null);
+    if (!confirmed) {
+      onToast?.("Substitution recorded but execution failed — check action cards", "error");
+    } else {
+      onToast?.("Switched to substitute — new production order created", "success");
+      onSuccess();
+    }
+  };
+
+  const shortfallIngredients = validation?.ingredients.filter(i => i.shortfall_kg > 0) ?? [];
+  const transferPlan = validation?.transfer_plan ?? null;
+  const substituteSkus = validation?.substitute_skus ?? [];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      style={{ animation: "popup-in 180ms ease-out both" }}
+    >
+      <div
+        className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl overflow-hidden"
+        style={{ animation: "popup-in 220ms ease-out both" }}
+      >
+        {/* Header (sticky) */}
+        <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div>
             <div className="text-[15px] font-semibold text-slate-100">Assign Production</div>
             <div className="text-[12px] text-slate-500 mt-0.5 font-mono">{line.name}</div>
@@ -144,32 +237,33 @@ function AssignModal({
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
-          {/* Product selector */}
-          <div>
-            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Product</label>
-            <select
-              value={selectedSkuId}
-              onChange={e => handleSkuChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-slate-100 text-[13px] focus:outline-none focus:border-blue-500"
-            >
-              <option value="">Select a product…</option>
-              {products.map(p => (
-                <option key={p.sku_id} value={p.sku_id}>{p.name} ({p.category})</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Quantity */}
-          <div>
-            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Quantity (units)</label>
-            <input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={e => handleQtyChange(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-slate-100 text-[13px] font-mono focus:outline-none focus:border-blue-500"
-            />
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Product + Quantity row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Product</label>
+              <select
+                value={selectedSkuId}
+                onChange={e => handleSkuChange(e.target.value)}
+                className="w-full h-9 px-3 rounded-md border border-slate-700 bg-slate-900 text-slate-100 text-[13px] focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Select a product…</option>
+                {products.map(p => (
+                  <option key={p.sku_id} value={p.sku_id}>{p.name} ({p.category})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Quantity</label>
+              <input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={e => handleQtyChange(Number(e.target.value))}
+                className="w-full h-9 px-3 rounded-md border border-slate-700 bg-slate-900 text-slate-100 text-[13px] font-mono focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
 
           {/* Notes */}
@@ -180,30 +274,32 @@ function AssignModal({
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="e.g. Morning run"
-              className="w-full px-3 py-2 rounded-md border border-slate-700 bg-slate-900 text-slate-400 text-[13px] focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+              className="w-full h-9 px-3 rounded-md border border-slate-700 bg-slate-900 text-slate-200 text-[13px] focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
             />
           </div>
 
           {/* Recipe preview */}
           {selectedProduct && selectedProduct.recipe.length > 0 && (
-            <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Ingredient requirements ({quantity} units)</div>
-              <div className="space-y-1">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/40">
+              <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-slate-500">Recipe ({quantity} units)</span>
+                {validating && <span className="text-[10px] text-slate-500">checking…</span>}
+              </div>
+              <div className="p-3 space-y-1.5">
                 {selectedProduct.recipe.map(r => {
                   const totalKg = r.kg_per_unit * quantity;
                   const detail = validation?.ingredients.find(i => i.ingredient_id === r.ingredient_id);
                   const ok = !detail || detail.shortfall_kg === 0;
                   return (
                     <div key={r.ingredient_id} className="flex items-center justify-between text-[12px]">
-                      <span className={ok ? "text-slate-300" : "text-red-300"}>{r.ingredient_name}</span>
-                      <div className="flex items-center gap-2">
+                      <span className={ok ? "text-slate-200" : "text-red-300"}>{r.ingredient_name}</span>
+                      <div className="flex items-center gap-3">
                         <span className="text-slate-400 font-mono">{totalKg.toFixed(1)} kg</span>
                         {detail && (
                           <span className={`text-[10px] font-mono ${ok ? "text-emerald-400" : "text-red-400"}`}>
-                            {ok ? `✓ ${detail.available_kg.toFixed(1)} avail` : `✗ short ${detail.shortfall_kg.toFixed(1)} kg`}
+                            {ok ? `${detail.available_kg.toFixed(1)} avail` : `short ${detail.shortfall_kg.toFixed(1)}`}
                           </span>
                         )}
-                        {validating && !detail && <span className="text-[10px] text-slate-600">checking…</span>}
                       </div>
                     </div>
                   );
@@ -216,7 +312,153 @@ function AssignModal({
           {validation && !validation.feasible && (
             <div className="flex items-start gap-2 rounded-md border border-red-700/40 bg-red-900/20 px-3 py-2.5">
               <Icon name="warn" size={14} className="text-red-400 shrink-0 mt-0.5" />
-              <span className="text-[12px] text-red-300">Insufficient ingredient inventory for this batch. You can still assign the order but production will fail on completion.</span>
+              <span className="text-[12px] text-red-300">Some ingredients are short. Use the options below to resolve before producing.</span>
+            </div>
+          )}
+
+          {/* Resolution options (order-level) */}
+          {shortfallIngredients.length > 0 && (
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Resolution options</div>
+
+              {/* Option A — Transfer plan */}
+              {transferPlan ? (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Icon name="truck" size={12} className="text-blue-300 shrink-0" />
+                      <span className="text-[12px] font-medium text-slate-100">Transfer plan</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          transferPlan.fully_covers
+                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                            : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                        }`}
+                      >
+                        {transferPlan.fully_covers ? "Covers all" : "Partial"}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                      {transferPlan.total_covered_kg.toFixed(1)} / {transferPlan.total_shortfall_kg.toFixed(1)} kg
+                    </span>
+                  </div>
+
+                  <div className="px-3 py-2.5 space-y-2">
+                    {transferPlan.items.map(it => (
+                      <div key={it.ingredient_id} className="text-[12px]">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className="text-slate-200 truncate">{it.ingredient_name}</span>
+                          <span className={`text-[10px] font-mono shrink-0 ${it.uncovered_kg > 0 ? "text-amber-300" : "text-emerald-300"}`}>
+                            need {it.shortfall_kg.toFixed(1)} kg
+                          </span>
+                        </div>
+                        {it.sources.length > 0 ? (
+                          <ul className="pl-3 space-y-0.5">
+                            {it.sources.map((s, idx) => (
+                              <li key={`${s.from_facility_id}-${idx}`} className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                <span className="text-slate-600">→</span>
+                                <span className="text-slate-300">{s.from_facility_name}</span>
+                                <span className="font-mono text-slate-400">{s.transfer_kg.toFixed(1)} kg</span>
+                              </li>
+                            ))}
+                            {it.uncovered_kg > 0 && (
+                              <li className="flex items-center gap-1.5 text-[11px] text-amber-400">
+                                <span className="text-amber-500">!</span>
+                                <span>still short</span>
+                                <span className="font-mono">{it.uncovered_kg.toFixed(1)} kg</span>
+                              </li>
+                            )}
+                          </ul>
+                        ) : (
+                          <div className="pl-3 flex items-center justify-between gap-2">
+                            <div className="text-[11px] text-amber-400 flex items-center gap-1.5">
+                              <Icon name="warn" size={10} /> No other facility has stock
+                            </div>
+                            <button
+                              onClick={() => openSupplierOrdering(it.ingredient_id, it.uncovered_kg > 0 ? it.uncovered_kg : it.shortfall_kg)}
+                              className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                            >
+                              Order from supplier
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="px-3 py-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-500">
+                      {transferPlan.fully_covers
+                        ? "Plan covers full shortfall."
+                        : `Plan leaves ${transferPlan.total_uncovered_kg.toFixed(1)} kg short — production will still fail.`}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!transferPlan.fully_covers && (
+                        <button
+                          onClick={() => {
+                            const firstUncovered = transferPlan.items.find(it => it.uncovered_kg > 0);
+                            if (firstUncovered) openSupplierOrdering(firstUncovered.ingredient_id, firstUncovered.uncovered_kg);
+                          }}
+                          className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                        >
+                          Order missing
+                        </button>
+                      )}
+                      <button
+                        onClick={handleRequestTransferPlan}
+                        disabled={requestingKey === "transfer-plan" || transferPlan.total_covered_kg === 0}
+                        className="h-7 px-3 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-[11px] font-medium transition flex items-center gap-1.5"
+                      >
+                        {requestingKey === "transfer-plan" && <span className="w-3 h-3 border-2 border-blue-300/30 border-t-blue-300 rounded-full animate-spin"/>}
+                        {requestingKey === "transfer-plan" ? "Requesting" : "Request transfers"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Option B — Switch product (order-level alternatives only) */}
+              {substituteSkus.length > 0 && (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-slate-800 flex items-center gap-1.5">
+                    <Icon name="diff" size={12} className="text-emerald-300 shrink-0" />
+                    <span className="text-[12px] font-medium text-slate-100">Produce a different product instead</span>
+                    <span className="text-[10px] text-slate-500 ml-auto">stock-feasible at this facility</span>
+                  </div>
+                  <div className="px-3 py-2 space-y-1.5">
+                    {substituteSkus.slice(0, 4).map(s => {
+                      const key = `sub-${s.sku_id}`;
+                      const busy = requestingKey === key;
+                      return (
+                        <div key={s.sku_id} className="flex items-center justify-between gap-2 text-[12px]">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-slate-200 truncate">{s.sku_name}</div>
+                            <div className={`text-[10px] font-mono ${s.covers_requested_units ? "text-emerald-400" : "text-amber-400"}`}>
+                              {s.covers_requested_units
+                                ? `can produce ${quantity} units`
+                                : `up to ${s.achievable_quantity} units only`}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRequestSubstitution(s.sku_id)}
+                            disabled={busy}
+                            className="shrink-0 h-7 px-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 text-[11px] font-medium transition flex items-center gap-1.5"
+                          >
+                            {busy && <span className="w-3 h-3 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
+                            {busy ? "Requesting" : "Switch"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {!transferPlan && substituteSkus.length === 0 && (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2.5 text-[12px] text-slate-400">
+                  No transfer or substitution options found across facilities.
+                </div>
+              )}
             </div>
           )}
 
@@ -227,14 +469,15 @@ function AssignModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800">
-          <button onClick={onClose} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 text-[13px] transition">Cancel</button>
+        {/* Footer (sticky) */}
+        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-800">
+          <button onClick={onClose} className="px-4 h-9 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 text-[13px] transition">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={loading || !selectedSkuId || quantity <= 0}
-            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-medium transition flex items-center gap-2"
+            className="h-9 px-4 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold transition flex items-center gap-2"
           >
-            {loading ? <span className="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+            {loading && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {loading ? "Assigning…" : "Assign to Line"}
           </button>
         </div>
@@ -268,9 +511,15 @@ function ProduceModal({
   const feasible = validation?.feasible ?? false;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      style={{ animation: "popup-in 180ms ease-out both" }}
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] flex flex-col rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl overflow-hidden"
+        style={{ animation: "popup-in 220ms ease-out both" }}
+      >
+        <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div>
             <div className="text-[15px] font-semibold text-slate-100">Confirm Production</div>
             <div className="text-[12px] text-slate-500 mt-0.5">{order.sku_name} · {order.quantity_units} units</div>
@@ -278,7 +527,7 @@ function ProduceModal({
           <button onClick={onClose} disabled={loading} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {checking ? (
             <div className="flex items-center gap-2 text-[13px] text-slate-400">
               <span className="inline-block w-4 h-4 border-2 border-slate-600 border-t-slate-300 rounded-full animate-spin" />
@@ -323,14 +572,14 @@ function ProduceModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800">
-          <button onClick={onClose} disabled={loading} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 text-[13px] transition">Cancel</button>
+        <div className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-800">
+          <button onClick={onClose} disabled={loading} className="h-9 px-4 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 text-[13px] transition">Cancel</button>
           <button
             onClick={() => { setLoading(true); onConfirm(); }}
             disabled={loading || checking || !feasible}
-            className="px-4 py-2 rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-medium transition flex items-center gap-2"
+            className="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold transition flex items-center gap-2"
           >
-            {loading ? <span className="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+            {loading && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
             {loading ? "Processing…" : "Mark as Produced"}
           </button>
         </div>
@@ -528,6 +777,7 @@ function LineCard({
           facilityId={facilityId}
           onClose={() => setShowAssign(false)}
           onSuccess={() => { setShowAssign(false); onToast(`Order assigned to ${line.name}.`, "success"); onRefresh(); }}
+          onToast={onToast}
         />
       )}
 
@@ -561,6 +811,7 @@ export default function ProductionPage() {
   const [lines, setLines] = useState<BackendProductionLine[]>([]);
   const [products, setProducts] = useState<BackendProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
 
@@ -569,15 +820,18 @@ export default function ProductionPage() {
 
   const activeFacility = facilities.find(f => f.facility_id === activeFacilityId) ?? facilities[0];
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    const background = opts?.background ?? false;
+    if (background) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     const [facilitiesData, linesData, productsData] = await Promise.all([
       fetchFacilities(),
       fetchProductionLines(activeFacilityId ?? undefined),
       fetchProducts(),
     ]);
-    setLoading(false);
+    if (background) setRefreshing(false);
+    else setLoading(false);
     if (!linesData || !productsData) {
       setError("Failed to load production data. Check that the backend is running.");
       return;
@@ -616,12 +870,12 @@ export default function ProductionPage() {
             </p>
           </div>
           <button
-            onClick={load}
-            disabled={loading}
+            onClick={() => load({ background: lines.length > 0 })}
+            disabled={loading || refreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 text-[12px] transition disabled:opacity-50"
           >
-            <Icon name="spark" size={13} className={loading ? "animate-spin" : ""} />
-            Refresh
+            <Icon name="spark" size={13} className={loading || refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Refreshing…" : "Refresh"}
           </button>
         </div>
 
@@ -654,6 +908,12 @@ export default function ProductionPage() {
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-red-700/40 bg-red-900/20 text-[12px]">
                 <span className="w-2 h-2 rounded-full bg-red-400" />
                 <span className="text-red-300">{maintenanceCount} Maintenance</span>
+              </div>
+            )}
+            {refreshing && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-700/40 bg-blue-900/20 text-[12px]">
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-blue-300">Updating…</span>
               </div>
             )}
           </div>
@@ -710,7 +970,7 @@ export default function ProductionPage() {
                   line={line}
                   facilityId={activeFacilityId ?? line.facility_id}
                   products={products}
-                  onRefresh={load}
+                  onRefresh={() => load({ background: true })}
                   onToast={showToast}
                 />
               ))}

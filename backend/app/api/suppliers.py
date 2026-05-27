@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     IngredientLot,
     MoqTaxEntry,
+    NegotiationDraft,
     Supplier as SupplierORM,
+    SupplierMessage as SupplierMessageORM,
     SupplierOrder,
 )
 from app.db.session import get_db
-from app.models.suppliers import MOQTaxEntry, Supplier
+from app.models.suppliers import MOQTaxEntry, Supplier, SupplierMessage
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -45,6 +47,11 @@ async def _supplier_to_model(sup: SupplierORM, session: AsyncSession) -> Supplie
         window_compliance_rate=float(sup.window_compliance_rate or 0),
         price_variance_vs_benchmark=float(sup.price_variance_vs_benchmark or 0),
         moq_tax_quarter_usd=moq_tax_usd,
+        contact_name=sup.contact_name,
+        phone=sup.phone,
+        website=sup.website,
+        address=sup.address,
+        notes=sup.notes,
     )
 
 
@@ -184,6 +191,11 @@ class CreateSupplierRequest(BaseModel):
     on_time_rate: float = 0.90
     fill_rate: float = 0.95
     window_compliance_rate: float = 0.88
+    contact_name: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    notes: str | None = None
 
 
 class UpdateSupplierRequest(BaseModel):
@@ -196,6 +208,11 @@ class UpdateSupplierRequest(BaseModel):
     on_time_rate: float | None = None
     fill_rate: float | None = None
     window_compliance_rate: float | None = None
+    contact_name: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    notes: str | None = None
 
 
 @router.post("", response_model=Supplier)
@@ -216,6 +233,11 @@ async def create_supplier(
         fill_rate=req.fill_rate,
         window_compliance_rate=req.window_compliance_rate,
         price_variance_vs_benchmark=0.0,
+        contact_name=req.contact_name,
+        phone=req.phone,
+        website=req.website,
+        address=req.address,
+        notes=req.notes,
     )
     db.add(sup)
     await db.commit()
@@ -248,6 +270,16 @@ async def update_supplier(
         sup.fill_rate = req.fill_rate
     if req.window_compliance_rate is not None:
         sup.window_compliance_rate = req.window_compliance_rate
+    if req.contact_name is not None:
+        sup.contact_name = req.contact_name
+    if req.phone is not None:
+        sup.phone = req.phone
+    if req.website is not None:
+        sup.website = req.website
+    if req.address is not None:
+        sup.address = req.address
+    if req.notes is not None:
+        sup.notes = req.notes
     await db.commit()
     await db.refresh(sup)
     return await _supplier_to_model(sup, db)
@@ -274,6 +306,176 @@ async def delete_supplier(
     await db.delete(sup)
     await db.commit()
     return {"deleted": supplier_id}
+
+
+# ---------------------------------------------------------------------------
+# Supplier communications: messages + agent negotiation
+# ---------------------------------------------------------------------------
+
+def _msg_to_model(m: SupplierMessageORM) -> SupplierMessage:
+    return SupplierMessage(
+        message_id=str(m.message_id),
+        supplier_id=m.supplier_id,
+        direction=m.direction,
+        channel=m.channel,
+        subject=m.subject,
+        body=m.body,
+        author=m.author,
+        related_order_id=str(m.related_order_id) if m.related_order_id else None,
+        related_negotiation_id=str(m.related_negotiation_id) if m.related_negotiation_id else None,
+        sent_at=m.sent_at.isoformat(),
+        read_at=m.read_at.isoformat() if m.read_at else None,
+    )
+
+
+@router.get("/{supplier_id}/messages", response_model=list[SupplierMessage])
+async def list_messages(
+    supplier_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[SupplierMessage]:
+    if not await db.get(SupplierORM, supplier_id):
+        raise HTTPException(404, f"supplier {supplier_id} not found")
+    rows = (
+        await db.execute(
+            select(SupplierMessageORM)
+            .where(SupplierMessageORM.supplier_id == supplier_id)
+            .order_by(SupplierMessageORM.sent_at.asc())
+        )
+    ).scalars().all()
+    return [_msg_to_model(m) for m in rows]
+
+
+class CreateMessageRequest(BaseModel):
+    direction: str = "outbound"
+    channel: str = "email"
+    subject: str | None = None
+    body: str
+    author: str | None = "demo_user"
+    related_order_id: str | None = None
+    related_negotiation_id: str | None = None
+
+
+@router.post("/{supplier_id}/messages", response_model=SupplierMessage)
+async def create_message(
+    supplier_id: str,
+    req: CreateMessageRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SupplierMessage:
+    if not await db.get(SupplierORM, supplier_id):
+        raise HTTPException(404, f"supplier {supplier_id} not found")
+    if req.direction not in ("inbound", "outbound"):
+        raise HTTPException(422, "direction must be inbound|outbound")
+    if req.channel not in ("email", "phone", "chat", "agent", "system"):
+        raise HTTPException(422, "invalid channel")
+    msg = SupplierMessageORM(
+        supplier_id=supplier_id,
+        direction=req.direction,
+        channel=req.channel,
+        subject=req.subject,
+        body=req.body,
+        author=req.author,
+        related_order_id=req.related_order_id,
+        related_negotiation_id=req.related_negotiation_id,
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+    return _msg_to_model(msg)
+
+
+class NegotiateRequest(BaseModel):
+    goal: str
+    tone: str = "firm-but-friendly"
+    record_outbound: bool = False  # if true, also save the draft as an outbound message
+
+
+class NegotiateResponse(BaseModel):
+    draft_id: str
+    supplier_id: str
+    trigger_kind: str
+    body_md: str
+    proposed_subject: str
+    message_id: str | None
+
+
+@router.post("/{supplier_id}/negotiate", response_model=NegotiateResponse)
+async def agent_negotiate(
+    supplier_id: str,
+    req: NegotiateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> NegotiateResponse:
+    """Generate a negotiation draft for a supplier using their performance
+    profile + the operator's stated goal. Persists as a NegotiationDraft and
+    optionally records it as an outbound supplier message."""
+    sup = await db.get(SupplierORM, supplier_id)
+    if not sup:
+        raise HTTPException(404, f"supplier {supplier_id} not found")
+
+    quarter = f"{datetime.utcnow().year}-Q{(datetime.utcnow().month - 1) // 3 + 1}"
+    moq_total = (
+        await db.execute(
+            select(func.sum(MoqTaxEntry.holding_cost)).where(
+                MoqTaxEntry.supplier_id == supplier_id,
+                MoqTaxEntry.quarter == quarter,
+            )
+        )
+    ).scalar() or 0.0
+
+    on_time = float(sup.on_time_rate or 0.9)
+    fill = float(sup.fill_rate or 0.95)
+    window = float(sup.window_compliance_rate or 0.88)
+    contact_line = sup.contact_name or "Procurement Team"
+    body_md = (
+        f"Hi {contact_line},\n\n"
+        f"BakeryPilot procurement here. We want to discuss the following with {sup.name}:\n\n"
+        f"**Our ask:** {req.goal.strip()}\n\n"
+        f"**Why now (last 90 days):**\n"
+        f"- On-time delivery: **{on_time*100:.1f}%**\n"
+        f"- Fill rate: **{fill*100:.1f}%**\n"
+        f"- Delivery window compliance: **{window*100:.1f}%**\n"
+        f"- MOQ-tax incurred this quarter: **${moq_total:,.0f}**\n\n"
+        f"**Proposed next steps:**\n"
+        f"1. Confirm whether the change above is feasible by end of week.\n"
+        f"2. Share a written counter-proposal if it isn't, including any minimum lot constraints we should plan around.\n"
+        f"3. Lock revised terms in writing before next PO cycle.\n\n"
+        f"Tone of the conversation: {req.tone}.\n\n"
+        f"Thanks,\nBakeryPilot Procurement"
+    )
+
+    draft = NegotiationDraft(
+        supplier_id=supplier_id,
+        trigger_kind="agent_negotiation",
+        body_md=body_md,
+    )
+    db.add(draft)
+    await db.flush()
+
+    subject = f"BakeryPilot negotiation request — {req.goal[:60]}"
+    message_id: str | None = None
+    if req.record_outbound:
+        msg = SupplierMessageORM(
+            supplier_id=supplier_id,
+            direction="outbound",
+            channel="agent",
+            subject=subject,
+            body=body_md,
+            author="ProcurementAgent",
+            related_negotiation_id=draft.draft_id,
+        )
+        db.add(msg)
+        await db.flush()
+        message_id = str(msg.message_id)
+
+    await db.commit()
+    await db.refresh(draft)
+    return NegotiateResponse(
+        draft_id=str(draft.draft_id),
+        supplier_id=supplier_id,
+        trigger_kind=draft.trigger_kind,
+        body_md=draft.body_md,
+        proposed_subject=subject,
+        message_id=message_id,
+    )
 
 
 @router.get("/{supplier_id}/moq_tax", response_model=list[MOQTaxEntry])

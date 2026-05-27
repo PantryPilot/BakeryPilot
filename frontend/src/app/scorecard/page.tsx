@@ -17,8 +17,27 @@ import {
   useIngredients,
   useNegotiationsBySupplier,
 } from "../../lib/hooks";
-import type { BackendWasteEvent, BackendYieldTelemetryPoint, OrderDraftResponse } from "../../lib/api";
-import { BACKEND_URL, createOrderDraft, markNegotiationSent, discardNegotiationDraft, createSupplier, updateSupplier, deleteSupplier } from "../../lib/api";
+import type { BackendWasteEvent, BackendYieldTelemetryPoint, OrderDraftResponse, BackendSupplierMessage } from "../../lib/api";
+import {
+  BACKEND_URL,
+  createOrderDraft,
+  markNegotiationSent,
+  discardNegotiationDraft,
+  createSupplier,
+  updateSupplier,
+  deleteSupplier,
+  fetchSupplierMessages,
+  sendSupplierMessage,
+  agentNegotiateSupplier,
+  receiveSupplierOrder,
+} from "../../lib/api";
+
+type QuickPOContext = {
+  source: "production_shortfall";
+  facilityId: string;
+  ingredientId: string;
+  quantityKg: number;
+};
 
 function Toast({ msg, tone, onDone }: { msg: string; tone: "green" | "red"; onDone: () => void }) {
   useEffect(() => {
@@ -35,14 +54,17 @@ function Toast({ msg, tone, onDone }: { msg: string; tone: "green" | "red"; onDo
   );
 }
 
-function PlacePOModal({ supplier, onClose, onSuccess }: {
+function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
   supplier: Supplier;
+  initialContext?: QuickPOContext | null;
   onClose: () => void;
   onSuccess: (msg: string) => void;
 }) {
   const { data: ingredients, status: ingStatus } = useIngredients();
-  const [ingredientId, setIngredientId] = useState("");
-  const [quantityKg, setQuantityKg] = useState("");
+  const [ingredientId, setIngredientId] = useState(initialContext?.ingredientId ?? "");
+  const [quantityKg, setQuantityKg] = useState(
+    initialContext?.quantityKg ? String(initialContext.quantityKg) : ""
+  );
   const [unitPrice, setUnitPrice] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [loading, setLoading] = useState(false);
@@ -59,6 +81,7 @@ function PlacePOModal({ supplier, onClose, onSuccess }: {
       supplier_id: supplier.id.replace(/^s-/, "sup_"),
       items: [{ ingredient_id: ingredientId, quantity_kg: parseFloat(quantityKg), unit_price: parseFloat(unitPrice) }],
       delivery_date: deliveryDate,
+      facility_id: initialContext?.facilityId,
     });
     setLoading(false);
     if (res) {
@@ -121,6 +144,11 @@ function PlacePOModal({ supplier, onClose, onSuccess }: {
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
         </div>
         <div className="space-y-4">
+          {initialContext && (
+            <div className="rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-[11px] text-violet-200">
+              Requested from Production shortfall · facility <span className="font-mono">{initialContext.facilityId}</span>
+            </div>
+          )}
           <div>
             <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Ingredient</label>
             <select
@@ -336,17 +364,117 @@ function exportWasteCSV(events: BackendWasteEvent[]) {
   URL.revokeObjectURL(url);
 }
 
+type SupplierTab = "overview" | "contact" | "messages" | "negotiate";
+
 function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
   supplier: Supplier;
   onClose: () => void;
   isClosing?: boolean;
   onDraftAction?: (msg: string) => void;
 }) {
-  const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
+  const { data: liveOrders, status: ordersStatus, refetch: refetchOrders } = useSupplierOrders(supplier.id);
   const { data: perf } = useSupplierPerformance(supplier.id);
   const { data: drafts, status: negotiationStatus, refetch: refetchDrafts } = useNegotiationsBySupplier(supplier.id);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SupplierTab>("overview");
+  const [receivingOrderId, setReceivingOrderId] = useState<string | null>(null);
+
+  // Messages state
+  const [messages, setMessages] = useState<BackendSupplierMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+
+  // Negotiation state
+  const [negGoal, setNegGoal] = useState("");
+  const [negTone, setNegTone] = useState("firm-but-friendly");
+  const [negSending, setNegSending] = useState(false);
+  const [negDraft, setNegDraft] = useState<string | null>(null);
+  const [negSubject, setNegSubject] = useState<string | null>(null);
+  const [negDraftId, setNegDraftId] = useState<string | null>(null);
+
+  const reloadMessages = useCallback(async () => {
+    setMessagesLoading(true);
+    const data = await fetchSupplierMessages(supplier.id);
+    setMessages(data ?? []);
+    setMessagesLoading(false);
+  }, [supplier.id]);
+
+  useEffect(() => {
+    if (activeTab === "messages") {
+      void reloadMessages();
+    }
+  }, [activeTab, reloadMessages]);
+
+  async function handleReceive(orderId: string) {
+    setReceivingOrderId(orderId);
+    const res = await receiveSupplierOrder(orderId);
+    setReceivingOrderId(null);
+    if (res) {
+      onDraftAction?.("Order received — lots created");
+      refetchOrders();
+    } else {
+      onDraftAction?.("Receive failed");
+    }
+  }
+
+  async function handleSendCompose() {
+    if (!composeBody.trim()) return;
+    setComposeSending(true);
+    const res = await sendSupplierMessage(supplier.id, composeBody.trim(), {
+      subject: composeSubject.trim() || undefined,
+      channel: "email",
+    });
+    setComposeSending(false);
+    if (res) {
+      setComposeBody("");
+      setComposeSubject("");
+      void reloadMessages();
+      onDraftAction?.("Message sent");
+    } else {
+      onDraftAction?.("Send failed");
+    }
+  }
+
+  async function handleAgentDraft() {
+    if (!negGoal.trim()) return;
+    setNegSending(true);
+    const res = await agentNegotiateSupplier(supplier.id, negGoal.trim(), {
+      tone: negTone,
+      record_outbound: false,
+    });
+    setNegSending(false);
+    if (res) {
+      setNegDraft(res.body_md);
+      setNegSubject(res.proposed_subject);
+      setNegDraftId(res.draft_id);
+      refetchDrafts();
+      onDraftAction?.("Draft generated by agent");
+    } else {
+      onDraftAction?.("Agent draft failed");
+    }
+  }
+
+  async function handleAgentSendDraft() {
+    if (!negDraft) return;
+    setNegSending(true);
+    const res = await sendSupplierMessage(supplier.id, negDraft, {
+      subject: negSubject || undefined,
+      channel: "agent",
+      related_negotiation_id: negDraftId ?? undefined,
+    });
+    setNegSending(false);
+    if (res) {
+      setNegDraft(null);
+      setNegSubject(null);
+      setNegDraftId(null);
+      setNegGoal("");
+      void reloadMessages();
+      onDraftAction?.("Agent message sent to supplier");
+    }
+  }
 
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
   const onTime = (() => {
@@ -416,104 +544,355 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
         </div>
         <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={18}/></button>
       </div>
+      <div className="flex border-b border-slate-800 bg-slate-900/40 text-[12px]">
+        {([
+          { id: "overview", label: "Overview" },
+          { id: "contact", label: "Contact" },
+          { id: "messages", label: `Messages${messages.length ? ` · ${messages.length}` : ""}` },
+          { id: "negotiate", label: "Negotiate" },
+        ] as { id: SupplierTab; label: string }[]).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`px-4 py-2.5 border-b-2 transition-colors font-medium ${
+              activeTab === t.id
+                ? "text-slate-100"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+            style={
+              activeTab === t.id
+                ? { borderColor: "var(--bp-accent)", color: "var(--bp-accent)" }
+                : undefined
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: "Fill rate",   value: `${(supplier.fill * 100).toFixed(0)}%` },
-            { label: "On-time",     value: `${(supplier.onTime * 100).toFixed(0)}%` },
-            { label: "Window",      value: `${(supplier.window * 100).toFixed(0)}%` },
-            { label: "Avg latency", value: `−2.4 h`, tone: "green" },
-          ].map((c, i) => (
-            <div key={i} className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500">{c.label}</div>
-              <div className={`text-[18px] font-mono tabular-nums mt-0.5 ${c.tone === "green" ? "text-emerald-300" : "text-slate-100"}`}>{c.value}</div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Performance · last 12 weeks</div>
-          <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
-            <LineChart series={[
-              { values: onTime, color: "#22c55e", label: "On-time" },
-              { values: fill,   color: "#3b82f6", label: "Fill" },
-              { values: win,    color: "#a855f7", label: "Window" },
-            ]} yMin={0.6} yMax={1}/>
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Price vs commodity benchmark</div>
-          <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
-            <LineChart series={[
-              { values: priceIdx, color: "#64748b", label: "Index", dashed: true },
-              { values: priceSup, color: "#f59e0b", label: "Supplier" },
-            ]} yMin={0.85} yMax={1.15}/>
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">
-            Active orders {ordersStatus === "live" && <span className="text-emerald-400 normal-case font-normal">· live</span>}
-          </div>
-          <div className="rounded-md border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60">
-            {ordersStatus === "loading" && (
-              <div className="px-3 py-3 text-[12px] text-slate-500">Loading orders…</div>
-            )}
-            {ordersStatus !== "loading" && liveOrders.length === 0 && (
-              <div className="px-3 py-3 text-[12px] text-slate-500">No active orders found.</div>
-            )}
-            {liveOrders.map((p, i) => {
-              const totalKg = p.items.reduce((s, it) => s + it.quantity_kg, 0);
-              return (
-                <div key={i} className="px-3 py-2 flex items-center gap-3 text-[12px]">
-                  <span className="font-mono text-slate-400 w-24">{p.order_id.toUpperCase()}</span>
-                  <span className="text-slate-200 flex-1">{p.items[0]?.ingredient_id.replace(/_/g, " ") || "—"}</span>
-                  <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{totalKg.toLocaleString()} kg</span>
-                  <span className="font-mono text-slate-500 w-44">{p.delivery_date}</span>
-                  <Pill tone={p.status === "delivered" ? "green" : p.status === "in-transit" ? "blue" : "ghost"}>{p.status}</Pill>
+        {activeTab === "overview" && (
+          <>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: "Fill rate",   value: `${(supplier.fill * 100).toFixed(0)}%` },
+                { label: "On-time",     value: `${(supplier.onTime * 100).toFixed(0)}%` },
+                { label: "Window",      value: `${(supplier.window * 100).toFixed(0)}%` },
+                { label: "MOQ", value: supplier.moqKg ? `${(supplier.moqKg/1000).toFixed(1)}t` : "—" },
+              ].map((c, i) => (
+                <div key={i} className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500">{c.label}</div>
+                  <div className="text-[18px] font-mono tabular-nums mt-0.5 text-slate-100">{c.value}</div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-        {showNegotiationSection && (
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300 font-semibold mb-2 flex items-center gap-2">
-              <Icon name="warn" size={12}/>Pending negotiation {drafts.length > 1 ? "drafts" : "draft"}
+              ))}
             </div>
-            {negotiationStatus === "loading" && drafts.length === 0 ? (
-              <div className="text-[12px] text-slate-500 py-2">Loading drafts…</div>
-            ) : (
-              drafts.map(draft => (
-                <div key={draft.draft_id} className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] p-4 mb-2">
-                  <div className="text-[13px] text-slate-100 font-medium mb-2 capitalize">
-                    {draft.trigger_kind.replace(/_/g, " ")}
-                  </div>
-                  <div className="text-[12px] text-slate-400 leading-relaxed mb-3">
-                    {draft.body_md.length > 400 ? draft.body_md.slice(0, 400) + "…" : draft.body_md}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      disabled={!!sendingId || !!discardingId}
-                      onClick={() => handleSend(draft.draft_id)}
-                      className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
-                    >
-                      {sendingId === draft.draft_id && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
-                      Send
-                    </button>
-                    <button className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200">Edit</button>
-                    <button
-                      disabled={!!sendingId || !!discardingId}
-                      onClick={() => handleDiscard(draft.draft_id)}
-                      className="px-3 py-1.5 rounded-md text-[12px] text-red-400 disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      {discardingId === draft.draft_id && <span className="w-3 h-3 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin"/>}
-                      Discard
-                    </button>
-                  </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Performance · last 12 weeks</div>
+              <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
+                <LineChart series={[
+                  { values: onTime, color: "#22c55e", label: "On-time" },
+                  { values: fill,   color: "#3b82f6", label: "Fill" },
+                  { values: win,    color: "#a855f7", label: "Window" },
+                ]} yMin={0.6} yMax={1}/>
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">Price vs commodity benchmark</div>
+              <div className="rounded-md border border-slate-800 bg-slate-950/40 p-4">
+                <LineChart series={[
+                  { values: priceIdx, color: "#64748b", label: "Index", dashed: true },
+                  { values: priceSup, color: "#f59e0b", label: "Supplier" },
+                ]} yMin={0.85} yMax={1.15}/>
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2 flex items-center gap-2">
+                Active orders {ordersStatus === "live" && <span className="text-emerald-400 normal-case font-normal">· live</span>}
+              </div>
+              <div className="rounded-md border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60">
+                {ordersStatus === "loading" && (
+                  <div className="px-3 py-3 text-[12px] text-slate-500">Loading orders…</div>
+                )}
+                {ordersStatus !== "loading" && liveOrders.length === 0 && (
+                  <div className="px-3 py-3 text-[12px] text-slate-500">No active orders found.</div>
+                )}
+                {liveOrders.map((p, i) => {
+                  const totalKg = p.items.reduce((s, it) => s + it.quantity_kg, 0);
+                  const canReceive = p.status === "confirmed" || p.status === "draft" || p.status === "pending_confirm";
+                  return (
+                    <div key={i} className="px-3 py-2 flex items-center gap-3 text-[12px]">
+                      <span className="font-mono text-slate-400 w-24 truncate" title={p.order_id}>{p.order_id.slice(0, 8).toUpperCase()}</span>
+                      <span className="text-slate-200 flex-1 truncate">{p.items[0]?.ingredient_id.replace(/_/g, " ") || "—"}{p.items.length > 1 ? ` +${p.items.length - 1}` : ""}</span>
+                      <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{totalKg.toLocaleString()} kg</span>
+                      <span className="font-mono text-slate-500 w-28 hidden sm:inline">{p.delivery_date}</span>
+                      <Pill tone={p.status === "sent" ? "green" : p.status === "confirmed" ? "blue" : "ghost"}>{p.status}</Pill>
+                      {canReceive && (
+                        <button
+                          disabled={receivingOrderId === p.order_id}
+                          onClick={() => handleReceive(p.order_id)}
+                          className="px-2 py-1 rounded-md bg-emerald-900/20 border border-emerald-700/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-900/30 disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {receivingOrderId === p.order_id && <span className="w-2.5 h-2.5 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
+                          Receive
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-[10.5px] text-slate-500 mt-1.5 pl-1">
+                Receive marks the order delivered, creates ingredient lots at the destination facility, and records an inventory receipt event.
+              </div>
+            </div>
+            {showNegotiationSection && (
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300 font-semibold mb-2 flex items-center gap-2">
+                  <Icon name="warn" size={12}/>Pending negotiation {drafts.length > 1 ? "drafts" : "draft"}
                 </div>
-              ))
+                {negotiationStatus === "loading" && drafts.length === 0 ? (
+                  <div className="text-[12px] text-slate-500 py-2">Loading drafts…</div>
+                ) : (
+                  drafts.map(draft => (
+                    <div key={draft.draft_id} className="rounded-md border border-amber-700/40 bg-amber-900/20 p-4 mb-2">
+                      <div className="text-[13px] text-slate-100 font-medium mb-2 capitalize">
+                        {draft.trigger_kind.replace(/_/g, " ")}
+                      </div>
+                      <div className="text-[12px] text-slate-400 leading-relaxed mb-3 whitespace-pre-line">
+                        {draft.body_md.length > 400 ? draft.body_md.slice(0, 400) + "…" : draft.body_md}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          disabled={!!sendingId || !!discardingId}
+                          onClick={() => handleSend(draft.draft_id)}
+                          className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
+                        >
+                          {sendingId === draft.draft_id && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+                          Mark sent
+                        </button>
+                        <button
+                          disabled={!!sendingId || !!discardingId}
+                          onClick={() => handleDiscard(draft.draft_id)}
+                          className="px-3 py-1.5 rounded-md text-[12px] text-red-400 disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {discardingId === draft.draft_id && <span className="w-3 h-3 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin"/>}
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {activeTab === "contact" && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-4 space-y-2.5">
+              <ContactRow icon="info" label="Contact" value={supplier.contactName || "—"}/>
+              <ContactRow icon="info" label="Email" value={supplier.contactEmail || "—"} href={supplier.contactEmail ? `mailto:${supplier.contactEmail}` : undefined}/>
+              <ContactRow icon="info" label="Phone" value={supplier.phone || "—"} href={supplier.phone ? `tel:${supplier.phone}` : undefined}/>
+              <ContactRow icon="info" label="Website" value={supplier.website || "—"} href={supplier.website || undefined}/>
+              <ContactRow icon="info" label="Address" value={supplier.address || "—"} multi/>
+              <ContactRow icon="info" label="Payment terms" value={supplier.paymentTerms || "—"}/>
+              <ContactRow icon="info" label="Lead time (mean)" value={supplier.leadTimeMean ? `${supplier.leadTimeMean} days` : "—"}/>
+              <ContactRow icon="info" label="MOQ" value={supplier.moqKg ? `${supplier.moqKg.toLocaleString()} kg` : "—"}/>
+              <ContactRow icon="info" label="Contract expiry" value={supplier.contractExpiry || "—"}/>
+            </div>
+            {supplier.notes && (
+              <div className="rounded-md border border-slate-800 bg-slate-900/30 p-4">
+                <div className="text-[10.5px] uppercase tracking-wider text-slate-500 mb-1">Notes</div>
+                <div className="text-[12.5px] text-slate-300 leading-relaxed whitespace-pre-line">{supplier.notes}</div>
+              </div>
             )}
           </div>
         )}
+        {activeTab === "messages" && (
+          <div className="space-y-3">
+            {messagesLoading ? (
+              <div className="text-[12px] text-slate-500 py-2">Loading conversation…</div>
+            ) : messages.length === 0 ? (
+              <div className="text-[12px] text-slate-500 py-2">No messages yet. Start a thread below.</div>
+            ) : (
+              <div className="space-y-2">
+                {messages.map(m => (
+                  <MessageBubble key={m.message_id} m={m}/>
+                ))}
+              </div>
+            )}
+            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+              <div className="text-[10.5px] uppercase tracking-wider text-slate-500">Send new message</div>
+              <input
+                value={composeSubject}
+                onChange={e => setComposeSubject(e.target.value)}
+                placeholder="Subject (optional)"
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+              <textarea
+                rows={3}
+                value={composeBody}
+                onChange={e => setComposeBody(e.target.value)}
+                placeholder="Type your message…"
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  disabled={!composeBody.trim() || composeSending}
+                  onClick={handleSendCompose}
+                  className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
+                >
+                  {composeSending && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeTab === "negotiate" && (
+          <div className="space-y-3">
+            <div
+              className="rounded-md border p-3 text-[12px] text-slate-200"
+              style={{
+                borderColor: "rgb(var(--bp-accent-rgb) / 0.35)",
+                background: "rgb(var(--bp-accent-rgb) / 0.08)",
+              }}
+            >
+              <div
+                className="font-semibold mb-1 flex items-center gap-1.5"
+                style={{ color: "var(--bp-accent)" }}
+              >
+                <Icon name="agent" size={14}/>Agent-drafted negotiation
+              </div>
+              Describe what you want to negotiate with <span className="text-slate-100 font-semibold">{supplier.name}</span>. The ProcurementAgent will draft a structured message using the supplier&apos;s on-time, fill, window and MOQ-tax data, ready to review and send.
+            </div>
+            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+              <label className="text-[10.5px] uppercase tracking-wider text-slate-500 block">Goal</label>
+              <textarea
+                rows={3}
+                value={negGoal}
+                onChange={e => setNegGoal(e.target.value)}
+                placeholder="e.g. Lower MOQ from 20t to 12t while holding current per-kg price."
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-[10.5px] uppercase tracking-wider text-slate-500">Tone</label>
+                <select
+                  value={negTone}
+                  onChange={e => setNegTone(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-[12px] text-slate-200 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="firm-but-friendly">Firm but friendly</option>
+                  <option value="formal">Formal</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="collaborative">Collaborative</option>
+                </select>
+                <div className="flex-1"/>
+                <button
+                  disabled={!negGoal.trim() || negSending}
+                  onClick={handleAgentDraft}
+                  className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
+                >
+                  {negSending && !negDraft && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+                  Generate draft
+                </button>
+              </div>
+            </div>
+            {negDraft && (
+              <div className="rounded-md border border-amber-700/40 bg-amber-900/20 p-4 space-y-2">
+                <div className="text-[10.5px] uppercase tracking-wider text-amber-300 font-semibold">Generated draft</div>
+                {negSubject && (
+                  <div className="text-[12px] text-slate-300 font-mono break-words">Subject: {negSubject}</div>
+                )}
+                <textarea
+                  rows={10}
+                  value={negDraft}
+                  onChange={e => setNegDraft(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none resize-y"
+                />
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    onClick={() => { setNegDraft(null); setNegSubject(null); setNegDraftId(null); }}
+                    className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-300"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    disabled={negSending}
+                    onClick={handleAgentSendDraft}
+                    className="px-3 py-1.5 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-emerald-950 font-semibold text-[12px] flex items-center gap-1.5"
+                  >
+                    {negSending && <span className="w-3 h-3 border-2 border-emerald-900/40 border-t-emerald-950 rounded-full animate-spin"/>}
+                    Send to supplier
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ContactRow({ label, value, href, multi }: {
+  icon?: string; label: string; value: string; href?: string; multi?: boolean;
+}) {
+  const content = href ? (
+    <a
+      href={href}
+      target={href.startsWith("http") ? "_blank" : undefined}
+      rel="noreferrer"
+      className="hover:underline break-words"
+      style={{ color: "var(--bp-accent)" }}
+    >
+      {value}
+    </a>
+  ) : (
+    <span className="text-slate-200 break-words">{value}</span>
+  );
+  return (
+    <div className={`flex ${multi ? "items-start" : "items-center"} gap-3 text-[12.5px]`}>
+      <span className="w-32 text-[10.5px] uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="flex-1">{content}</span>
+    </div>
+  );
+}
+
+function MessageBubble({ m }: { m: BackendSupplierMessage }) {
+  const outbound = m.direction === "outbound";
+  const channelClass: Record<string, string> = {
+    email: "text-slate-400",
+    phone: "text-amber-300",
+    chat: "text-slate-400",
+    agent: "text-emerald-300",
+    system: "text-slate-500",
+  };
+  return (
+    <div className={`flex ${outbound ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[85%] rounded-lg border p-3 ${
+          outbound
+            ? "border-transparent"
+            : "bg-slate-900/60 border-slate-700"
+        }`}
+        style={
+          outbound
+            ? {
+                background: "rgb(var(--bp-accent-rgb) / 0.12)",
+                borderColor: "rgb(var(--bp-accent-rgb) / 0.35)",
+              }
+            : undefined
+        }
+      >
+        <div className="flex items-center gap-2 mb-1 text-[10.5px] flex-wrap">
+          <span className={`uppercase tracking-wider ${channelClass[m.channel] ?? "text-slate-400"}`}>{m.channel}</span>
+          <span className="text-slate-500">·</span>
+          <span className="text-slate-400">{m.author || (outbound ? "you" : "supplier")}</span>
+          <span className="text-slate-500">·</span>
+          <span className="text-slate-500 font-mono">{new Date(m.sent_at).toLocaleString()}</span>
+        </div>
+        {m.subject && (
+          <div className="text-[12.5px] font-semibold text-slate-100 mb-1">{m.subject}</div>
+        )}
+        <div className="text-[12.5px] text-slate-200 whitespace-pre-line leading-relaxed">{m.body}</div>
       </div>
     </div>
   );
@@ -640,9 +1019,11 @@ function AddEditSupplierModal({ existing, onClose, onSuccess }: {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
+  const searchParams = useSearchParams();
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
   const [supplierClosing, setSupplierClosing] = useState(false);
   const [placePOTarget, setPlacePOTarget] = useState<Supplier | null>(null);
+  const [poContext, setPoContext] = useState<QuickPOContext | null>(null);
   const [addSupplierOpen, setAddSupplierOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Supplier | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Supplier | null>(null);
@@ -661,6 +1042,21 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
     return [...addedSuppliers, ...base];
   }, [backendSuppliers, supplierOverrides, addedSuppliers, deletedSupplierIds]);
 
+  const quickPoContext = useMemo<QuickPOContext | null>(() => {
+    if (searchParams.get("source") !== "production_shortfall") return null;
+    const facilityId = searchParams.get("po_facility_id") ?? "";
+    const ingredientId = searchParams.get("po_ingredient_id") ?? "";
+    const quantityRaw = searchParams.get("po_quantity_kg") ?? "";
+    const quantityKg = Number(quantityRaw);
+    if (!facilityId || !ingredientId || !Number.isFinite(quantityKg) || quantityKg <= 0) return null;
+    return {
+      source: "production_shortfall",
+      facilityId,
+      ingredientId,
+      quantityKg,
+    };
+  }, [searchParams]);
+
   const closeSupplier = useCallback(() => {
     setSupplierClosing(true);
     setTimeout(() => { setActiveSupplier(null); setSupplierClosing(false); }, 280);
@@ -669,6 +1065,15 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   function showToast(msg: string, tone: "green" | "red" = "green") {
     setToast({ msg, tone });
   }
+
+  useEffect(() => {
+    if (!quickPoContext || placePOTarget || suppliers.length === 0) return;
+    const suggested = suppliers
+      .filter(s => s.status !== "disrupt")
+      .sort((a, b) => b.onTime - a.onTime)[0] ?? suppliers[0];
+    setPoContext(quickPoContext);
+    setPlacePOTarget(suggested);
+  }, [quickPoContext, placePOTarget, suppliers]);
 
   const summary = [
     { label: "Active suppliers", value: scorecardSummary?.supplier_count ?? suppliers.length, tone: "slate" },
@@ -686,6 +1091,31 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
+      {quickPoContext && (
+        <div className="mb-4 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-[12px] text-violet-200 flex items-center justify-between gap-3">
+          <div>
+            Shortfall procurement request from Production ·
+            ingredient <span className="font-mono"> {quickPoContext.ingredientId}</span> ·
+            qty <span className="font-mono"> {quickPoContext.quantityKg.toFixed(1)} kg</span> ·
+            facility <span className="font-mono"> {quickPoContext.facilityId}</span>
+          </div>
+          {!placePOTarget && (
+            <button
+              onClick={() => {
+                const suggested = suppliers
+                  .filter(s => s.status !== "disrupt")
+                  .sort((a, b) => b.onTime - a.onTime)[0] ?? suppliers[0];
+                if (!suggested) return;
+                setPoContext(quickPoContext);
+                setPlacePOTarget(suggested);
+              }}
+              className="shrink-0 px-3 py-1.5 rounded-md border border-violet-500/40 bg-violet-500/20 text-violet-100 hover:bg-violet-500/30 text-[11px] font-semibold"
+            >
+              Open PO draft
+            </button>
+          )}
+        </div>
+      )}
       {/* Mobile card list */}
       <div className="sm:hidden space-y-2 mb-6">
         {suppliers.map(s => (
@@ -783,7 +1213,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                         >View draft</button>
                       )}
                       <button
-                        onClick={e => { e.stopPropagation(); setPlacePOTarget(s); }}
+                        onClick={e => { e.stopPropagation(); setPoContext(null); setPlacePOTarget(s); }}
                         className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300"
                       >Place PO</button>
                       <button
@@ -840,8 +1270,9 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       {placePOTarget && (
         <PlacePOModal
           supplier={placePOTarget}
-          onClose={() => setPlacePOTarget(null)}
-          onSuccess={msg => { setPlacePOTarget(null); showToast(msg); }}
+          initialContext={poContext}
+          onClose={() => { setPlacePOTarget(null); setPoContext(null); }}
+          onSuccess={msg => { setPlacePOTarget(null); setPoContext(null); showToast(msg); }}
         />
       )}
       {(addSupplierOpen || editTarget) && (

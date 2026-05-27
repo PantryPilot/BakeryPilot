@@ -524,3 +524,32 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ============================================================================
+-- Supplier engagement (additive, post v3)
+-- ============================================================================
+
+ALTER TABLE suppliers
+  ADD COLUMN IF NOT EXISTS contact_name text,
+  ADD COLUMN IF NOT EXISTS phone        text,
+  ADD COLUMN IF NOT EXISTS website      text,
+  ADD COLUMN IF NOT EXISTS address      text,
+  ADD COLUMN IF NOT EXISTS notes        text;
+
+CREATE TABLE IF NOT EXISTS supplier_messages (
+  message_id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier_id  text NOT NULL REFERENCES suppliers(supplier_id) ON DELETE CASCADE,
+  direction    text NOT NULL CHECK (direction IN ('inbound','outbound')),
+  channel      text NOT NULL DEFAULT 'email'
+               CHECK (channel IN ('email','phone','chat','agent','system')),
+  subject      text,
+  body         text NOT NULL,
+  author       text,
+  related_order_id uuid REFERENCES supplier_orders(order_id) ON DELETE SET NULL,
+  related_negotiation_id uuid REFERENCES negotiation_drafts(draft_id) ON DELETE SET NULL,
+  sent_at      timestamptz NOT NULL DEFAULT now(),
+  read_at      timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS supplier_messages_supplier_sent_idx
+  ON supplier_messages (supplier_id, sent_at DESC);

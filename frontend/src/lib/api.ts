@@ -38,6 +38,11 @@ interface BackendSupplier {
   window_compliance_rate: number;
   price_variance_vs_benchmark: number;
   moq_tax_quarter_usd: number;
+  contact_name?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  address?: string | null;
+  notes?: string | null;
 }
 
 interface BackendLot {
@@ -135,23 +140,33 @@ function adaptSupplier(b: BackendSupplier): Supplier {
     moqTaxQtd: b.moq_tax_quarter_usd,
     contractExpiry: b.contract_expiry_date,
     status: deriveSupplierStatus(b),
+    contactEmail: b.contact_email || undefined,
+    contactName: b.contact_name || undefined,
+    phone: b.phone || undefined,
+    website: b.website || undefined,
+    address: b.address || undefined,
+    notes: b.notes || undefined,
+    paymentTerms: b.payment_terms || undefined,
+    moqKg: b.moq_kg,
+    leadTimeMean: b.lead_time_mean_days,
   };
 }
 
 function adaptLot(b: BackendLot): Lot {
-  const expiry = new Date(b.expiry_date);
+  // Use date-only math to avoid timezone/rounding drift between UI status and risk.
+  const [y, m, d] = b.expiry_date.split("-").map((v) => parseInt(v, 10));
+  const expiryDayUtc = Date.UTC(y, m - 1, d);
   const now = new Date();
-  const daysLeft = Math.max(
-    0,
-    Math.round((expiry.getTime() - now.getTime()) / 86_400_000),
-  );
-  const risk = Math.min(1, b.spoilage_risk_score);
+  const todayDayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayDelta = Math.floor((expiryDayUtc - todayDayUtc) / 86_400_000);
+  const daysLeft = Math.max(0, dayDelta);
+  const risk = Math.min(1, Math.max(0, b.spoilage_risk_score));
   const status: LotStatus =
-    daysLeft <= 0
+    dayDelta < 0
       ? "expired"
-      : risk >= 1.0
+      : risk >= 0.85
       ? "critical"
-      : risk >= 0.5
+      : risk >= 0.55
       ? "warn"
       : "ok";
   return {
@@ -866,6 +881,7 @@ export interface OrderDraftRequest {
   supplier_id: string;
   items: OrderDraftItem[];
   delivery_date: string;
+  facility_id?: string;
 }
 
 export interface OrderDraftResponse {
@@ -981,6 +997,37 @@ export interface BackendProductionLine {
   current_order: BackendProductionOrder | null;
 }
 
+export interface BackendTransferPlanSource {
+  from_facility_id: string;
+  from_facility_name: string;
+  transfer_kg: number;
+}
+
+export interface BackendTransferPlanItem {
+  ingredient_id: string;
+  ingredient_name: string;
+  shortfall_kg: number;
+  covered_kg: number;
+  uncovered_kg: number;
+  sources: BackendTransferPlanSource[];
+}
+
+export interface BackendTransferPlan {
+  fully_covers: boolean;
+  total_shortfall_kg: number;
+  total_covered_kg: number;
+  total_uncovered_kg: number;
+  items: BackendTransferPlanItem[];
+}
+
+export interface BackendSubstituteSku {
+  sku_id: string;
+  sku_name: string;
+  achievable_quantity: number;
+  covers_requested_units: boolean;
+  reason: string;
+}
+
 export interface BackendValidationResult {
   feasible: boolean;
   ingredients: {
@@ -989,7 +1036,15 @@ export interface BackendValidationResult {
     needed_kg: number;
     available_kg: number;
     shortfall_kg: number;
+    transfer_options?: {
+      from_facility_id: string;
+      from_facility_name: string;
+      available_kg: number;
+      transferable_kg: number;
+    }[];
   }[];
+  transfer_plan?: BackendTransferPlan | null;
+  substitute_skus?: BackendSubstituteSku[];
 }
 
 export interface BackendProduceResult {
@@ -1096,6 +1151,45 @@ export async function markOrderProduced(
     `/api/production/orders/${encodeURIComponent(orderId)}/produce`,
     { method: "POST" },
     10000,
+  );
+}
+
+export async function requestShortfallTransfer(req: {
+  facility_id: string;
+  ingredient_id: string;
+  from_facility_id: string;
+  quantity_kg: number;
+  requested_by_sku_id: string;
+  requested_units: number;
+}): Promise<{ action_card_id: string } | null> {
+  return safeFetch<{ action_card_id: string }>(
+    "/api/production/shortfalls/request_transfer",
+    { method: "POST", body: JSON.stringify(req) },
+  );
+}
+
+export async function requestShortfallTransferPlan(req: {
+  facility_id: string;
+  requested_by_sku_id: string;
+  requested_units: number;
+  items: { ingredient_id: string; from_facility_id: string; quantity_kg: number }[];
+}): Promise<{ action_card_id: string } | null> {
+  return safeFetch<{ action_card_id: string }>(
+    "/api/production/shortfalls/request_transfer_plan",
+    { method: "POST", body: JSON.stringify(req) },
+  );
+}
+
+export async function requestShortfallSubstitution(req: {
+  facility_id: string;
+  substitute_sku_id: string;
+  requested_by_sku_id: string;
+  requested_units: number;
+  blocked_ingredient_ids?: string[];
+}): Promise<{ action_card_id: string } | null> {
+  return safeFetch<{ action_card_id: string }>(
+    "/api/production/shortfalls/request_substitution",
+    { method: "POST", body: JSON.stringify(req) },
   );
 }
 
@@ -1221,4 +1315,103 @@ export function openEventStream(
     onError?.(err);
   }
   return () => es?.close();
+}
+
+// ---------- Supplier messages + agent negotiation ----------
+
+export interface BackendSupplierMessage {
+  message_id: string;
+  supplier_id: string;
+  direction: "inbound" | "outbound";
+  channel: "email" | "phone" | "chat" | "agent" | "system";
+  subject: string | null;
+  body: string;
+  author: string | null;
+  related_order_id: string | null;
+  related_negotiation_id: string | null;
+  sent_at: string;
+  read_at: string | null;
+}
+
+export async function fetchSupplierMessages(
+  supplierId: string
+): Promise<BackendSupplierMessage[] | null> {
+  return safeFetch<BackendSupplierMessage[]>(
+    `/api/suppliers/${encodeURIComponent(supplierId)}/messages`
+  );
+}
+
+export async function sendSupplierMessage(
+  supplierId: string,
+  body: string,
+  opts?: {
+    subject?: string;
+    channel?: BackendSupplierMessage["channel"];
+    direction?: BackendSupplierMessage["direction"];
+    related_order_id?: string;
+    related_negotiation_id?: string;
+  }
+): Promise<BackendSupplierMessage | null> {
+  return safeFetch<BackendSupplierMessage>(
+    `/api/suppliers/${encodeURIComponent(supplierId)}/messages`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        body,
+        subject: opts?.subject,
+        channel: opts?.channel ?? "email",
+        direction: opts?.direction ?? "outbound",
+        related_order_id: opts?.related_order_id,
+        related_negotiation_id: opts?.related_negotiation_id,
+      }),
+    }
+  );
+}
+
+export interface AgentNegotiationResponse {
+  draft_id: string;
+  supplier_id: string;
+  trigger_kind: string;
+  body_md: string;
+  proposed_subject: string;
+  message_id: string | null;
+}
+
+export async function agentNegotiateSupplier(
+  supplierId: string,
+  goal: string,
+  opts?: { tone?: string; record_outbound?: boolean }
+): Promise<AgentNegotiationResponse | null> {
+  return safeFetch<AgentNegotiationResponse>(
+    `/api/suppliers/${encodeURIComponent(supplierId)}/negotiate`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        goal,
+        tone: opts?.tone ?? "firm-but-friendly",
+        record_outbound: opts?.record_outbound ?? false,
+      }),
+    }
+  );
+}
+
+export interface BackendSupplierOrderDetail {
+  order_id: string;
+  supplier_id: string;
+  items: { ingredient_id: string; quantity_kg: number; unit_price: number }[];
+  delivery_date: string;
+  status: string;
+  confirmed_at: string | null;
+  action_card_id: string | null;
+}
+
+export async function receiveSupplierOrder(
+  orderId: string
+): Promise<BackendSupplierOrderDetail | null> {
+  return safeFetch<BackendSupplierOrderDetail>(
+    `/api/orders/${encodeURIComponent(orderId)}/receive`,
+    { method: "POST" }
+  );
 }
