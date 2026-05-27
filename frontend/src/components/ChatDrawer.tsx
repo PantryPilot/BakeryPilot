@@ -19,6 +19,7 @@ interface Message {
   card?: ActionCardData | null;
   thinking?: boolean;
   status?: string;
+  streaming?: boolean;
 }
 
 function nowTime() {
@@ -106,7 +107,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: (last.text || "") + chunk, thinking: false, status: undefined };
+            next[next.length - 1] = { ...last, text: (last.text || "") + chunk, thinking: false, status: undefined, streaming: true };
           }
           return next;
         });
@@ -135,13 +136,24 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           return next;
         });
       },
-      onDone: () => setIsThinking(false),
+      onDone: () => {
+        setIsThinking(false);
+        setMessages(m => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && last.streaming) {
+            next[next.length - 1] = { ...last, streaming: false };
+          }
+          return next;
+        });
+      },
       onError: () => {
         setIsThinking(false);
         setMessages(m => {
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant" && !last.text) next.pop();
+          else if (last?.role === "assistant") next[next.length - 1] = { ...last, streaming: false };
           return next;
         });
       },
@@ -421,6 +433,11 @@ function PopupMessage({ m }: { m: Message }) {
               <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "150ms" }} />
               <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
             </span>
+          </div>
+        ) : m.streaming ? (
+          <div className="text-[13.5px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
+            {m.text}
+            <span className="inline-block w-[7px] h-[14px] -mb-[2px] ml-[1px] bg-blue-400/70 animate-pulse"/>
           </div>
         ) : (
           <ReactMarkdown
