@@ -347,8 +347,63 @@ body {
   color: #78350f !important;
 }
 :root[data-theme="light"] .bg-black\/50,
+:root[data-theme="light"] .bg-black\/60,
 :root[data-theme="light"] .bg-black\/70 {
   background-color: var(--bp-overlay) !important;
+}
+
+/* Status badge / chip backgrounds — amber (setup) */
+:root[data-theme="light"] .bg-amber-900\/30,
+:root[data-theme="light"] .bg-amber-900\/20 {
+  background-color: rgb(254 243 199 / 0.8) !important;
+}
+:root[data-theme="light"] .text-amber-300 {
+  color: #92400e !important;
+}
+:root[data-theme="light"] .border-amber-700\/50,
+:root[data-theme="light"] .border-amber-700\/40 {
+  border-color: rgb(217 119 6 / 0.35) !important;
+}
+
+/* Status badge / chip backgrounds — emerald (producing) */
+:root[data-theme="light"] .bg-emerald-900\/30,
+:root[data-theme="light"] .bg-emerald-900\/20,
+:root[data-theme="light"] .bg-emerald-900\/10 {
+  background-color: rgb(209 250 229 / 0.8) !important;
+}
+:root[data-theme="light"] .text-emerald-300 {
+  color: #065f46 !important;
+}
+:root[data-theme="light"] .border-emerald-700\/50,
+:root[data-theme="light"] .border-emerald-700\/40 {
+  border-color: rgb(5 150 105 / 0.35) !important;
+}
+
+/* Status badge / chip backgrounds — orange (paused) */
+:root[data-theme="light"] .bg-orange-900\/30,
+:root[data-theme="light"] .bg-orange-900\/20 {
+  background-color: rgb(255 237 213 / 0.8) !important;
+}
+:root[data-theme="light"] .text-orange-300 {
+  color: #9a3412 !important;
+}
+:root[data-theme="light"] .border-orange-700\/50,
+:root[data-theme="light"] .border-orange-700\/40 {
+  border-color: rgb(234 88 12 / 0.35) !important;
+}
+
+/* Status badge / chip backgrounds — red (maintenance / warnings) */
+:root[data-theme="light"] .bg-red-950\/30,
+:root[data-theme="light"] .bg-red-900\/30,
+:root[data-theme="light"] .bg-red-900\/20 {
+  background-color: rgb(254 226 226 / 0.8) !important;
+}
+:root[data-theme="light"] .text-red-300 {
+  color: #991b1b !important;
+}
+:root[data-theme="light"] .border-red-700\/40,
+:root[data-theme="light"] .border-red-900\/40 {
+  border-color: rgb(220 38 38 / 0.35) !important;
 }
 
 /* Softer row typography in light-mode data tables */
