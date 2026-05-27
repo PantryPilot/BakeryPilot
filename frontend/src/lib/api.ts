@@ -14,6 +14,7 @@ import type {
   SupplierStatus,
   Kpis,
 } from "./data";
+import type { ChatModelOption } from "./chatModels";
 
 export const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "") || "http://localhost:8000";
@@ -447,6 +448,25 @@ export async function fetchAdminTableRows(
     undefined,
     10000,
   );
+}
+
+export interface AdminCopilotModelSettings {
+  model_id: string;
+  models: ChatModelOption[];
+}
+
+export async function fetchAdminCopilotModel(): Promise<AdminCopilotModelSettings | null> {
+  return safeFetch<AdminCopilotModelSettings>("/api/admin/copilot-model");
+}
+
+export async function updateAdminCopilotModel(
+  modelId: string,
+): Promise<AdminCopilotModelSettings | null> {
+  return safeFetch<AdminCopilotModelSettings>("/api/admin/copilot-model", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+  });
 }
 
 // ---------- Users + settings ----------
@@ -1088,26 +1108,6 @@ export async function fetchFinishedGoods(
 
 // ---------- SSE: chat + events ----------
 
-export interface ChatModelOption {
-  id: string;
-  label: string;
-  provider: string;
-  tier: string;
-  description: string;
-  available: boolean;
-  is_default: boolean;
-}
-
-export async function fetchChatModels(): Promise<ChatModelOption[]> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/chat/models`);
-    if (!res.ok) return [];
-    return (await res.json()) as ChatModelOption[];
-  } catch {
-    return [];
-  }
-}
-
 export interface ChatStreamHandlers {
   onMessage: (chunk: string) => void;
   onStatus?: (text: string) => void;
@@ -1124,12 +1124,10 @@ export async function streamChat(
   message: string,
   history: { role: "user" | "assistant"; content: string }[],
   handlers: ChatStreamHandlers,
-  model?: string | null,
 ): Promise<() => void> {
   const ctrl = new AbortController();
   try {
     const body: Record<string, unknown> = { message, history };
-    if (model) body.model = model;
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

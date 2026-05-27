@@ -3,17 +3,23 @@
 import { useState, useEffect, useCallback } from "react";
 import { Icon } from "../../components/Icon";
 import { SectionHeader } from "../../components/atoms";
+import { ModelSelector } from "../../components/ModelSelector";
+import { providerBadge, type ChatModelOption } from "../../lib/chatModels";
 import {
   fetchAdminTables,
   fetchAdminTableRows,
+  fetchAdminCopilotModel,
+  updateAdminCopilotModel,
   type AdminTableInfo,
   type AdminColumnInfo,
   type AdminTableRowsResponse,
 } from "../../lib/api";
 
 type SortState = { column: string; order: "asc" | "desc" } | null;
+type AdminView = "copilot" | "tables";
 
 export default function AdminPage() {
+  const [view, setView] = useState<AdminView>("copilot");
   const [tables, setTables] = useState<AdminTableInfo[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
   const [activeTable, setActiveTable] = useState<string | null>(null);
@@ -54,6 +60,7 @@ export default function AdminPage() {
   );
 
   const selectTable = (name: string) => {
+    setView("tables");
     setActiveTable(name);
     setPage(1);
     setSort(null);
@@ -91,6 +98,27 @@ export default function AdminPage() {
     <div className="h-full flex overflow-hidden">
       {/* Table list sidebar */}
       <div className="w-[240px] shrink-0 border-r border-slate-800/80 flex flex-col bg-[#0b0e16]">
+        <div className="p-3 border-b border-slate-800/80">
+          <SectionHeader title="Admin" sub="System & database"/>
+        </div>
+
+        <div className="py-1 border-b border-slate-800/80">
+          <button
+            onClick={() => setView("copilot")}
+            className={`w-full text-left flex items-center gap-2 px-3 py-2.5 transition relative ${
+              view === "copilot"
+                ? "text-slate-100 bg-slate-800/50"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
+            }`}
+          >
+            {view === "copilot" && (
+              <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-blue-500" />
+            )}
+            <Icon name="zap" size={14} className={view === "copilot" ? "text-blue-400" : "text-slate-600"} />
+            <span className="text-[12px] font-medium">Copilot LLM</span>
+          </button>
+        </div>
+
         <div className="p-3 border-b border-slate-800/80">
           <SectionHeader title="Tables" sub={`${tables.length} total`}/>
           <div className="mt-2 relative">
@@ -151,7 +179,9 @@ export default function AdminPage() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {!activeTable ? (
+        {view === "copilot" ? (
+          <CopilotModelPanel />
+        ) : !activeTable ? (
           <EmptyState />
         ) : (
           <>
@@ -187,6 +217,113 @@ export default function AdminPage() {
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function CopilotModelPanel() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelId, setModelId] = useState("claude-sonnet-4-6");
+  const [models, setModels] = useState<ChatModelOption[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const data = await fetchAdminCopilotModel();
+    if (!data) {
+      setError("Could not load copilot settings. Is the backend running?");
+      setLoading(false);
+      return;
+    }
+    setModelId(data.model_id);
+    setModels(data.models);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleChange = async (nextId: string) => {
+    setModelId(nextId);
+    setSaving(true);
+    setError(null);
+    const data = await updateAdminCopilotModel(nextId);
+    setSaving(false);
+    if (!data) {
+      setError("Failed to save model selection.");
+      return;
+    }
+    setModelId(data.model_id);
+    setModels(data.models);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const active = models.find((m) => m.id === modelId);
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-[640px] mx-auto p-6 space-y-5">
+        <div className="flex items-center gap-3">
+          <Icon name="zap" size={20} className="text-blue-400" />
+          <div>
+            <h1 className="text-[16px] font-semibold text-slate-100">Copilot LLM</h1>
+            <p className="text-[12px] text-slate-500 mt-0.5">
+              Choose the backend model for all copilot chat requests. End users do not see this setting.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+          <div className="p-4 border-b border-slate-800 flex items-center justify-between gap-3">
+            <h3 className="text-[13px] font-semibold text-slate-200 uppercase tracking-wider">
+              Active model
+            </h3>
+            {saving && <span className="text-[11px] text-blue-400 animate-pulse">Saving…</span>}
+            {saved && !saving && (
+              <span className="text-[11px] text-emerald-400">Saved</span>
+            )}
+          </div>
+
+          <div className="p-5 space-y-4">
+            {loading ? (
+              <div className="text-[13px] text-slate-500">Loading models…</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <ModelSelector
+                    models={models}
+                    value={modelId}
+                    onChange={handleChange}
+                    disabled={saving}
+                  />
+                  {active && (
+                    <span className="rounded px-2 py-1 text-[10px] font-mono bg-slate-800 text-slate-400">
+                      {providerBadge(active.provider)}
+                    </span>
+                  )}
+                </div>
+                {active && (
+                  <p className="text-[13px] text-slate-400 leading-relaxed">
+                    {active.description}
+                  </p>
+                )}
+                {error && (
+                  <p className="text-[12px] text-red-400">{error}</p>
+                )}
+                <p className="text-[11px] text-slate-600 font-mono">
+                  Provider API keys are configured in <code className="text-slate-500">.env</code>.
+                  Models without a key appear as disabled.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

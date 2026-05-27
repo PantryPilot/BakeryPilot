@@ -7,13 +7,7 @@ import { marked } from "marked";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
-import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL, fetchChatModels } from "../lib/api";
-import { ModelSelector } from "./ModelSelector";
-import {
-  pickInitialModel,
-  setStoredChatModel,
-  type ChatModelOption,
-} from "../lib/chatModels";
+import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
 import { useApp } from "../lib/context";
 
 interface Message {
@@ -90,18 +84,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       time: nowTime(),
     },
   ]);
-  const [chatModels, setChatModels] = useState<ChatModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetchChatModels().then((models) => {
-      setChatModels(models);
-      if (models.length > 0) {
-        setSelectedModel(pickInitialModel(models));
-      }
-    });
-  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -162,13 +145,8 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           return next;
         });
       },
-    }, selectedModel);
-  }, [isThinking, selectedModel]);
-
-  const handleModelChange = useCallback((modelId: string) => {
-    setSelectedModel(modelId);
-    setStoredChatModel(modelId);
-  }, []);
+    });
+  }, [isThinking]);
 
   useEffect(() => {
     if (chatContext) {
@@ -254,13 +232,6 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           <span className="text-[13px] font-semibold text-slate-100">Copilot</span>
         </div>
         <div className="flex items-center gap-2">
-          <ModelSelector
-            models={chatModels}
-            value={selectedModel}
-            onChange={handleModelChange}
-            compact
-            disabled={isThinking}
-          />
           {isThinking && (
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "0ms" }} />

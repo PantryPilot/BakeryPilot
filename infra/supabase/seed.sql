@@ -501,4 +501,9 @@ BEGIN
     INSERT INTO user_settings (user_id) VALUES ('demo_user')
     ON CONFLICT (user_id) DO NOTHING;
   END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'app_settings') THEN
+    INSERT INTO app_settings (key, value) VALUES ('copilot_model', 'claude-sonnet-4-6')
+    ON CONFLICT (key) DO NOTHING;
+  END IF;
 END $$;

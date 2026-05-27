@@ -2,12 +2,15 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends
 from langchain_core.messages import AIMessage, HumanMessage
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import settings
+from app.db.session import get_db
 from app.models.chat import ChatModelInfo, ChatRequest
+from app.services.app_settings import get_copilot_model
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -57,18 +60,13 @@ async def chat_ping():
 
 
 @router.post("")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     _sync_llm_env()
     from agent.graph import _graph
-    from agent.llm import is_model_available, set_request_model
+    from agent.llm import set_request_model
 
-    if req.model and not is_model_available(req.model):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Model '{req.model}' is not available. Check API keys and GET /api/chat/models.",
-        )
-
-    set_request_model(req.model)
+    model_id = await get_copilot_model(db)
+    set_request_model(model_id)
 
     async def stream():
         thread_id = str(uuid.uuid4())
