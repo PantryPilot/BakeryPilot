@@ -11,15 +11,26 @@ jest.mock('../lib/hooks', () => ({
 
 jest.mock('../lib/context', () => ({
   useApp: () => ({
+    theme: 'dark',
+    setTheme: jest.fn(),
+    accent: 'blue',
+    setAccent: jest.fn(),
     facility: 'all',
     setFacility: jest.fn(),
     sidebarCollapsed: false,
     setSidebarCollapsed: jest.fn(),
+    mobileSidebarOpen: false,
+    setMobileSidebarOpen: jest.fn(),
     chatOpen: false,
     setChatOpen: jest.fn(),
     chatContext: null,
     setChatContext: jest.fn(),
     openChatContext: jest.fn(),
+    notifications: [],
+    unreadCount: 0,
+    dismissNotification: jest.fn(),
+    hideToast: jest.fn(),
+    markNotificationsRead: jest.fn(),
   }),
 }))
 
