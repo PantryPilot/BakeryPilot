@@ -575,7 +575,7 @@ async def agent_negotiate_stream(
 
     async def stream():
         yield {"event": "trigger", "data": json.dumps({"trigger_kind": trigger_kind})}
-        llm = ChatAnthropic(model=get_model("negotiation"), temperature=0.3, streaming=True)
+        llm = ChatAnthropic(model=get_model("negotiation"), streaming=True)
         accumulated = ""
         try:
             async for chunk in llm.astream(
