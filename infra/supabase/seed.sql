@@ -178,23 +178,26 @@ INSERT INTO skus (sku_id, name, category, margin_per_unit, allergen_tags, shelf_
 ON CONFLICT (sku_id) DO NOTHING;
 
 -- ============================================================================
--- retailer_orders — 8 sample firm POs (F2.3)
---   Dates are relative-ish (using fixed dates in May/June 2026 for hackathon demo).
---   Guarded so re-running seed.sql doesn't create duplicate orders.
+-- retailer_orders — 10 sample firm POs covering the full fulfilment lifecycle
+-- (F2.3 + demo-data audit). Mix of statuses: 6 open, 1 scheduled, 2 shipped,
+-- 1 cancelled. Dates are relative to seed time so the demo timeline always
+-- looks fresh. Guarded so re-running seed.sql doesn't create duplicate orders.
 -- ============================================================================
 
 DO $$
 BEGIN
   IF (SELECT count(*) FROM retailer_orders) = 0 THEN
     INSERT INTO retailer_orders (retailer_id, sku_id, quantity_units, requested_delivery_date, status) VALUES
-      ('costco',     'sku-ace-baguette-classic',          12000, DATE '2026-05-28', 'open'),
-      ('costco',     'sku-wonder-classic-white-loaf',      8000, DATE '2026-05-29', 'open'),
-      ('walmart',    'sku-country-harvest-12-grain-loaf',  6000, DATE '2026-05-27', 'scheduled'),
-      ('walmart',    'sku-d-italiano-hot-dog-buns-8pk',    9000, DATE '2026-05-30', 'open'),
-      ('loblaws',    'sku-stonefire-original-naan-2pk',    4500, DATE '2026-05-29', 'open'),
-      ('loblaws',    'sku-ace-sourdough-bistro',           3200, DATE '2026-06-01', 'open'),
-      ('wholefoods', 'sku-ace-rosemary-focaccia',          2400, DATE '2026-05-28', 'open'),
-      ('wholefoods', 'sku-stonefire-pizza-crust-2pk',      3600, DATE '2026-05-30', 'open');
+      ('costco',     'sku-ace-baguette-classic',           12000, CURRENT_DATE + 3,  'open'),
+      ('costco',     'sku-wonder-classic-white-loaf',       8000, CURRENT_DATE + 4,  'open'),
+      ('walmart',    'sku-country-harvest-12-grain-loaf',   6000, CURRENT_DATE + 2,  'scheduled'),
+      ('walmart',    'sku-d-italiano-hot-dog-buns-8pk',     9000, CURRENT_DATE + 5,  'open'),
+      ('loblaws',    'sku-stonefire-original-naan-2pk',     4500, CURRENT_DATE + 4,  'open'),
+      ('loblaws',    'sku-ace-sourdough-bistro',            3200, CURRENT_DATE + 7,  'shipped'),
+      ('wholefoods', 'sku-ace-rosemary-focaccia',           2400, CURRENT_DATE + 3,  'open'),
+      ('wholefoods', 'sku-stonefire-pizza-crust-2pk',       3600, CURRENT_DATE + 5,  'open'),
+      ('costco',     'sku-ace-baguette-classic',            9000, CURRENT_DATE - 1,  'shipped'),
+      ('walmart',    'sku-stonefire-mini-naan-8pk',         5400, CURRENT_DATE - 2,  'cancelled');
   END IF;
 END $$;
 
@@ -276,7 +279,10 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- demand_forecasts — 14-day horizon for top 6 SKUs (generated at seed time)
+-- demand_forecasts — 14-day horizon for ALL 12 branded SKUs.
+-- Demo-data audit: every SKU must have a forecast so the Retailers `po_ratio`
+-- heuristic, FlowSight outbound loop, and Scorecard forecast-actuals chart all
+-- have complete coverage (no half-empty rows).
 -- ============================================================================
 
 DO $$
@@ -292,12 +298,18 @@ BEGIN
       'lgbm-v0.1' AS model_version
     FROM (
       VALUES
-        ('sku-wonder-classic-white-loaf',     850),
-        ('sku-ace-baguette-classic',          720),
-        ('sku-country-harvest-12-grain-loaf', 610),
-        ('sku-ace-ciabatta-piccolo-6pk',      940),
-        ('sku-d-italiano-hot-dog-buns-8pk',   480),
-        ('sku-stonefire-pizza-crust-2pk',     390)
+        ('sku-wonder-classic-white-loaf',       850),
+        ('sku-ace-baguette-classic',            720),
+        ('sku-country-harvest-12-grain-loaf',   610),
+        ('sku-ace-ciabatta-piccolo-6pk',        940),
+        ('sku-d-italiano-hot-dog-buns-8pk',     480),
+        ('sku-stonefire-pizza-crust-2pk',       390),
+        ('sku-ace-sourdough-bistro',            410),
+        ('sku-ace-rustic-italian-oval',         360),
+        ('sku-ace-rosemary-focaccia',           250),
+        ('sku-stonefire-original-naan-2pk',     530),
+        ('sku-stonefire-mini-naan-8pk',         470),
+        ('sku-stonefire-naan-dippers-original', 310)
     ) AS skus(sku_id, base_qty)
     CROSS JOIN generate_series(0, 13) AS gs(day_offset);
   END IF;
@@ -308,8 +320,22 @@ END $$;
 -- Guards: only inserts when tables exist and rows = 0 (idempotent).
 -- ============================================================================
 
+-- ============================================================================
+-- The production_orders + finished_goods_pallets blocks below reference
+-- facilities (plant-toronto, plant-hamilton, ...). On first-boot auto-init,
+-- facilities is empty (it's populated by infra/seed_toronto_facilities.py),
+-- so we gate everything on facilities being present. `make schema.seed`
+-- re-runs this file AFTER the facilities seeder, at which point the
+-- inserts succeed.
+-- ============================================================================
+
 DO $$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM facilities LIMIT 1) THEN
+    RAISE NOTICE 'facilities not yet seeded — skipping production_orders + finished_goods_pallets demo blocks (will populate on next make schema.seed pass).';
+    RETURN;
+  END IF;
+
   -- finished_goods_pallets: starting inventory for common SKUs across 2 plants
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_pallets')
      AND (SELECT count(*) FROM finished_goods_pallets) = 0 THEN
@@ -327,53 +353,115 @@ BEGIN
       ('sku-stonefire-mini-naan-8pk',       'plant-montreal',    NOW() - INTERVAL '2 days', 7,  300, 'in_warehouse');
   END IF;
 
-  -- production_orders: sample orders in different statuses for demo realism
+  -- production_orders: 8 sample orders covering every status enum value plus
+  -- a deliberate insufficient-inventory QA case. The mapping of orders to
+  -- lines + production_lines.status updates after the inserts give the
+  -- Production page a balanced "producing / paused / setup / idle /
+  -- maintenance" mix without duplicates on a single line.
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'production_orders')
      AND (SELECT count(*) FROM production_orders) = 0 THEN
 
-    -- A completed order (produced) on Toronto Line 3 — historical
-    INSERT INTO production_orders
-      (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, completed_at, notes)
-    VALUES
-      ('plant-toronto', 'line-toronto-3', 'sku-wonder-classic-white-loaf', 500,
-       'produced',
-       NOW() - INTERVAL '5 hours',
-       NOW() - INTERVAL '2 hours',
-       'Morning run — Wonder White batch');
-
-    -- An order in-progress on Toronto Line 1
+    -- PO-1 producing: Toronto Line 1, Wonder loaf, started 90m ago
     INSERT INTO production_orders
       (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, notes)
     VALUES
-      ('plant-toronto', 'line-toronto-1', 'sku-ace-baguette-classic', 800,
+      ('plant-toronto', 'line-toronto-1', 'sku-wonder-classic-white-loaf', 800,
        'producing',
        NOW() - INTERVAL '90 minutes',
-       'Afternoon baguette run');
+       'Afternoon Wonder Classic run');
 
-    -- A planned order on Mississauga Line 2 — queued, not started
+    -- PO-2 produced (historical): Toronto Line 3, ACE Baguette, completed 2h ago
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, completed_at, notes)
+    VALUES
+      ('plant-toronto', 'line-toronto-3', 'sku-ace-baguette-classic', 500,
+       'produced',
+       NOW() - INTERVAL '5 hours',
+       NOW() - INTERVAL '2 hours',
+       'Morning Baguette run — produced 500 units');
+
+    -- PO-3 paused: Toronto Line 2, Stonefire Mini Naan, blocked by zero
+    -- Toronto-side yogurt inventory (Valley Dairy PO #2 currently 2 days late).
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, notes)
+    VALUES
+      ('plant-toronto', 'line-toronto-2', 'sku-stonefire-mini-naan-8pk', 600,
+       'paused',
+       NOW() - INTERVAL '45 minutes',
+       'Paused — awaiting Valley Dairy yogurt delivery (PO-VD-2026-0308 currently 2 days late)');
+
+    -- PO-4 planned: Mississauga Line 2, Country Harvest, starts in 2h
     INSERT INTO production_orders
       (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
     VALUES
       ('plant-mississauga', 'line-mississauga-2', 'sku-country-harvest-12-grain-loaf', 600,
        'planned',
        NOW() + INTERVAL '2 hours',
-       'Evening run — 12-grain loaf');
+       'Evening 12-Grain run');
 
-    -- Update line statuses to match the seeded orders above
-    UPDATE production_lines
-      SET status = 'producing'
-      WHERE line_id = 'line-toronto-1';
+    -- PO-5 planned: Mississauga Line 1, D'Italiano Hot Dog Buns, tomorrow morning
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
+    VALUES
+      ('plant-mississauga', 'line-mississauga-1', 'sku-d-italiano-hot-dog-buns-8pk', 1200,
+       'planned',
+       NOW() + INTERVAL '20 hours',
+       'Tomorrow morning bun run');
 
-    UPDATE production_lines
-      SET status = 'setup'
-      WHERE line_id = 'line-mississauga-2';
+    -- PO-6 cancelled: Hamilton Line 2 — Pizza crust cancelled (allergen conflict)
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
+    VALUES
+      ('plant-hamilton', 'line-hamilton-2', 'sku-stonefire-pizza-crust-2pk', 400,
+       'cancelled',
+       NOW() - INTERVAL '24 hours',
+       'Cancelled — allergen-changeover conflict on planned slot');
 
-    -- Point current_order_id at the active and planned orders
+    -- PO-7 planned: Montreal Line 1, ACE Rosemary Focaccia, late evening
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
+    VALUES
+      ('plant-montreal', 'line-montreal-1', 'sku-ace-rosemary-focaccia', 300,
+       'planned',
+       NOW() + INTERVAL '6 hours',
+       'Late-evening Focaccia run');
+
+    -- PO-8 QA scenario: Montreal Line 2, oversized Mini Naan order designed to
+    -- fail the /api/production/orders/{id}/produce endpoint with HTTP 422 due
+    -- to insufficient Montreal-side ingredient inventory. Demonstrates the
+    -- shortfall path end-to-end.
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
+    VALUES
+      ('plant-montreal', 'line-montreal-2', 'sku-stonefire-mini-naan-8pk', 5000,
+       'planned',
+       NOW() + INTERVAL '12 hours',
+       'QA case — designed to fail inventory validation on Mark Produced');
+
+    -- Align production_lines.status with the orders above so the Production
+    -- page shows one of every interesting state.
+    UPDATE production_lines SET status = 'producing'    WHERE line_id = 'line-toronto-1';
+    UPDATE production_lines SET status = 'paused'       WHERE line_id = 'line-toronto-2';
+    UPDATE production_lines SET status = 'idle'         WHERE line_id = 'line-toronto-3';
+    UPDATE production_lines SET status = 'setup'        WHERE line_id = 'line-mississauga-1';
+    UPDATE production_lines SET status = 'setup'        WHERE line_id = 'line-mississauga-2';
+    UPDATE production_lines SET status = 'idle'         WHERE line_id = 'line-hamilton-1';
+    UPDATE production_lines SET status = 'maintenance'  WHERE line_id = 'line-hamilton-2';
+    UPDATE production_lines SET status = 'setup'        WHERE line_id = 'line-montreal-1';
+    UPDATE production_lines SET status = 'idle'         WHERE line_id = 'line-montreal-2';
+
+    -- Wire current_order_id for the in-flight + queued orders (skip cancelled,
+    -- produced, idle, maintenance — those lines have no active assignment).
     UPDATE production_lines pl
       SET current_order_id = po.order_id
       FROM production_orders po
       WHERE po.line_id = pl.line_id
-        AND po.status IN ('producing','planned');
+        AND po.status IN ('producing','paused','planned')
+        AND po.line_id IN (
+          'line-toronto-1','line-toronto-2',
+          'line-mississauga-1','line-mississauga-2',
+          'line-montreal-1'
+        );
   END IF;
 END $$;
 
@@ -383,11 +471,30 @@ END $$;
 -- ============================================================================
 
 DO $$
+DECLARE
+  default_fac text;
 BEGIN
+  -- Pick whichever real facility is present so the FK resolves; on first
+  -- auto-init facilities is empty, so we omit the default_facility_id and
+  -- let the Python seeders / a later schema.seed pass fill it in.
+  SELECT facility_id INTO default_fac
+  FROM facilities
+  WHERE facility_id = 'plant-toronto'
+  LIMIT 1;
+
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'app_users') THEN
     INSERT INTO app_users (user_id, display_name, role, email, default_facility_id)
-    VALUES ('demo_user', 'Alex Chen', 'Ops Manager', 'alex.chen@fgfbrands.com', 'plant-toronto')
+    VALUES ('demo_user', 'Alex Chen', 'Ops Manager', 'alex.chen@fgfbrands.com', default_fac)
     ON CONFLICT (user_id) DO NOTHING;
+
+    -- Top up default_facility_id on a later seed pass if it wasn't set the
+    -- first time around.
+    IF default_fac IS NOT NULL THEN
+      UPDATE app_users
+        SET default_facility_id = default_fac
+        WHERE user_id = 'demo_user'
+          AND default_facility_id IS NULL;
+    END IF;
   END IF;
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_settings') THEN

@@ -5,15 +5,33 @@
 #   "psycopg[binary]>=3.1",
 # ]
 # ///
-"""Seed transactional demo data from mock_data.py into PostgreSQL.
+"""Seed transactional demo data into PostgreSQL.
 
-Inserts production_schedules, production_runs, waste_events,
-finished_goods_pallets, supplier_orders (+items), action_cards,
-negotiation_drafts, and weekly_summaries.
+Inserts the demo's full transactional layer in dependency order:
+
+  - action_cards
+  - supplier_orders (+ supplier_order_items)
+  - production_schedules (historical + active + suggested)
+  - production_runs (historical, with realistic yield variance JSON)
+  - waste_events (avoided + actual + MOQ + expired-pallet kinds)
+  - finished_goods_pallets (45 across in_warehouse / shipped / donated /
+    written_off, with committed_order_id wired to seeded retailer_orders)
+  - inventory_events (~20 historical consumption/receipt/transfer/spoilage rows
+    that give the audit log visible substance)
+  - moq_tax_ledger
+  - negotiation_drafts
+  - notification_drafts (5 seed drafts grounded in the demo's actual events)
+  - weekly_summaries
+  - dock_schedules
+
+Idempotency: by default the script skips if production_schedules already
+holds data. Pass --force to wipe and re-seed. Pass --skip-events to leave
+inventory_events untouched (useful when you want to keep the UI-driven audit
+log intact).
 
 Usage:
-  uv run infra/seed_demo.py             # insert if tables are empty
-  uv run infra/seed_demo.py --force     # clear and re-insert
+  uv run infra/seed_demo.py                 # insert if tables are empty
+  uv run infra/seed_demo.py --force         # clear demo tables and re-insert
 """
 
 from __future__ import annotations
@@ -112,11 +130,17 @@ def _line(v: str) -> str:
 
 
 def _clear(cur: psycopg.Cursor) -> None:
+    """Delete demo tables in FK-safe order.
+
+    weekly_summaries, notification_drafts, inventory_events, waste_events,
+    and moq_tax_ledger all have BEFORE UPDATE/DELETE append-only triggers
+    in schema.sql, so we deliberately omit them. They are re-seeded only
+    when they are already empty (see the seed_*() helpers).
+    Use `make reset` for a truly fresh state.
+    """
     tables = [
-        "weekly_summaries",
+        "dock_schedules",
         "negotiation_drafts",
-        "notification_drafts",
-        "waste_events",
         "finished_goods_pallets",
         "production_runs",
         "production_schedules",
@@ -126,7 +150,7 @@ def _clear(cur: psycopg.Cursor) -> None:
     ]
     for t in tables:
         cur.execute(f"DELETE FROM {t}")
-    print("[seed_demo] Cleared existing demo data.")
+    print("[seed_demo] Cleared mutable demo tables.")
 
 
 def seed_action_cards(cur: psycopg.Cursor, m) -> dict[str, str]:
@@ -246,28 +270,46 @@ def seed_action_cards(cur: psycopg.Cursor, m) -> dict[str, str]:
 
 
 def seed_supplier_orders(cur: psycopg.Cursor, m, card_map: dict[str, str]) -> dict[str, str]:
+    """Seed 12 supplier_orders spanning the S-1..S-5 scenarios in the audit.
+
+    Status mapping (schema enum: draft / pending_confirm / confirmed / sent):
+      - "delayed"   == status='sent' with delivery_date in the past
+      - "delivered" == status='sent' with delivery_date 1-3 days in the past
+      - "in transit" == status='confirmed' with delivery_date in the future
+      - "pending"    == status='pending_confirm'
+      - "drafted"    == status='draft'
+    """
     id_map: dict[str, str] = {}
+    now = datetime.utcnow()
+    today_d = date.today()
+
     orders = [
+        # S-1: NorthGrain Mills (reliable) — confirmed flour, in transit.
         {
             "mock_id": "ord_001",
             "supplier_id": _sup("sup_a"), "facility_id": _fac("plant_1"),
             "status": "confirmed",
-            "confirmed_at": datetime.utcnow() - timedelta(days=2),
+            "confirmed_at": now - timedelta(days=2),
             "action_card_id": card_map.get("card_order_001"),
             "external_po_number": "PO-NG-2026-0412",
-            "delivery_date": date.today() + timedelta(days=3),
+            "delivery_date": today_d + timedelta(days=3),
             "items": [("ing-flour-ap", 1200.0, 0.72)],
         },
+        # S-2: Valley Dairy (cheap_late) — DELAYED: sent, delivery_date in past.
         {
             "mock_id": "ord_002",
             "supplier_id": _sup("sup_b"), "facility_id": _fac("plant_1"),
             "status": "sent",
-            "confirmed_at": datetime.utcnow() - timedelta(days=1),
+            "confirmed_at": now - timedelta(days=4),
             "action_card_id": None,
             "external_po_number": "PO-VD-2026-0308",
-            "delivery_date": date.today() + timedelta(days=5),
-            "items": [("ing-sugar-granulated", 800.0, 0.55)],
+            "delivery_date": today_d - timedelta(days=2),
+            "items": [
+                ("ing-butter-unsalted", 600.0, 4.10),
+                ("ing-cream-cheese", 100.0, 5.40),
+            ],
         },
+        # S-3: Prairie Bulk Sugar (high_moq) — DRAFT with pending action_card.
         {
             "mock_id": "ord_003",
             "supplier_id": _sup("sup_c"), "facility_id": _fac("plant_3"),
@@ -275,29 +317,32 @@ def seed_supplier_orders(cur: psycopg.Cursor, m, card_map: dict[str, str]) -> di
             "confirmed_at": None,
             "action_card_id": card_map.get("card_order_003"),
             "external_po_number": None,
-            "delivery_date": date.today() + timedelta(days=7),
+            "delivery_date": today_d + timedelta(days=7),
             "items": [("ing-flour-bread", 2500.0, 0.68)],
         },
+        # S-4: Coastal Berry (disrupted) — PENDING_CONFIRM after weather signal.
         {
             "mock_id": "ord_004",
             "supplier_id": _sup("sup_d"), "facility_id": _fac("plant_2"),
-            "status": "confirmed",
-            "confirmed_at": datetime.utcnow() - timedelta(hours=18),
+            "status": "pending_confirm",
+            "confirmed_at": None,
             "action_card_id": None,
-            "external_po_number": "PO-CB-2026-0509",
-            "delivery_date": date.today() + timedelta(days=4),
+            "external_po_number": None,
+            "delivery_date": today_d + timedelta(days=4),
             "items": [("ing-blueberry-frozen", 300.0, 3.20)],
         },
+        # S-5: New Leaf (new) — confirmed butter, in transit.
         {
             "mock_id": "ord_005",
             "supplier_id": _sup("sup_e"), "facility_id": _fac("plant_4"),
             "status": "confirmed",
-            "confirmed_at": datetime.utcnow() - timedelta(days=3),
+            "confirmed_at": now - timedelta(days=3),
             "action_card_id": None,
             "external_po_number": "PO-NL-2026-0401",
-            "delivery_date": date.today() + timedelta(days=6),
+            "delivery_date": today_d + timedelta(days=6),
             "items": [("ing-butter-unsalted", 400.0, 4.10)],
         },
+        # Multi-line PO awaiting supplier confirmation.
         {
             "mock_id": "ord_006",
             "supplier_id": _sup("sup_a"), "facility_id": _fac("plant_1"),
@@ -305,11 +350,78 @@ def seed_supplier_orders(cur: psycopg.Cursor, m, card_map: dict[str, str]) -> di
             "confirmed_at": None,
             "action_card_id": card_map.get("card_order_002"),
             "external_po_number": None,
-            "delivery_date": date.today() + timedelta(days=9),
+            "delivery_date": today_d + timedelta(days=9),
             "items": [
                 ("ing-sesame-seeds", 150.0, 2.85),
                 ("ing-chocolate-chips-dark", 200.0, 3.50),
             ],
+        },
+        # In transit to Hamilton, NorthGrain.
+        {
+            "mock_id": "ord_007",
+            "supplier_id": "sup-northgrain", "facility_id": "plant-hamilton",
+            "status": "sent",
+            "confirmed_at": now - timedelta(days=1),
+            "action_card_id": None,
+            "external_po_number": "PO-NG-2026-0418",
+            "delivery_date": today_d + timedelta(days=2),
+            "items": [("ing-flour-bread", 1800.0, 0.71)],
+        },
+        # PO-2 recently DELIVERED to Mississauga (delivery_date in the past +
+        # status='sent' → drives a receipt inventory_event entry below).
+        {
+            "mock_id": "ord_008",
+            "supplier_id": "sup-valleydairy", "facility_id": "plant-mississauga",
+            "status": "sent",
+            "confirmed_at": now - timedelta(days=3),
+            "action_card_id": None,
+            "external_po_number": "PO-VD-2026-0322",
+            "delivery_date": today_d - timedelta(days=1),
+            "items": [("ing-milk-whole", 500.0, 1.20)],
+        },
+        # Prairie Bulk sugar in transit to Toronto.
+        {
+            "mock_id": "ord_009",
+            "supplier_id": "sup-prairiebulk", "facility_id": "plant-toronto",
+            "status": "sent",
+            "confirmed_at": now - timedelta(days=1),
+            "action_card_id": None,
+            "external_po_number": "PO-PB-2026-0511",
+            "delivery_date": today_d + timedelta(days=5),
+            "items": [("ing-sugar-granulated", 2500.0, 0.55)],
+        },
+        # Coastal Berry recently delivered to Toronto despite the disruption.
+        {
+            "mock_id": "ord_010",
+            "supplier_id": "sup-coastalberry", "facility_id": "plant-toronto",
+            "status": "sent",
+            "confirmed_at": now - timedelta(days=5),
+            "action_card_id": None,
+            "external_po_number": "PO-CB-2026-0430",
+            "delivery_date": today_d - timedelta(days=3),
+            "items": [("ing-cocoa-powder", 200.0, 6.40)],
+        },
+        # New Leaf — draft future order for Hamilton.
+        {
+            "mock_id": "ord_011",
+            "supplier_id": "sup-newleaf", "facility_id": "plant-hamilton",
+            "status": "draft",
+            "confirmed_at": None,
+            "action_card_id": None,
+            "external_po_number": None,
+            "delivery_date": today_d + timedelta(days=10),
+            "items": [("ing-flour-whole-wheat", 800.0, 0.78)],
+        },
+        # NorthGrain — flour to Montreal arriving tomorrow.
+        {
+            "mock_id": "ord_012",
+            "supplier_id": "sup-northgrain", "facility_id": "plant-montreal",
+            "status": "sent",
+            "confirmed_at": now - timedelta(hours=18),
+            "action_card_id": None,
+            "external_po_number": "PO-NG-2026-0421",
+            "delivery_date": today_d + timedelta(days=1),
+            "items": [("ing-flour-ap", 900.0, 0.71)],
         },
     ]
 
@@ -519,6 +631,11 @@ def seed_production_runs(cur: psycopg.Cursor, sched_map: dict[str, str]) -> None
 
 
 def seed_waste_events(cur: psycopg.Cursor, m) -> None:
+    cur.execute("SELECT count(*) FROM waste_events")
+    if cur.fetchone()[0] > 0:
+        print("[seed_demo] waste_events already populated — skipping (append-only table).")
+        return
+
     now = datetime.utcnow()
 
     events = [
@@ -610,13 +727,15 @@ def seed_finished_goods_pallets(cur: psycopg.Cursor) -> None:
         ("sku-wonder-classic-white-loaf",   "plant-montreal",    -1,  5,  168, "in_warehouse"),
         ("sku-stonefire-mini-naan-8pk",  "plant-montreal",    -1, 14,  200, "in_warehouse"),
         ("sku-ace-ciabatta-piccolo-6pk",        "plant-montreal",    -2,  7,  220, "in_warehouse"),
-        # Shipped
-        ("sku-wonder-classic-white-loaf",   "plant-toronto",     -3,  5,  240, "shipped"),
-        ("sku-stonefire-mini-naan-8pk",  "plant-toronto",     -3, 14,  320, "shipped"),
-        ("sku-ace-rustic-italian-oval",      "plant-mississauga", -2,  7,  180, "shipped"),
-        ("sku-ace-ciabatta-piccolo-6pk",        "plant-mississauga", -2,  7,  360, "shipped"),
-        ("sku-ace-rosemary-focaccia",      "plant-toronto",     -3,  5,  150, "shipped"),
-        ("sku-stonefire-original-naan-2pk",      "plant-montreal",    -2,  4,   96, "shipped"),
+        # Shipped — first three SKUs intentionally match the shipped/scheduled
+        # retailer_orders in seed.sql so the CTE-based committed_order_id wire-up
+        # below has real pairs to link.
+        ("sku-country-harvest-12-grain-loaf", "plant-mississauga", -2,  7,  600, "shipped"),  # → walmart scheduled
+        ("sku-ace-sourdough-bistro",          "plant-toronto",     -3,  6,  320, "shipped"),  # → loblaws shipped
+        ("sku-ace-baguette-classic",          "plant-toronto",     -2,  4,  500, "shipped"),  # → costco shipped (qty 9000 batch)
+        ("sku-ace-rustic-italian-oval",       "plant-mississauga", -2,  7,  180, "shipped"),
+        ("sku-ace-ciabatta-piccolo-6pk",      "plant-mississauga", -2,  7,  360, "shipped"),
+        ("sku-ace-rosemary-focaccia",         "plant-toronto",     -3,  5,  150, "shipped"),
         # Written off / donated
         ("sku-wonder-classic-white-loaf",   "plant-toronto",     -7,  5,   48, "written_off"),
         ("sku-ace-rosemary-focaccia",      "plant-montreal",    -9,  5,   24, "donated"),
@@ -641,10 +760,41 @@ def seed_finished_goods_pallets(cur: psycopg.Cursor) -> None:
             (sku, fac, now + timedelta(days=day_offset), shelf_days, qty, status),
         )
 
-    print(f"[seed_demo] Inserted {len(pallets)} finished_goods_pallets.")
+    # Link shipped pallets to the matching retailer_orders so the
+    # /api/retailers shelf_risk join (which depends on committed_order_id)
+    # produces real "scheduled"/"shipped" halos in FlowSight.
+    cur.execute(
+        """
+        WITH shipped_orders AS (
+          SELECT retailer_order_id, sku_id,
+                 ROW_NUMBER() OVER (PARTITION BY sku_id ORDER BY received_at) AS rn
+          FROM retailer_orders
+          WHERE status IN ('shipped','scheduled')
+        ),
+        shipped_pallets AS (
+          SELECT pallet_id, sku_id,
+                 ROW_NUMBER() OVER (PARTITION BY sku_id ORDER BY produced_at) AS rn
+          FROM finished_goods_pallets
+          WHERE status = 'shipped' AND committed_order_id IS NULL
+        )
+        UPDATE finished_goods_pallets fgp
+          SET committed_order_id = so.retailer_order_id
+          FROM shipped_pallets sp
+          JOIN shipped_orders so USING (sku_id)
+          WHERE fgp.pallet_id = sp.pallet_id
+            AND sp.rn = so.rn
+        """
+    )
+    linked = cur.rowcount
+    print(f"[seed_demo] Inserted {len(pallets)} finished_goods_pallets ({linked} linked to retailer_orders).")
 
 
 def seed_moq_tax_ledger(cur: psycopg.Cursor) -> None:
+    cur.execute("SELECT count(*) FROM moq_tax_ledger")
+    if cur.fetchone()[0] > 0:
+        print("[seed_demo] moq_tax_ledger already populated — skipping (append-only table).")
+        return
+
     entries = [
         ("sup-valleydairy",  "2026-Q1", 1200.0,  4800.0),
         ("sup-valleydairy",  "2026-Q2",  840.0,  3360.0),
@@ -718,6 +868,11 @@ def seed_negotiation_drafts(cur: psycopg.Cursor, m, card_map: dict[str, str]) ->
 
 
 def seed_weekly_summaries(cur: psycopg.Cursor, m) -> None:
+    cur.execute("SELECT count(*) FROM weekly_summaries")
+    if cur.fetchone()[0] > 0:
+        print("[seed_demo] weekly_summaries already populated — skipping (append-only table).")
+        return
+
     today = date.today()
     week_start = today - timedelta(days=7)
     week_end = today - timedelta(days=1)
@@ -737,6 +892,210 @@ def seed_weekly_summaries(cur: psycopg.Cursor, m) -> None:
         ),
     )
     print("[seed_demo] Inserted 1 weekly_summary.")
+
+
+def seed_inventory_events(cur: psycopg.Cursor) -> None:
+    """Seed ~20 historical inventory events so the audit log has substance.
+
+    Schema enum: kind IN ('consumption','receipt','transfer','adjustment','spoilage').
+    Joins lots by lot_code so the references stay stable across seed re-runs.
+    The table has an append-only trigger so this function guards on count=0.
+    """
+    cur.execute("SELECT count(*) FROM inventory_events")
+    if cur.fetchone()[0] > 0:
+        print("[seed_demo] inventory_events already populated — skipping.")
+        return
+
+    now = datetime.utcnow()
+
+    # Fetch the curated demo lot ids by lot_code — the only lots whose
+    # identity we can rely on across re-seeds.
+    cur.execute(
+        """
+        SELECT lot_code, lot_id, facility_id, ingredient_id, quantity_kg
+        FROM ingredient_lots
+        WHERE lot_code LIKE 'L-DEMO-%'
+        """
+    )
+    rows = cur.fetchall()
+    lots: dict[str, dict] = {
+        r[0]: {"lot_id": r[1], "facility_id": r[2], "ingredient_id": r[3], "qty": float(r[4])}
+        for r in rows
+    }
+
+    events: list[tuple] = []  # (event_at, kind, lot_code, delta_kg, source, source_ref, note)
+
+    # Consumption events from historical production runs (5 events).
+    consumption = [
+        ("L-DEMO-FLR-001", -216.0, "production_run", "wonder-classic-d-12", "Wonder Classic run · Toronto Line 1"),
+        ("L-DEMO-FLR-002", -270.0, "production_run", "naan-dippers-d-10",   "Naan Dippers run · Mississauga Line 1"),
+        ("L-DEMO-FLR-003", -189.0, "production_run", "12-grain-d-8",        "Country Harvest 12-Grain · Hamilton Line 1"),
+        ("L-DEMO-SLT-001",  -12.0, "production_run", "sourdough-d-3",       "ACE Sourdough Bistro · Toronto Line 1"),
+        ("L-DEMO-SGR-001",  -54.0, "production_run", "mini-naan-d-4",       "Stonefire Mini Naan · Toronto Line 3"),
+    ]
+    for code, delta, src, ref, note in consumption:
+        if code not in lots:
+            continue
+        events.append((now - timedelta(days=2, hours=4), "consumption", code, delta, src, ref, note))
+
+    # Receipt events for recently delivered POs (5 events).
+    receipts = [
+        ("L-DEMO-BUT-001",  40.0, "supplier_order", "PO-VD-2026-0308", "Valley Dairy butter received · Toronto"),
+        ("L-DEMO-BLU-002", 320.0, "supplier_order", "PO-CB-2026-0509", "Coastal Berry frozen blueberries received · Mississauga"),
+        ("L-DEMO-COC-001", 110.0, "supplier_order", "PO-CB-2026-0430", "Coastal Berry cocoa powder received · Mississauga"),
+        ("L-DEMO-FLR-002", 200.0, "supplier_order", "PO-NG-2026-0412", "NorthGrain AP flour top-up · Mississauga"),
+        ("L-DEMO-FLR-004",  60.0, "supplier_order", "PO-NG-2026-0421", "NorthGrain AP flour received · Montreal"),
+    ]
+    for code, delta, src, ref, note in receipts:
+        if code not in lots:
+            continue
+        # Spread across the last 3 days for a believable timeline.
+        events.append((now - timedelta(days=2, hours=6), "receipt", code, delta, src, ref, note))
+
+    # Transfer events between plants (3 events).
+    transfers = [
+        ("L-DEMO-BUT-003", -80.0,  "transfer", "transfer-hamilton-to-toronto", "Butter cross-plant transfer · Hamilton → Toronto"),
+        ("L-DEMO-FLR-002", -50.0,  "transfer", "transfer-miss-to-toronto",     "AP flour balance · Mississauga → Toronto"),
+        ("L-DEMO-FLR-003", -30.0,  "transfer", "transfer-hamilton-to-montreal","AP flour balance · Hamilton → Montreal"),
+    ]
+    for code, delta, src, ref, note in transfers:
+        if code not in lots:
+            continue
+        events.append((now - timedelta(days=1, hours=8), "transfer", code, delta, src, ref, note))
+
+    # Spoilage events tied to the past-expiry / near-expiry lots (3 events).
+    spoilage = [
+        ("L-DEMO-CRC-001", -12.0, "spoilage", "auto-expiry", "Cream cheese lot past expiry — flagged for write-off"),
+        ("L-DEMO-BUT-001",  -3.5, "spoilage", "yield_loss",  "Trim loss during portioning · Toronto Line 2"),
+        ("L-DEMO-BLU-001",  -1.2, "spoilage", "yield_loss",  "Drip loss · blueberry muffin pilot run"),
+    ]
+    for code, delta, src, ref, note in spoilage:
+        if code not in lots:
+            continue
+        events.append((now - timedelta(hours=18), "spoilage", code, delta, src, ref, note))
+
+    inserted = 0
+    for event_at, kind, code, delta, src, ref, note in events:
+        lot = lots.get(code)
+        if not lot:
+            continue
+        cur.execute(
+            """
+            INSERT INTO inventory_events
+              (event_at, kind, lot_id, delta_kg, source, source_ref, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (event_at, kind, lot["lot_id"], delta, src, ref, note),
+        )
+        inserted += 1
+
+    print(f"[seed_demo] Inserted {inserted} inventory_events.")
+
+
+def seed_notification_drafts(cur: psycopg.Cursor) -> None:
+    """Seed 5 Gmail-style notification drafts that mirror the demo's events.
+
+    The table has an append-only trigger so this guards on count=0.
+    """
+    cur.execute("SELECT count(*) FROM notification_drafts")
+    if cur.fetchone()[0] > 0:
+        print("[seed_demo] notification_drafts already populated — skipping.")
+        return
+
+    now = datetime.utcnow()
+    drafts = [
+        {
+            "kind": "yield_alert",
+            "recipients": ["priya.nair@fgf.example", "omar.khalid@fgf.example"],
+            "subject": "Yield variance flagged — Mississauga Line 1 (sesame +76%)",
+            "body_md": (
+                "Hi team,\n\n"
+                "The latest production_run on **line-mississauga-1** dispensed 47.5 kg of "
+                "sesame seeds against a planned 27.0 kg (variance +75.9%). The hopper sensor "
+                "was last cleaned 12 days ago — recommend a calibration check before the next "
+                "naan run.\n\n"
+                "— BakeryPilot"
+            ),
+        },
+        {
+            "kind": "supplier_negotiation",
+            "recipients": ["sarah.kim@fgf.example", "claire@valleydairy.example"],
+            "subject": "Q3 delivery performance review — Valley Dairy",
+            "body_md": (
+                "Hi Claire,\n\n"
+                "Your on-time rate for the last 30 days has dropped to **68%** against our "
+                "contracted 90% SLA. Three of the last five deliveries missed the window, "
+                "and PO-VD-2026-0308 is currently 2 days past delivery_date.\n\n"
+                "Could we schedule a 30-minute call this week to discuss a remediation plan?\n\n"
+                "— Sarah Kim, Procurement Lead"
+            ),
+        },
+        {
+            "kind": "weekly_summary",
+            "recipients": [
+                "lisa.zhang@fgf.example",
+                "david.osei@fgf.example",
+                "sarah.kim@fgf.example",
+                "priya.nair@fgf.example",
+            ],
+            "subject": "BakeryPilot weekly ops summary — week ending today",
+            "body_md": (
+                "## Highlights this week\n\n"
+                "- 248 kg waste avoided (+12% vs prior week)\n"
+                "- $1,243 in MOQ overage avoided through transfer rebalancing\n"
+                "- 1 yield-variance incident (Mississauga · sesame) under investigation\n"
+                "- 96% on-time for NorthGrain (top-tier); Valley Dairy slipped to 68%\n\n"
+                "Full breakdown attached.\n\n"
+                "— BakeryPilot"
+            ),
+        },
+        {
+            "kind": "retailer_negotiation",
+            "recipients": ["tom.whitmore@costco.example"],
+            "subject": "Wonder loaf fulfilment — proactive update for PO #2",
+            "body_md": (
+                "Hi Tom,\n\n"
+                "Heads-up that current Toronto-side Wonder Classic stock is at 120 units "
+                "against your 8,000-unit order due in 4 days. We have a 1,400-unit run scheduled "
+                "tonight and an 800-unit Toronto Line 1 run already in progress, so we expect "
+                "to hit your delivery window — but wanted you to see the live status before "
+                "you ask.\n\n"
+                "— FGF Logistics"
+            ),
+        },
+        {
+            "kind": "transfer_request",
+            "recipients": ["priya.nair@fgf.example", "anika.patel@fgf.example"],
+            "subject": "Butter transfer recommended — Hamilton → Toronto",
+            "body_md": (
+                "Hi both,\n\n"
+                "Toronto has two near-expiry butter lots (L-DEMO-BUT-001 / 002, 65 kg total, "
+                "expiry ≤ 2 d). Hamilton holds 420 kg butter with 35 days remaining "
+                "(L-DEMO-BUT-003).\n\n"
+                "Recommend moving ~100 kg from Hamilton to Toronto today so the paused "
+                "Mini Naan run (PO-3) can restart. Estimated rescue value: ~$1,150.\n\n"
+                "— BakeryPilot"
+            ),
+        },
+    ]
+
+    for d in drafts:
+        cur.execute(
+            """
+            INSERT INTO notification_drafts
+              (kind, recipients, subject, body_md, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                d["kind"],
+                d["recipients"],
+                d["subject"],
+                d["body_md"],
+                now - timedelta(hours=12),
+            ),
+        )
+
+    print(f"[seed_demo] Inserted {len(drafts)} notification_drafts.")
 
 
 def seed_dock_schedules(cur: psycopg.Cursor) -> None:
@@ -799,6 +1158,8 @@ def main() -> int:
             seed_production_runs(cur, sched_map)
             seed_waste_events(cur, m)
             seed_finished_goods_pallets(cur)
+            seed_inventory_events(cur)
+            seed_notification_drafts(cur)
             seed_moq_tax_ledger(cur)
             seed_negotiation_drafts(cur, m, card_map)
             seed_weekly_summaries(cur, m)

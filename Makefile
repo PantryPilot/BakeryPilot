@@ -37,21 +37,37 @@ schema.migrate:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/schema.sql
 
-# Full bootstrap order (post live-fetcher refactor):
+# Full bootstrap order (post live-fetcher refactor + demo-seed redesign):
 #   1. seed.sql                     -- ingredients, suppliers, retailers, skus,
-#                                       retailer_orders
+#                                       retailer_orders, demand_forecasts (12 SKUs),
+#                                       production_orders (8 incl. QA scenario),
+#                                       app_users, user_settings
 #   2. seed_toronto_facilities.py   -- facilities (live FGF + Nominatim;
 #                                       caches under infra/data/cache/)
 #   3. seed_synthetic.py            -- production_lines, warehouse_costs,
 #                                       allergen_changeovers, production_formulas
 #                                       (engineering_judgment_demo_only)
-#   4. seed_lots.py                 -- ingredient_lots (FK -> facilities)
+#   4. seed_lots.py                 -- ingredient_lots (curated scenarios +
+#                                       Faker bulk fill)
+#   5. seed_demo.py                 -- transactional layer: action_cards,
+#                                       supplier_orders, production_schedules,
+#                                       production_runs, waste_events,
+#                                       finished_goods_pallets (with
+#                                       committed_order_id wired), inventory_events,
+#                                       notification_drafts, moq_tax_ledger,
+#                                       negotiation_drafts, weekly_summaries,
+#                                       dock_schedules
 schema.seed:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_toronto_facilities.py
 	$(UV) run infra/seed_synthetic.py
+	# Re-apply seed.sql so the production_orders + finished_goods_pallets +
+	# app_users DO blocks (which depend on facilities being present) can run.
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
+		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_lots.py
+	$(UV) run infra/seed_demo.py
 
 seed.lots:
 	$(UV) run infra/seed_lots.py
@@ -106,10 +122,13 @@ db.status:
 		UNION ALL SELECT 'action_cards',           count(*) FROM action_cards \
 		UNION ALL SELECT 'waste_events',           count(*) FROM waste_events \
 		UNION ALL SELECT 'finished_goods_pallets', count(*) FROM finished_goods_pallets \
+		UNION ALL SELECT 'inventory_events',       count(*) FROM inventory_events \
+		UNION ALL SELECT 'notification_drafts',    count(*) FROM notification_drafts \
 		UNION ALL SELECT 'moq_tax_ledger',         count(*) FROM moq_tax_ledger \
 		UNION ALL SELECT 'negotiation_drafts',     count(*) FROM negotiation_drafts \
 		UNION ALL SELECT 'dock_schedules',         count(*) FROM dock_schedules \
-		UNION ALL SELECT 'weekly_summaries',       count(*) FROM weekly_summaries;"
+		UNION ALL SELECT 'weekly_summaries',       count(*) FROM weekly_summaries \
+		UNION ALL SELECT 'production_orders',      count(*) FROM production_orders;"
 
 # --- Backend ---
 
