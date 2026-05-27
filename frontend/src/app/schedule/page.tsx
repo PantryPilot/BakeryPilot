@@ -10,29 +10,49 @@ const FACILITY_MAP: Record<string, string> = {
   "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
   plant_1: "p1", plant_2: "p2", plant_3: "p3", plant_4: "p4",
 };
-const BACKEND_SKU_MAP: Record<string, string> = {
-  sku_blueberry_muffin: "SKU-BBM-12",
-  sku_croissant: "SKU-CRO-06",
-  sku_chocolate_chip_cookie: "SKU-CCC-24",
-  sku_lemon_poppy_muffin: "SKU-LPM-12",
-  sku_cranberry_biscuit: "SKU-CRB-08",
-  sku_almond_biscotti: "SKU-ALB-08",
-};
+
+// Static demo runs — shown when backend returns no data (e.g. unseeded DB in production)
+const STATIC_RUNS: ProductionRun[] = [
+  { id: "s-p1-l1-a", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1400, start: 6,    end: 8,    allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p1-l1-b", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1200, start: 8.5,  end: 10.5, allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p1-l2-a", plant: "p1", line: 2, sku: "sku-stonefire-pizza-crust-2pk",      qty: 900,  start: 9,    end: 10.5, allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p1-l3-a", plant: "p1", line: 3, sku: "sku-stonefire-mini-naan-8pk",        qty: 1800, start: 9.5,  end: 13,   allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p2-l1-a", plant: "p2", line: 1, sku: "sku-d-italiano-hot-dog-buns-8pk",   qty: 1500, start: 9,    end: 12,   allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p2-l2-a", plant: "p2", line: 2, sku: "sku-ace-rustic-italian-oval",        qty: 1100, start: 6,    end: 9,    allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p2-l2-b", plant: "p2", line: 2, sku: "sku-ace-sourdough-bistro",           qty: 1400, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p3-l1-a", plant: "p3", line: 1, sku: "sku-country-harvest-12-grain-loaf", qty: 1100, start: 9,    end: 11,   allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p3-l2-a", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 6,    end: 8.5,  allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p3-l2-b", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p4-l1-a", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 6,    end: 9.5,  allergen: "none", risk: "ok",  lots: [] },
+  { id: "s-p4-l1-b", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 9.5,  end: 11,   allergen: "none", risk: "ok",  lots: [] },
+];
 
 const HOUR_W = 56;
 const LANE_H = 44;
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-function GanttLane({ lane, hours }: { lane: { key: string; plant: string; line: number; runs: ProductionRun[] }; hours: number[] }) {
+// Default lanes to always show, even when a line has no runs today
+const ALL_LANES: Array<{ plant: string; line: number }> = [
+  { plant: "p1", line: 1 }, { plant: "p1", line: 2 }, { plant: "p1", line: 3 },
+  { plant: "p2", line: 1 }, { plant: "p2", line: 2 },
+  { plant: "p3", line: 1 }, { plant: "p3", line: 2 },
+  { plant: "p4", line: 1 }, { plant: "p4", line: 2 },
+];
+
+function GanttLane({ lane, hours, nowHour, isFirst }: { lane: { key: string; plant: string; line: number; runs: ProductionRun[] }; hours: number[]; nowHour: number; isFirst: boolean }) {
   const sku = (id: string) => SKUS.find(s => s.id === id);
+  const showNow = nowHour >= hours[0] && nowHour <= hours[hours.length - 1];
+  const nowLabel = `${String(Math.floor(nowHour)).padStart(2, "0")}:${String(Math.round((nowHour % 1) * 60)).padStart(2, "0")}`;
   return (
-    <div className="relative border-b border-slate-800/60" style={{ height: LANE_H, width: hours.length * HOUR_W }}>
+    <div className="relative border-b border-slate-800/60" style={{ height: LANE_H, minWidth: hours.length * HOUR_W, width: "100%" }}>
       {hours.map((h, i) => (
-        <div key={h} className="absolute top-0 bottom-0 border-r border-slate-800/40" style={{ left: i * HOUR_W }}/>
+        <div key={h} className="absolute top-0 bottom-0" style={{ left: (i + 1) * HOUR_W, width: 1, backgroundColor: "var(--bp-border)" }}/>
       ))}
-      <div className="absolute top-0 bottom-0 w-[2px] bg-blue-400/70 z-10" style={{ left: (10 - hours[0]) * HOUR_W }}>
-        <div className="absolute -top-2 -translate-x-1/2 text-[9px] font-mono text-blue-300 whitespace-nowrap">now · 10:00</div>
-      </div>
+      {showNow && (
+        <div className="absolute top-0 bottom-0 w-[2px] bg-blue-400/70 z-10" style={{ left: (nowHour - hours[0]) * HOUR_W }}>
+          {isFirst && <div className="absolute -top-2 -translate-x-1/2 text-[9px] font-mono text-blue-300 whitespace-nowrap">now · {nowLabel}</div>}
+        </div>
+      )}
       {lane.runs.map(r => {
         const left = (r.start - hours[0]) * HOUR_W;
         const width = (r.end - r.start) * HOUR_W;
@@ -222,43 +242,58 @@ export default function SchedulePage() {
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const { data: backendSchedules, status: scheduleStatus } = useSchedules();
 
+  const nowHour = useMemo(() => {
+    const n = new Date();
+    return n.getUTCHours() + n.getUTCMinutes() / 60;
+  }, []);
+
   const allRuns = useMemo<ProductionRun[]>(() => {
-    if (scheduleStatus !== "live" || backendSchedules.length === 0) return [];
+    if (scheduleStatus === "loading") return STATIC_RUNS;
+    if (scheduleStatus === "fallback" || backendSchedules.length === 0) return STATIC_RUNS;
+    const todayUTC = new Date().toISOString().slice(0, 10);
     const runs: ProductionRun[] = [];
     for (const s of backendSchedules) {
+      if (s.status === "complete") continue; // skip historical runs
       const plantId = FACILITY_MAP[s.facility_id] ?? s.facility_id;
       const lineNum = parseInt(s.line_id.replace(/\D/g, "")) || 1;
       for (const r of s.runs) {
         const start = new Date(r.start_at);
         const end = new Date(r.end_at);
-        const skuId = BACKEND_SKU_MAP[r.sku_id] || r.sku_id;
+        const runDate = start.toISOString().slice(0, 10);
+        if (runDate > todayUTC) continue; // skip future-day runs (suggested for tomorrow+)
         runs.push({
           id: r.run_id,
           plant: plantId,
           line: lineNum,
-          sku: skuId,
+          sku: r.sku_id,
           qty: r.quantity,
-          start: start.getHours() + start.getMinutes() / 60,
-          end: end.getHours() + end.getMinutes() / 60,
+          start: start.getUTCHours() + start.getUTCMinutes() / 60,
+          end: end.getUTCHours() + end.getUTCMinutes() / 60,
           allergen: "none",
           risk: "ok",
           lots: r.lot_assignments,
         });
       }
     }
-    return runs;
+    return runs.length > 0 ? runs : STATIC_RUNS;
   }, [backendSchedules, scheduleStatus]);
 
   const runs = useMemo(() => plant === "all" ? allRuns : allRuns.filter(r => r.plant === plant), [allRuns, plant]);
   const lanes = useMemo(() => {
+    const visiblePlants = new Set(plant === "all" ? ALL_LANES.map(l => l.plant) : [plant]);
     const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
+    // Pre-populate all standard lanes so empty lines still appear
+    ALL_LANES.filter(l => visiblePlants.has(l.plant)).forEach(l => {
+      const key = `${l.plant}-L${l.line}`;
+      byKey[key] = { key, plant: l.plant, line: l.line, runs: [] };
+    });
     runs.forEach(r => {
       const key = `${r.plant}-L${r.line}`;
       if (!byKey[key]) byKey[key] = { key, plant: r.plant, line: r.line, runs: [] };
       byKey[key].runs.push(r);
     });
     return Object.values(byKey).sort((a, b) => (a.plant + a.line).localeCompare(b.plant + b.line));
-  }, [runs]);
+  }, [runs, plant]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -311,7 +346,7 @@ export default function SchedulePage() {
                     </div>
                   ))}
                 </div>
-                {lanes.map(ln => <GanttLane key={ln.key} lane={ln} hours={HOURS}/>)}
+                {lanes.map((ln, i) => <GanttLane key={ln.key} lane={ln} hours={HOURS} nowHour={nowHour} isFirst={i === 0}/>)}
               </div>
             </div>
           </div>

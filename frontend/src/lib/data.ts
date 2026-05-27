@@ -108,14 +108,20 @@ export const FACILITIES: Facility[] = [
   { id: "p4", name: "Plant 4", city: "Laval, QC",    x: 0.68, y: 0.50, lines: 5 },
 ];
 
-// UI config — SKU display names for Gantt label lookup
+// UI config — SKU display names for Gantt label lookup (IDs match backend DB)
 export const SKUS: Sku[] = [
-  { id: "SKU-BBM-12", name: "Blueberry Muffin 12pk" },
-  { id: "SKU-CRO-06", name: "Butter Croissant 6pk" },
-  { id: "SKU-CCC-24", name: "Chocolate Chip Cookie 24pk" },
-  { id: "SKU-LPM-12", name: "Lemon Poppy Muffin 12pk" },
-  { id: "SKU-CRB-08", name: "Cinnamon Raisin Bagel 8pk" },
-  { id: "SKU-ALB-08", name: "Almond Biscotti 8pk" },
+  { id: "sku-wonder-classic-white-loaf",      name: "Wonder Classic White Loaf" },
+  { id: "sku-stonefire-mini-naan-8pk",         name: "Stonefire Mini Naan 8pk" },
+  { id: "sku-stonefire-pizza-crust-2pk",       name: "Stonefire Pizza Crust 2pk" },
+  { id: "sku-stonefire-original-naan-2pk",     name: "Stonefire Original Naan 2pk" },
+  { id: "sku-stonefire-naan-dippers-original", name: "Stonefire Naan Dippers" },
+  { id: "sku-d-italiano-hot-dog-buns-8pk",     name: "D'Italiano Hot Dog Buns 8pk" },
+  { id: "sku-country-harvest-12-grain-loaf",   name: "Country Harvest 12-Grain" },
+  { id: "sku-ace-rosemary-focaccia",           name: "ACE Rosemary Focaccia" },
+  { id: "sku-ace-rustic-italian-oval",         name: "ACE Rustic Italian Oval" },
+  { id: "sku-ace-sourdough-bistro",            name: "ACE Sourdough Bistro" },
+  { id: "sku-ace-baguette-classic",            name: "ACE Baguette Classic" },
+  { id: "sku-ace-ciabatta-piccolo-6pk",        name: "ACE Ciabatta Piccolo 6pk" },
 ];
 
 // UI config — chat prompt suggestions

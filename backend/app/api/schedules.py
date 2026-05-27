@@ -17,12 +17,19 @@ from app.models.schedules import (
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 
+def _utc_iso(dt: datetime) -> str:
+    """Return ISO string with explicit UTC offset so JS Date.getUTCHours() works reliably."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
     run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
-        start_at=s.start_at.isoformat(),
-        end_at=s.end_at.isoformat(),
+        start_at=_utc_iso(s.start_at),
+        end_at=_utc_iso(s.end_at),
         quantity=s.quantity_units,
         lot_assignments=[],
     )
@@ -65,16 +72,16 @@ async def schedule_diff(
     before_run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
-        start_at=s.start_at.isoformat(),
-        end_at=s.end_at.isoformat(),
+        start_at=_utc_iso(s.start_at),
+        end_at=_utc_iso(s.end_at),
         quantity=s.quantity_units,
         lot_assignments=[],
     )
     after_run = ScheduleRun(
         run_id=str(s.schedule_id),
-        sku_id="sku-lemon-poppy-muffin-4pk",
-        start_at=(s.start_at + timedelta(hours=1)).isoformat(),
-        end_at=(s.end_at + timedelta(hours=1)).isoformat(),
+        sku_id="sku-ace-sourdough-bistro",
+        start_at=_utc_iso(s.start_at + timedelta(hours=1)),
+        end_at=_utc_iso(s.end_at + timedelta(hours=1)),
         quantity=s.quantity_units,
         lot_assignments=[],
     )
