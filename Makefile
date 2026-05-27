@@ -1,7 +1,7 @@
 .PHONY: up up.full down reset \
         schema.migrate schema.seed seed.lots seed.events seed.demo seed.synthetic \
         seed.toronto seed.toronto.retailers seed.toronto.facilities seed.toronto.skus \
-        seed.commodity_prices \
+        seed.commodity_prices seed.fx_rates seed.weather_signals seed.news_signals \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -106,10 +106,28 @@ seed.toronto.facilities:
 seed.toronto.skus:
 	$(UV) run infra/seed_toronto_skus.py
 
-# Live-fetches daily CBOT wheat OHLCV from Yahoo Finance and upserts into
-# commodity_prices. No API key required. Re-run any time to refresh.
+# Live-fetches daily commodity OHLCV from Yahoo Finance (wheat, sugar, corn,
+# soybean oil, natural gas, crude) and upserts into commodity_prices. No API
+# key required. Re-run any time to refresh.
 seed.commodity_prices:
 	$(UV) run infra/seed_commodity_prices.py
+
+# Live-fetches daily FX reference rates (CAD/USD, CAD/EUR) from the
+# Bank of Canada Valet API into commodity_prices. No API key required.
+seed.fx_rates:
+	$(UV) run infra/seed_fx_rates.py
+
+# Live-fetches 21-day weather (7 past + 14 forecast) per facility from
+# Open-Meteo and writes weather-risk rows to disruption_signals. No API
+# key required. Requires facilities.latitude/longitude (seed.toronto.facilities).
+seed.weather_signals:
+	$(UV) run infra/seed_weather_signals.py
+
+# Live-queries the GDELT 2.0 DOC API for negative-tone news on supply-chain
+# keywords (wheat shortage, port congestion, freight strike, ...) and writes
+# news-risk rows to disruption_signals. No API key required.
+seed.news_signals:
+	$(UV) run infra/seed_news_signals.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:

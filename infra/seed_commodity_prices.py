@@ -65,10 +65,12 @@ _CURRENCY_UNIT = {
 # unit_override lets us record a more specific label than the currency-based
 # default (e.g. 'usd_cents_per_bushel' instead of 'usd_cents_per_unit').
 COMMODITIES: dict[str, tuple[str, str | None, str]] = {
-    "wheat-cbot-zw": ("ZW=F", "usd_cents_per_bushel", "CBOT wheat futures, front-month"),
-    # Add more by appending here, e.g.:
-    # "sugar-ice-sb": ("SB=F", "usd_cents_per_pound", "ICE sugar #11 futures"),
-    # "corn-cbot-zc": ("ZC=F", "usd_cents_per_bushel", "CBOT corn futures, front-month"),
+    "wheat-cbot-zw":       ("ZW=F", "usd_cents_per_bushel", "CBOT wheat futures, front-month"),
+    "sugar-ice-sb":        ("SB=F", "usd_cents_per_pound",  "ICE sugar #11 futures, front-month"),
+    "corn-cbot-zc":        ("ZC=F", "usd_cents_per_bushel", "CBOT corn futures, front-month"),
+    "soybean-oil-cbot-zl": ("ZL=F", "usd_cents_per_pound",  "CBOT soybean oil futures, front-month"),
+    "natgas-nymex-ng":     ("NG=F", "usd_per_mmbtu",        "NYMEX natural gas futures, front-month"),
+    "crude-nymex-cl":      ("CL=F", "usd_per_barrel",       "NYMEX WTI crude oil futures, front-month"),
 }
 
 
@@ -103,7 +105,15 @@ def main() -> None:
 
     for commodity_id, (symbol, unit_override, desc) in COMMODITIES.items():
         print(f"[commodity_prices] fetching {commodity_id} ({symbol})…")
-        result = fetcher.get(symbol)
+        try:
+            result = fetcher.get(symbol)
+        except Exception as exc:
+            # Per-symbol isolation — a delisted/renamed Yahoo ticker shouldn't
+            # block the rest of the sweep.
+            print(f"  SKIPPED ({type(exc).__name__}: {exc})", file=sys.stderr)
+            summary[commodity_id] = {"rows": 0, "symbol": symbol, "unit": "n/a", "desc": f"SKIPPED — {desc}"}
+            continue
+
         if result.from_cache:
             print(f"  cache used (age {result.age_seconds}s)")
 

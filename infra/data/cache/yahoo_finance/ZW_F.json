@@ -2011,15 +2011,15 @@
         "volume": 52389
       },
       {
-        "close": 621.75,
+        "close": 621.5,
         "date": "2026-05-27",
         "high": 638.75,
-        "low": 621.5,
+        "low": 621.0,
         "open": 636.5,
-        "volume": 56704
+        "volume": 60232
       }
     ]
   },
-  "fetched_at": "2026-05-27T16:55:31Z",
+  "fetched_at": "2026-05-27T17:33:51Z",
   "source_url": "https://query1.finance.yahoo.com/v8/finance/chart/ZW=F?range=1y&interval=1d"
 }
