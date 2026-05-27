@@ -1,7 +1,8 @@
 .PHONY: up up.full down reset \
         schema.migrate schema.seed seed.lots seed.events seed.demo seed.synthetic \
         seed.toronto seed.toronto.retailers seed.toronto.facilities seed.toronto.skus \
-        seed.commodity_prices seed.fx_rates seed.weather_signals seed.news_signals \
+        seed.commodity_prices seed.fx_rates seed.fx_world seed.fred_prices \
+        seed.weather_signals seed.news_signals \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -128,6 +129,18 @@ seed.weather_signals:
 # news-risk rows to disruption_signals. No API key required.
 seed.news_signals:
 	$(UV) run infra/seed_news_signals.py
+
+# Live-fetches daily ECB reference FX rates for 8 USD pairs (EUR, GBP, JPY,
+# CHF, CAD, MXN, CNY, AUD) from Frankfurter.app. Documented public API,
+# no API key required. Complements seed.fx_rates (which is CAD-base only).
+seed.fx_world:
+	$(UV) run infra/seed_fx_world.py
+
+# Live-fetches official US Federal Reserve commodity + macro series (WTI crude,
+# Henry Hub natgas, IMF wheat, US food CPI, CAD/USD) into commodity_prices.
+# Requires FRED_API_KEY in .env (free signup at fred.stlouisfed.org).
+seed.fred_prices:
+	$(UV) run infra/seed_fred_prices.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:

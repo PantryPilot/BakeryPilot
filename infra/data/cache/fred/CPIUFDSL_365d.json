@@ -1,0 +1,56 @@
+{
+  "data": {
+    "frequency": "Monthly",
+    "rows": [
+      {
+        "date": "2025-05-01",
+        "value": 338.474
+      },
+      {
+        "date": "2025-06-01",
+        "value": 339.468
+      },
+      {
+        "date": "2025-07-01",
+        "value": 339.891
+      },
+      {
+        "date": "2025-08-01",
+        "value": 341.32
+      },
+      {
+        "date": "2025-09-01",
+        "value": 342.086
+      },
+      {
+        "date": "2025-11-01",
+        "value": 342.386
+      },
+      {
+        "date": "2025-12-01",
+        "value": 344.632
+      },
+      {
+        "date": "2026-01-01",
+        "value": 345.271
+      },
+      {
+        "date": "2026-02-01",
+        "value": 346.622
+      },
+      {
+        "date": "2026-03-01",
+        "value": 346.603
+      },
+      {
+        "date": "2026-04-01",
+        "value": 348.349
+      }
+    ],
+    "series_id": "CPIUFDSL",
+    "title": "Consumer Price Index for All Urban Consumers: Food in U.S. City Average",
+    "units": "Index 1982-1984=100"
+  },
+  "fetched_at": "2026-05-27T19:06:09Z",
+  "source_url": "https://api.stlouisfed.org/fred/series/observations?series_id=CPIUFDSL&api_key=e011e6d55abbfa131be6b5b8a7d6be83&file_type=json&observation_start=2025-05-27&observation_end=2026-05-27&sort_order=asc"
+}

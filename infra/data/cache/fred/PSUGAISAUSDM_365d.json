@@ -1,0 +1,56 @@
+{
+  "data": {
+    "frequency": "Monthly",
+    "rows": [
+      {
+        "date": "2025-05-01",
+        "value": 17.43136363636364
+      },
+      {
+        "date": "2025-06-01",
+        "value": 16.22619047619048
+      },
+      {
+        "date": "2025-07-01",
+        "value": 16.36478260869565
+      },
+      {
+        "date": "2025-08-01",
+        "value": 16.38952380952381
+      },
+      {
+        "date": "2025-09-01",
+        "value": 15.79
+      },
+      {
+        "date": "2025-10-01",
+        "value": 15.55869565217391
+      },
+      {
+        "date": "2025-11-01",
+        "value": 14.623
+      },
+      {
+        "date": "2025-12-01",
+        "value": 14.935
+      },
+      {
+        "date": "2026-01-01",
+        "value": 14.78590909090909
+      },
+      {
+        "date": "2026-02-01",
+        "value": 14.2015
+      },
+      {
+        "date": "2026-03-01",
+        "value": 14.79636363636364
+      }
+    ],
+    "series_id": "PSUGAISAUSDM",
+    "title": "Global price of Sugar, No. 11, World",
+    "units": "U.S. Cents per Pound"
+  },
+  "fetched_at": "2026-05-27T19:06:07Z",
+  "source_url": "https://api.stlouisfed.org/fred/series/observations?series_id=PSUGAISAUSDM&api_key=e011e6d55abbfa131be6b5b8a7d6be83&file_type=json&observation_start=2025-05-27&observation_end=2026-05-27&sort_order=asc"
+}

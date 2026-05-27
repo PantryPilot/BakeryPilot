@@ -263,13 +263,16 @@ async def refresh_data_source(
 
 async def _run_refresh_task(source_id: str) -> None:
     """Background task: open its own DB session so the request-scoped one is freed."""
+    import logging
+
     from app.db.session import session_scope
 
-    async with session_scope() as bg_db:
-        try:
+    log = logging.getLogger("uvicorn.error")  # uses uvicorn's configured handler
+    try:
+        async with session_scope() as bg_db:
             await data_refresh.trigger_refresh(bg_db, source_id)
-        except Exception:  # pragma: no cover — surfaced via last_status in meta
-            pass
+    except Exception:
+        log.exception("background refresh failed for %s", source_id)
 
 
 @router.put("/data-sources/{source_id}/interval", response_model=DataSourceMetaResponse)

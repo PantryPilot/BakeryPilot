@@ -86,6 +86,28 @@ DATA_SOURCES: dict[str, DataSource] = {
         default_interval_seconds=0,
         typical_runtime_seconds=70,  # 8s pacing × 7 keywords + retries
     ),
+    "fx_world": DataSource(
+        id="fx_world",
+        label="FX Rates (ECB / Frankfurter)",
+        description="Daily ECB reference rates for 8 USD pairs (EUR, GBP, JPY, CHF, "
+                    "CAD, MXN, CNY, AUD) via Frankfurter.app. Documented public API, "
+                    "no auth. Lands in commodity_prices with fx-usd-* commodity_ids.",
+        script_relpath="infra/seed_fx_world.py",
+        target_tables=("commodity_prices",),
+        default_interval_seconds=0,
+        typical_runtime_seconds=8,
+    ),
+    "fred_prices": DataSource(
+        id="fred_prices",
+        label="FRED (St. Louis Fed)",
+        description="Official US Federal Reserve commodity + macro series (WTI crude, "
+                    "Henry Hub natgas, gasoline, IMF wheat/sugar, US food CPI, CAD/USD). "
+                    "Requires FRED_API_KEY in .env (free signup).",
+        script_relpath="infra/seed_fred_prices.py",
+        target_tables=("commodity_prices",),
+        default_interval_seconds=0,
+        typical_runtime_seconds=20,
+    ),
 }
 
 
@@ -155,7 +177,17 @@ _uv_cmd: list[str] | None = _resolve_uv_command()
 
 
 async def _run_script(script_relpath: str) -> tuple[int, str, str]:
-    """Run `<uv> run <script>` from project root. Returns (returncode, stdout_tail, stderr_tail)."""
+    """Run `<uv> run <script>` from project root. Returns (returncode, stdout_tail, stderr_tail).
+
+    Uses `asyncio.to_thread(subprocess.run, ...)` rather than
+    `asyncio.create_subprocess_exec` because uvicorn on Windows often runs
+    on a SelectorEventLoop which doesn't support `subprocess_exec` (raises
+    NotImplementedError). Threading the blocking call keeps the subprocess
+    portable across all event loop variants without forcing a loop policy
+    on the caller.
+    """
+    import subprocess  # local import — only needed here
+
     root = _project_root()
     script = root / script_relpath
     if not script.exists():
@@ -169,18 +201,22 @@ async def _run_script(script_relpath: str) -> tuple[int, str, str]:
 
     cmd = [*_uv_cmd, str(script)]
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(root),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env={**os.environ},
-    )
-    stdout_bytes, stderr_bytes = await proc.communicate()
-    stdout = stdout_bytes.decode(errors="replace")
-    stderr = stderr_bytes.decode(errors="replace")
-    # Keep the last 2 KB of each — full output isn't needed for the admin badge.
-    return proc.returncode or 0, stdout[-2048:], stderr[-2048:]
+    def _run_blocking() -> tuple[int, str, str]:
+        result = subprocess.run(
+            cmd,
+            cwd=str(root),
+            capture_output=True,
+            env={**os.environ},
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            # No timeout on the parent — the seed scripts have their own bounds
+            # and the admin UI shows `running…` until completion.
+        )
+        # Keep the last 2 KB of each — full output isn't needed for the admin badge.
+        return result.returncode or 0, (result.stdout or "")[-2048:], (result.stderr or "")[-2048:]
+
+    return await asyncio.to_thread(_run_blocking)
 
 
 # --- Row count helper -----------------------------------------------------
