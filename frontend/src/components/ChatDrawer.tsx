@@ -17,6 +17,7 @@ interface Message {
   tools?: string[];
   card?: ActionCardData | null;
   thinking?: boolean;
+  status?: string;
 }
 
 function nowTime() {
@@ -91,7 +92,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     setMessages(m => [
       ...m,
       { role: "user", text: u, time: nowTime() },
-      { role: "assistant", agent: "OrchestratorAgent", text: "", time: nowTime(), thinking: false },
+      { role: "assistant", agent: "OrchestratorAgent", text: "", time: nowTime(), thinking: true },
     ]);
     setIsThinking(true);
 
@@ -101,7 +102,17 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: (last.text || "") + chunk };
+            next[next.length - 1] = { ...last, text: (last.text || "") + chunk, thinking: false, status: undefined };
+          }
+          return next;
+        });
+      },
+      onStatus: (statusText) => {
+        setMessages(m => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant" && last.thinking) {
+            next[next.length - 1] = { ...last, status: statusText };
           }
           return next;
         });
@@ -391,11 +402,22 @@ function PopupMessage({ m }: { m: Message }) {
       {m.tools && m.tools.length > 0 && <div className="pl-6"><ToolBreadcrumbs tools={m.tools} /></div>}
       <div className="pl-6">
         {m.thinking ? (
-          <span className="inline-flex gap-1 items-center text-slate-500 text-[12px]">
-            <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-            <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-          </span>
+          <div className="space-y-2">
+            {m.status && (
+              <div className="flex items-center gap-2">
+                <span className="relative flex w-1.5 h-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60"/>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-400"/>
+                </span>
+                <span className="text-[12px] font-mono text-slate-400">{m.status}</span>
+              </div>
+            )}
+            <span className="inline-flex gap-1 items-center text-slate-500 text-[12px]">
+              <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1 h-1 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+            </span>
+          </div>
         ) : (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

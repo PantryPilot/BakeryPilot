@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import { AppProvider } from "../lib/context";
-import { Sidebar, TopBar, BottomStrip } from "../components/Shell";
+import { Sidebar, TopBar } from "../components/Shell";
 import { ChatDrawerWrapper } from "../components/ChatDrawerWrapper";
 import { AlertBanner } from "../components/AlertBanner";
 import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT, DEFAULT_THEME, THEME_STORAGE_KEY } from "../lib/theme";
@@ -48,7 +48,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   {children}
                 </div>
               </main>
-              <BottomStrip/>
             </div>
             <AlertBanner/>
             <ChatDrawerWrapper/>

@@ -177,7 +177,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier;
   return (
     <div
       style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
-      className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
+      className="fixed top-14 right-0 bottom-0 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
     >
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">

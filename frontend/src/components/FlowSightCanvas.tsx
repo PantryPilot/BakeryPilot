@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
-import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization } from "../lib/hooks";
+import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useEsgCounter } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 130;
@@ -205,26 +205,36 @@ function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boole
 }
 
 function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; setLayer: (id: string, on: boolean) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const activeCount = Object.values(layers).filter(Boolean).length;
   return (
     <div className="absolute top-4 right-2 sm:right-4 w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl z-10">
-      <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full px-3 py-2 border-b border-slate-800 flex items-center justify-between hover:bg-slate-800/30 transition"
+      >
         <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Layers</span>
-        <span className="text-[10px] font-mono text-slate-500">{Object.values(layers).filter(Boolean).length} on</span>
-      </div>
-      <div className="py-1">
-        {LAYERS_DEF.map(l => {
-          const on = layers[l.id];
-          return (
-            <button key={l.id} onClick={() => setLayer(l.id, !on)} className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-800/50 transition">
-              <div className={`w-7 h-4 rounded-full transition relative ${on ? "bg-blue-500" : "bg-slate-700"}`}>
-                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}/>
-              </div>
-              <span className={`flex-1 text-left text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{l.name}</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>{l.count}</span>
-            </button>
-          );
-        })}
-      </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-slate-500">{activeCount} on</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </button>
+      {!collapsed && (
+        <div className="py-1">
+          {LAYERS_DEF.map(l => {
+            const on = layers[l.id];
+            return (
+              <button key={l.id} onClick={() => setLayer(l.id, !on)} className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-800/50 transition">
+                <div className={`w-7 h-4 rounded-full transition relative ${on ? "bg-blue-500" : "bg-slate-700"}`}>
+                  <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}/>
+                </div>
+                <span className={`flex-1 text-left text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{l.name}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>{l.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -232,7 +242,7 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
 function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
   if (disruptions.length === 0) return null;
   return (
-    <div className="absolute left-0 right-0 bottom-[88px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
+    <div className="absolute left-0 right-0 bottom-[116px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
       <div className="shrink-0 px-3 h-full flex items-center gap-1.5 bg-red-900/60 border-r border-red-800/60">
         <Dot tone="red" pulse/>
         <span className="text-[10px] uppercase tracking-wider text-red-200 font-mono">Disruption feed</span>
@@ -255,6 +265,7 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
   const [pos, setPos] = useState(0.92);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const { data: esg, status: esgStatus } = useEsgCounter();
   const events = [
     { at: 0.05, t: "red" }, { at: 0.18, t: "orange" }, { at: 0.34, t: "blue" }, { at: 0.42, t: "green" },
     { at: 0.51, t: "red" }, { at: 0.66, t: "blue" }, { at: 0.78, t: "orange" }, { at: 0.88, t: "green" },
@@ -267,40 +278,82 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
     return () => clearInterval(id);
   }, [playing, speed]);
 
+  const liveEsg = esgStatus === "live";
+  const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()          : "--";
+  const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`            : "--";
+  const moqVal     = liveEsg && esg.moqTaxYtd       !== undefined ? `$${(esg.moqTaxYtd / 1000).toFixed(1)}k`  : "--";
+  const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)            : "--";
+
   return (
-    <div className="absolute left-0 right-0 bottom-0 h-[88px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur flex items-center px-4 gap-4 z-10">
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => setPlaying(p => !p)} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
-          <Icon name={playing ? "pause" : "play"} size={14}/>
-        </button>
-        <button onClick={() => setSpeed(2)} className={`px-2 h-8 rounded-md border text-[11px] font-mono ${speed === 2 ? "border-blue-500 text-blue-300" : "border-slate-700 text-slate-400"}`}>2×</button>
-        <button onClick={() => setSpeed(5)} className={`px-2 h-8 rounded-md border text-[11px] font-mono ${speed === 5 ? "border-blue-500 text-blue-300" : "border-slate-700 text-slate-400"}`}>5×</button>
-      </div>
-      <div className="flex-1 relative h-12">
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-slate-800"/>
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-blue-500/50" style={{ width: `${pos * 100}%` }}/>
-        {events.map((e, i) => (
-          <div key={i} className="absolute top-1/2 -translate-y-1/2 w-[2px] h-3.5 rounded-sm" style={{ left: `${e.at * 100}%`, background: colorOf(e.t) }}/>
-        ))}
-        {[0, 0.25, 0.5, 0.75, 1].map((h, i) => (
-          <div key={i} className="absolute top-full text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, transform: "translate(-50%, 4px)" }}>
-            {["-24h", "-18h", "-12h", "-6h", "now"][i]}
+    <div className="absolute left-0 right-0 bottom-0 h-[116px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur z-10">
+      {/* Legend row */}
+      <div className="px-4 h-10 border-b border-slate-800/60 flex items-center gap-0">
+        {[
+          { color: "#3b82f6", label: "inbound" },
+          { color: "#f97316", label: "outbound" },
+          { color: "#94a3b8", label: "transfer" },
+        ].map((f, i) => (
+          <div key={i} className="flex items-center gap-1.5 pr-3">
+            <span className="inline-block w-2.5 h-[5px] rounded-sm shrink-0" style={{ background: f.color }}/>
+            <span className="text-[10px] text-slate-500 font-mono">{f.label}</span>
           </div>
         ))}
-        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-500/40" style={{ left: `${pos * 100}%` }}/>
+        <span className="w-px h-3 bg-slate-700 mx-2 shrink-0"/>
+        {[
+          { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
+          { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
+          { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
+          { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
+        ].map((s, i) => (
+          <div key={i} className="flex items-center gap-1 pr-3">
+            <Icon name={s.icon} size={10} className={s.color}/>
+            <span className="text-[11px] font-mono tabular-nums text-slate-200">{s.value}</span>
+            <span className="text-[9px] text-slate-500 ml-0.5">{s.label}</span>
+          </div>
+        ))}
+        {liveEsg && (
+          <span className="relative flex w-1.5 h-1.5 ml-auto shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
+          </span>
+        )}
       </div>
-      <button onClick={() => { setPos(1); setLive(true); }} className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md border ${live ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700"} font-mono text-[11px]`}>
-        <span className="relative flex w-1.5 h-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
-        </span>
-        <span className={live ? "text-emerald-300" : "text-slate-400"}>LIVE</span>
-      </button>
+      {/* Controls row */}
+      <div className="flex items-center px-4 gap-4 h-[75px]">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setPlaying(p => !p)} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
+            <Icon name={playing ? "pause" : "play"} size={14}/>
+          </button>
+          {[1, 2, 5].map(s => (
+            <button key={s} onClick={() => setSpeed(s)} className={`px-2 h-8 rounded-md border text-[11px] font-mono transition ${speed === s ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}>{s}×</button>
+          ))}
+        </div>
+        <div className="flex-1 relative h-12">
+          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-slate-800"/>
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-blue-500/50" style={{ width: `${pos * 100}%` }}/>
+          {events.map((e, i) => (
+            <div key={i} className="absolute top-1/2 -translate-y-1/2 w-[2px] h-3.5 rounded-sm" style={{ left: `${e.at * 100}%`, background: colorOf(e.t) }}/>
+          ))}
+          {[0, 0.25, 0.5, 0.75, 1].map((h, i) => (
+            <div key={i} className="absolute top-full text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, transform: "translate(-50%, 4px)" }}>
+              {["-24h", "-18h", "-12h", "-6h", "now"][i]}
+            </div>
+          ))}
+          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-500/40" style={{ left: `${pos * 100}%` }}/>
+        </div>
+        <button onClick={() => { setPos(1); setLive(true); }} className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md border ${live ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700"} font-mono text-[11px]`}>
+          <span className="relative flex w-1.5 h-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
+          </span>
+          <span className={live ? "text-emerald-300" : "text-slate-400"}>LIVE</span>
+        </button>
+      </div>
     </div>
   );
 }
 
-export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData; onClose: () => void; onAskCopilot: () => void }) {
+export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant: PlantData; onClose: () => void; onAskCopilot: () => void; isClosing?: boolean }) {
   const { data: facilities } = useFacilities();
   const facility = facilities.find(f => f.short_code === plant.id);
   const facilityId = facility?.facility_id ?? null;
@@ -327,7 +380,10 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
     4: { sku: "Chocolate Cookie 24pk", qty: 7400, expiryLot: "LOT-21999", expiryH: 48,  status: "ok" },
   };
   return (
-    <div className="absolute top-0 right-0 bottom-0 w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="absolute top-0 right-0 bottom-[116px] w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl"
+    >
       <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div>
@@ -419,7 +475,13 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   );
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
+  const [plantClosing, setPlantClosing] = useState(false);
   const setLayer = (id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on }));
+
+  const closePlant = useCallback(() => {
+    setPlantClosing(true);
+    setTimeout(() => { setActivePlant(null); setPlantClosing(false); }, 280);
+  }, []);
 
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
@@ -491,21 +553,20 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {retailerPos.map(rr => (
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
-        <g transform="translate(20, 670)">
-          <g><rect width="10" height="6" x="0" y="-3" rx="1" fill="#3b82f6"/><text x="16" y="3" fontSize="10" fill="#94a3b8">inbound</text></g>
-          <g transform="translate(80, 0)"><rect width="10" height="6" x="0" y="-3" rx="1" fill="#f97316"/><text x="16" y="3" fontSize="10" fill="#94a3b8">outbound</text></g>
-          <g transform="translate(170, 0)"><rect width="10" height="6" x="0" y="-3" rx="1" fill="#94a3b8"/><text x="16" y="3" fontSize="10" fill="#94a3b8">transfer</text></g>
-        </g>
       </svg>
       <LayerToggles layers={layers} setLayer={setLayer}/>
       {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
       <TimeScrubber live={live} setLive={setLive}/>
       {activePlant && (
-        <FactoryView
-          plant={activePlant}
-          onClose={() => setActivePlant(null)}
-          onAskCopilot={() => openChatContext?.(`Plant ${activePlant.name} · ${activePlant.city}`)}
-        />
+        <>
+          <div className="absolute inset-0 z-[15] bg-black/20" onClick={closePlant}/>
+          <FactoryView
+            plant={activePlant}
+            isClosing={plantClosing}
+            onClose={closePlant}
+            onAskCopilot={() => openChatContext?.(`Plant ${activePlant.name} · ${activePlant.city}`)}
+          />
+        </>
       )}
     </div>
   );
