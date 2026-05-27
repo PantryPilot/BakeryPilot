@@ -52,13 +52,27 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
     return [_to_model(s) for s in schedules]
 
 
+async def _resolve_schedule(schedule_id: str, db: AsyncSession) -> ScheduleORM:
+    """Look up a schedule by UUID, or return the most recent one when the
+    caller passes the alias 'current' / 'latest'."""
+    if schedule_id in ("current", "latest"):
+        s = (
+            await db.execute(
+                select(ScheduleORM).order_by(ScheduleORM.start_at.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+    else:
+        s = await db.get(ScheduleORM, schedule_id)
+    if not s:
+        raise HTTPException(404, f"schedule {schedule_id} not found")
+    return s
+
+
 @router.get("/{schedule_id}", response_model=ProductionSchedule)
 async def get_schedule(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ProductionSchedule:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     return _to_model(s)
 
 
@@ -66,9 +80,7 @@ async def get_schedule(
 async def schedule_diff(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ScheduleDiff:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     before_run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
@@ -114,13 +126,12 @@ async def what_if(
 async def post_to_mes(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     s.status = "approved"
     await db.commit()
+    sid = str(s.schedule_id)
     return {
-        "schedule_id": schedule_id,
-        "mes_ack_id": f"mes-{schedule_id[:8]}",
+        "schedule_id": sid,
+        "mes_ack_id": f"mes-{sid[:8]}",
         "accepted_at": datetime.now(timezone.utc).isoformat(),
     }
