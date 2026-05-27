@@ -23,7 +23,7 @@ type SortState = { column: string; order: "asc" | "desc" } | null;
 type AdminView = "copilot" | "data-sources" | "tables";
 
 export default function AdminPage() {
-  const [view, setView] = useState<AdminView>("copilot");
+  const [view, setView] = useState<AdminView>("data-sources");
   const [tables, setTables] = useState<AdminTableInfo[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
   const [activeTable, setActiveTable] = useState<string | null>(null);
@@ -108,20 +108,6 @@ export default function AdminPage() {
 
         <div className="py-1 border-b border-slate-800/80">
           <button
-            onClick={() => setView("copilot")}
-            className={`w-full text-left flex items-center gap-2 px-3 py-2.5 transition relative ${
-              view === "copilot"
-                ? "text-slate-100 bg-slate-800/50"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
-            }`}
-          >
-            {view === "copilot" && (
-              <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-blue-500" />
-            )}
-            <Icon name="zap" size={14} className={view === "copilot" ? "text-blue-400" : "text-slate-600"} />
-            <span className="text-[12px] font-medium">Copilot LLM</span>
-          </button>
-          <button
             onClick={() => setView("data-sources")}
             className={`w-full text-left flex items-center gap-2 px-3 py-2.5 transition relative ${
               view === "data-sources"
@@ -134,6 +120,20 @@ export default function AdminPage() {
             )}
             <Icon name="download" size={14} className={view === "data-sources" ? "text-blue-400" : "text-slate-600"} />
             <span className="text-[12px] font-medium">Data Sources</span>
+          </button>
+          <button
+            onClick={() => setView("copilot")}
+            className={`w-full text-left flex items-center gap-2 px-3 py-2.5 transition relative ${
+              view === "copilot"
+                ? "text-slate-100 bg-slate-800/50"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/30"
+            }`}
+          >
+            {view === "copilot" && (
+              <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-blue-500" />
+            )}
+            <Icon name="zap" size={14} className={view === "copilot" ? "text-blue-400" : "text-slate-600"} />
+            <span className="text-[12px] font-medium">Copilot LLM</span>
           </button>
         </div>
 
@@ -409,24 +409,24 @@ function DataGrid({
   }
 
   return (
-    <table className="bp-data-table w-full text-[12px] border-collapse">
+    <table className="bp-admin-table bp-data-table w-full text-[12px] border-collapse">
       <thead className="sticky top-0 z-10">
-        <tr className="bg-[#0d1017] border-b border-slate-800">
+        <tr className="bg-[#0a0d14] border-b border-slate-700/80 shadow-[0_1px_0_0_rgba(15,23,42,0.6)]">
           {columns.map((col) => {
             const active = sort?.column === col.name;
             return (
               <th
                 key={col.name}
                 onClick={() => onSort(col.name)}
-                className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 cursor-pointer hover:text-slate-200 select-none whitespace-nowrap border-r border-slate-800/40 last:border-r-0"
+                className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-200 cursor-pointer hover:text-white hover:bg-slate-800/40 select-none whitespace-nowrap border-r border-slate-700/50 last:border-r-0"
               >
                 <span className="inline-flex items-center gap-1.5">
                   {col.name}
-                  <span className="text-[9px] text-slate-600 font-normal lowercase">
+                  <span className="text-[9px] text-slate-500 font-medium lowercase">
                     {col.type}
                   </span>
                   {active && (
-                    <span className="text-blue-400">
+                    <span className="text-blue-400 font-bold">
                       {sort!.order === "asc" ? "↑" : "↓"}
                     </span>
                   )}
@@ -440,7 +440,11 @@ function DataGrid({
         {rows.map((row, rowIdx) => (
           <tr
             key={rowIdx}
-            className="border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors"
+            className={`border-b border-slate-800/40 transition-colors ${
+              rowIdx % 2 === 0
+                ? "bg-[#0c111c] hover:bg-slate-800/35"
+                : "bg-slate-900/45 hover:bg-slate-800/50"
+            }`}
           >
             {columns.map((col) => {
               const cellKey = `${rowIdx}-${col.name}`;
@@ -449,7 +453,7 @@ function DataGrid({
               return (
                 <td
                   key={col.name}
-                  className="px-3 py-2 text-slate-300 font-mono border-r border-slate-800/20 last:border-r-0 align-top"
+                  className="px-3 py-2 text-slate-300 font-mono border-r border-slate-800/25 last:border-r-0 align-top"
                 >
                   <CellValue
                     value={val}

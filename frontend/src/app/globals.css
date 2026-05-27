@@ -421,6 +421,28 @@ body {
   color: var(--bp-text-subtle) !important;
 }
 
+/* Admin table — zebra rows + bold header in light mode */
+:root[data-theme="light"] .bp-admin-table thead tr {
+  background-color: var(--bp-surface-strong) !important;
+  border-bottom-color: var(--bp-border) !important;
+}
+:root[data-theme="light"] .bp-admin-table thead th {
+  color: var(--bp-text-primary) !important;
+  border-right-color: var(--bp-border) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:nth-child(even) {
+  background-color: var(--bp-surface) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:nth-child(odd) {
+  background-color: rgb(241 245 249 / 0.65) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody tr:hover {
+  background-color: rgb(226 232 240 / 0.85) !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody td {
+  border-right-color: var(--bp-border) !important;
+}
+
 /* FlowSight SVG theme compatibility */
 .bp-flow-canvas {
   --bp-flow-node-bg: #0c111c;
