@@ -10,6 +10,20 @@ from app.models.chat import ChatRequest
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+_INTENT_STATUS = {
+    "inventory":       "InventoryAgent · checking lots & stock levels",
+    "procurement":     "ProcurementAgent · analyzing suppliers & costs",
+    "scheduler":       "SchedulerAgent · reviewing production schedule",
+    "yield":           "YieldAgent · pulling yield telemetry",
+    "esg":             "ESGAgent · computing waste & CO₂e",
+    "weekly_plan":     "WeeklyPlanAgent · composing weekly plan",
+    "weekly_summary":  "SummaryAgent · generating report",
+}
+
+
+def _status(text: str) -> dict:
+    return {"event": "status", "data": json.dumps({"text": text})}
+
 
 @router.get("/ping")
 async def chat_ping():
@@ -33,10 +47,25 @@ async def chat(req: ChatRequest):
         config = {"configurable": {"thread_id": thread_id}}
         initial = {"messages": [HumanMessage(content=req.message)]}
 
+        yield _status("Thinking…")
+
         final_state: dict = {}
+        emission_count = 0
         try:
             async for state in _graph.astream(initial, config, stream_mode="values"):
                 final_state = state
+                emission_count += 1
+
+                intent = state.get("intent", "general")
+
+                if emission_count == 1:
+                    # classify_intent just finished — report which agent will run
+                    status_text = _INTENT_STATUS.get(intent, "Consulting copilot…")
+                    yield _status(status_text)
+                elif emission_count == 2 and intent != "general":
+                    # Specialist agent finished, respond node is next
+                    yield _status("Drafting response…")
+
         except Exception as exc:
             yield {
                 "event": "message",

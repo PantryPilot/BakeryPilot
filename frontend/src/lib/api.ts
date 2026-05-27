@@ -1090,6 +1090,7 @@ export async function fetchFinishedGoods(
 
 export interface ChatStreamHandlers {
   onMessage: (chunk: string) => void;
+  onStatus?: (text: string) => void;
   onSubstitutions?: (
     candidates: { sku_id: string; sku_name: string; achievable_quantity: number }[],
   ) => void;
@@ -1137,6 +1138,8 @@ export async function streamChat(
                 try { payload = JSON.parse(sseData); } catch { /* ignore */ }
                 if (sseEvent === "message") {
                   handlers.onMessage(String(payload.content || ""));
+                } else if (sseEvent === "status") {
+                  handlers.onStatus?.(String(payload.text || ""));
                 } else if (sseEvent === "substitutions") {
                   const cands = (payload.candidates as
                     | { sku_id: string; sku_name: string; achievable_quantity: number }[]

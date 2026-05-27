@@ -1,15 +1,15 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
 import type { BackendYieldTelemetryPoint } from "../lib/api";
-import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry } from "../lib/hooks";
+import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
-const SUPPLIER_X = 130;
-const PLANT_CX = 640;
-const RETAILER_X = 1150;
+const SUPPLIER_X = 180;
+const PLANT_CX = 690;
+const RETAILER_X = 1200;
 
 const PLANT_POS = [
   { id: "p1", name: "Plant 1", city: "Brampton, ON", x: PLANT_CX + 60,  y: 410, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
@@ -206,26 +206,36 @@ function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boole
 }
 
 function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; setLayer: (id: string, on: boolean) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const activeCount = Object.values(layers).filter(Boolean).length;
   return (
     <div className="absolute top-4 right-2 sm:right-4 w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl z-10">
-      <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full px-3 py-2 border-b border-slate-800 flex items-center justify-between hover:bg-slate-800/30 transition"
+      >
         <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Layers</span>
-        <span className="text-[10px] font-mono text-slate-500">{Object.values(layers).filter(Boolean).length} on</span>
-      </div>
-      <div className="py-1">
-        {LAYERS_DEF.map(l => {
-          const on = layers[l.id];
-          return (
-            <button key={l.id} onClick={() => setLayer(l.id, !on)} className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-800/50 transition">
-              <div className={`w-7 h-4 rounded-full transition relative ${on ? "bg-blue-500" : "bg-slate-700"}`}>
-                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}/>
-              </div>
-              <span className={`flex-1 text-left text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{l.name}</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>{l.count}</span>
-            </button>
-          );
-        })}
-      </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-slate-500">{activeCount} on</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </button>
+      {!collapsed && (
+        <div className="py-1">
+          {LAYERS_DEF.map(l => {
+            const on = layers[l.id];
+            return (
+              <button key={l.id} onClick={() => setLayer(l.id, !on)} className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-800/50 transition">
+                <div className={`w-7 h-4 rounded-full transition relative ${on ? "bg-blue-500" : "bg-slate-700"}`}>
+                  <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}/>
+                </div>
+                <span className={`flex-1 text-left text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{l.name}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>{l.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -233,7 +243,7 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
 function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
   if (disruptions.length === 0) return null;
   return (
-    <div className="absolute left-0 right-0 bottom-[88px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
+    <div className="absolute left-0 right-0 bottom-[75px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
       <div className="shrink-0 px-3 h-full flex items-center gap-1.5 bg-red-900/60 border-r border-red-800/60">
         <Dot tone="red" pulse/>
         <span className="text-[10px] uppercase tracking-wider text-red-200 font-mono">Disruption feed</span>
@@ -252,56 +262,91 @@ function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
   );
 }
 
-function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) => void }) {
+const DEMO_EVENTS = [
+  { at: 0.05, t: "red" }, { at: 0.18, t: "orange" }, { at: 0.34, t: "blue" }, { at: 0.42, t: "green" },
+  { at: 0.51, t: "red" }, { at: 0.66, t: "blue" },   { at: 0.78, t: "orange" }, { at: 0.88, t: "green" },
+];
+const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function disruptionToEvent(d: Disruption): { at: number; t: string } | null {
+  const tsMs = new Date(d.ts.replace(" ", "T")).getTime();
+  if (isNaN(tsMs)) return null;
+  const at = (tsMs - (Date.now() - WINDOW_MS)) / WINDOW_MS;
+  if (at < 0 || at > 1) return null;
+  // severity is already "red" | "amber" | "info" from the api adapter
+  const t = d.severity === "red" ? "red" : d.severity === "amber" ? "orange" : "blue";
+  return { at, t };
+}
+
+function TimeScrubber({ live, setLive, disruptions }: { live: boolean; setLive: (v: boolean) => void; disruptions: Disruption[] }) {
   const [pos, setPos] = useState(0.92);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const events = [
-    { at: 0.05, t: "red" }, { at: 0.18, t: "orange" }, { at: 0.34, t: "blue" }, { at: 0.42, t: "green" },
-    { at: 0.51, t: "red" }, { at: 0.66, t: "blue" }, { at: 0.78, t: "orange" }, { at: 0.88, t: "green" },
-  ];
+
+  const liveEvents = disruptions.map(disruptionToEvent).filter((e): e is { at: number; t: string } => e !== null);
+  const events = liveEvents.length > 0 ? liveEvents : DEMO_EVENTS;
+
   const colorOf = (c: string) => ({ red: "#ef4444", orange: "#f97316", blue: "#3b82f6", green: "#22c55e" }[c] ?? "#94a3b8");
 
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => setPos(p => Math.min(1, p + 0.005 * speed)), 100);
+    const id = setInterval(() => {
+      setPos(p => {
+        const next = p + 0.005 * speed;
+        if (next >= 1) { setPlaying(false); return 1; }
+        return next;
+      });
+    }, 100);
     return () => clearInterval(id);
   }, [playing, speed]);
 
+  const handlePlay = () => {
+    if (!playing && pos >= 1) setPos(0);
+    setPlaying(p => !p);
+  };
+
   return (
-    <div className="absolute left-0 right-0 bottom-0 h-[88px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur flex items-center px-4 gap-4 z-10">
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => setPlaying(p => !p)} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
-          <Icon name={playing ? "pause" : "play"} size={14}/>
+    <div className="absolute left-0 right-0 bottom-0 h-[75px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur z-10">
+      {/* Controls row */}
+      <div className="flex items-center pl-8 pr-4 gap-3 h-[75px]">
+        {/* Play + speed buttons */}
+        <div className="flex items-center gap-1.5">
+          <button onClick={handlePlay} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
+            <Icon name={playing ? "pause" : "play"} size={14}/>
+          </button>
+          {[1, 2, 5].map(s => (
+            <button key={s} onClick={() => setSpeed(s)} className={`px-2 h-8 rounded-md border text-[11px] font-mono transition ${speed === s ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}>{s}×</button>
+          ))}
+        </div>
+        {/* Scrubber track */}
+        <div className="flex-1 relative h-12">
+          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-slate-800"/>
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-blue-500/50" style={{ width: `${pos * 100}%` }}/>
+          {events.map((e, i) => (
+            <div key={i} className="absolute top-1/2 -translate-y-1/2 w-[2px] h-3.5 rounded-sm" style={{ left: `${e.at * 100}%`, background: colorOf(e.t) }}/>
+          ))}
+          {/* Time labels above the track */}
+          {[0, 0.25, 0.5, 0.75, 1].map((h, i) => (
+            <div key={i} className="absolute text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, top: "4px", transform: "translateX(-50%)" }}>
+              {["-24h", "-18h", "-12h", "-6h", "now"][i]}
+            </div>
+          ))}
+          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-500/40" style={{ left: `${pos * 100}%` }}/>
+        </div>
+        {/* LIVE button */}
+        <button onClick={() => { setPos(1); setLive(true); }} className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md border ${live ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700"} font-mono text-[11px]`}>
+          <span className="relative flex w-1.5 h-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
+          </span>
+          <span className={live ? "text-emerald-300" : "text-slate-400"}>LIVE</span>
         </button>
-        <button onClick={() => setSpeed(2)} className={`px-2 h-8 rounded-md border text-[11px] font-mono ${speed === 2 ? "border-blue-500 text-blue-300" : "border-slate-700 text-slate-400"}`}>2×</button>
-        <button onClick={() => setSpeed(5)} className={`px-2 h-8 rounded-md border text-[11px] font-mono ${speed === 5 ? "border-blue-500 text-blue-300" : "border-slate-700 text-slate-400"}`}>5×</button>
       </div>
-      <div className="flex-1 relative h-12">
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-slate-800"/>
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-blue-500/50" style={{ width: `${pos * 100}%` }}/>
-        {events.map((e, i) => (
-          <div key={i} className="absolute top-1/2 -translate-y-1/2 w-[2px] h-3.5 rounded-sm" style={{ left: `${e.at * 100}%`, background: colorOf(e.t) }}/>
-        ))}
-        {[0, 0.25, 0.5, 0.75, 1].map((h, i) => (
-          <div key={i} className="absolute top-full text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, transform: "translate(-50%, 4px)" }}>
-            {["-24h", "-18h", "-12h", "-6h", "now"][i]}
-          </div>
-        ))}
-        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-500/40" style={{ left: `${pos * 100}%` }}/>
-      </div>
-      <button onClick={() => { setPos(1); setLive(true); }} className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md border ${live ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700"} font-mono text-[11px]`}>
-        <span className="relative flex w-1.5 h-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
-        </span>
-        <span className={live ? "text-emerald-300" : "text-slate-400"}>LIVE</span>
-      </button>
     </div>
   );
 }
 
-export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData; onClose: () => void; onAskCopilot: () => void }) {
+export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant: PlantData; onClose: () => void; onAskCopilot: () => void; isClosing?: boolean }) {
   const { data: facilities } = useFacilities();
   const facility = facilities.find(f => f.short_code === plant.id);
   const facilityId = facility?.facility_id ?? null;
@@ -344,7 +389,10 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
   };
   const lineCount = facility?.line_count ?? 4;
   return (
-    <div className="absolute top-0 right-0 bottom-0 w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="absolute top-0 right-0 bottom-[75px] w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl"
+    >
       <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div>
@@ -449,6 +497,46 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
   );
 }
 
+function FlowLegend() {
+  const { data: esg, status: esgStatus } = useEsgCounter();
+  const liveEsg = esgStatus === "live";
+  const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()         : "--";
+  const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`           : "--";
+  const moqVal     = liveEsg && esg.moqTaxYtd       !== undefined ? `$${(esg.moqTaxYtd / 1000).toFixed(1)}k` : "--";
+  const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)           : "--";
+
+  return (
+    <div className="absolute top-20 left-4 z-10 rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur px-3 py-2.5 flex flex-col gap-1.5 shadow-xl">
+      <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
+      {[
+        { color: "#3b82f6", label: "inbound" },
+        { color: "#f97316", label: "outbound" },
+        { color: "#94a3b8", label: "transfer" },
+      ].map((f, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+          <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
+        </div>
+      ))}
+      <div className="border-t border-slate-800 mt-0.5 pt-1.5 flex flex-col gap-1">
+        <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">ESG</span>
+        {[
+          { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
+          { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
+          { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
+          { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
+        ].map((s, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <Icon name={s.icon} size={9} className={s.color}/>
+            <span className="text-[10px] font-mono tabular-nums text-slate-300">{s.value}</span>
+            <span className="text-[9px] text-slate-500">{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface FlowSightCanvasProps {
   openChatContext?: (ctx: string) => void;
 }
@@ -459,7 +547,13 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   );
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
+  const [plantClosing, setPlantClosing] = useState(false);
   const setLayer = (id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on }));
+
+  const closePlant = useCallback(() => {
+    setPlantClosing(true);
+    setTimeout(() => { setActivePlant(null); setPlantClosing(false); }, 280);
+  }, []);
 
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
@@ -501,7 +595,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         </defs>
         <path d="M 250 200 Q 350 170, 480 200 T 700 180 T 920 200 L 980 320 Q 940 360, 850 360 L 700 380 Q 600 380, 480 360 L 320 340 Q 240 320, 220 280 Z"
               fill="url(#canadaTint)" stroke="#334155" strokeOpacity="0.4" strokeWidth="1" strokeDasharray="3 4"/>
-        <text x="640" y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
+        <text x={PLANT_CX} y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
         <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">SUPPLIERS ›</text>
         <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">‹ RETAILERS</text>
 
@@ -531,21 +625,22 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {retailerPos.map(rr => (
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
-        <g transform="translate(20, 670)">
-          <g><rect width="10" height="6" x="0" y="-3" rx="1" fill="#3b82f6"/><text x="16" y="3" fontSize="10" fill="#94a3b8">inbound</text></g>
-          <g transform="translate(80, 0)"><rect width="10" height="6" x="0" y="-3" rx="1" fill="#f97316"/><text x="16" y="3" fontSize="10" fill="#94a3b8">outbound</text></g>
-          <g transform="translate(170, 0)"><rect width="10" height="6" x="0" y="-3" rx="1" fill="#94a3b8"/><text x="16" y="3" fontSize="10" fill="#94a3b8">transfer</text></g>
-        </g>
       </svg>
+      {/* Legend panel — top-left, theme-aware */}
+      <FlowLegend />
       <LayerToggles layers={layers} setLayer={setLayer}/>
       {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
-      <TimeScrubber live={live} setLive={setLive}/>
+      <TimeScrubber live={live} setLive={setLive} disruptions={disruptions}/>
       {activePlant && (
-        <FactoryView
-          plant={activePlant}
-          onClose={() => setActivePlant(null)}
-          onAskCopilot={() => openChatContext?.(`Plant ${activePlant.name} · ${activePlant.city}`)}
-        />
+        <>
+          <div className="absolute inset-0 z-[15] bg-black/20" onClick={closePlant}/>
+          <FactoryView
+            plant={activePlant}
+            isClosing={plantClosing}
+            onClose={closePlant}
+            onAskCopilot={() => openChatContext?.(`Plant ${activePlant.name} · ${activePlant.city}`)}
+          />
+        </>
       )}
     </div>
   );
