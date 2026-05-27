@@ -93,17 +93,21 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
 
   if (result) {
     const lc = result.landed_cost_breakdown;
+    const handleDone = () => { onSuccess("PO draft created — pending approval"); onClose(); };
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center">
-              <Icon name="check" size={16} className="text-emerald-400"/>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleDone}>
+        <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <Icon name="check" size={16} className="text-emerald-400"/>
+              </div>
+              <div>
+                <div className="text-[15px] font-semibold text-slate-100">PO Draft Created</div>
+                <div className="text-[11px] text-slate-500 font-mono">Action card pending approval</div>
+              </div>
             </div>
-            <div>
-              <div className="text-[15px] font-semibold text-slate-100">PO Draft Created</div>
-              <div className="text-[11px] text-slate-500 font-mono">Action card pending approval</div>
-            </div>
+            <button onClick={handleDone} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
           </div>
           <div className="rounded-md border border-slate-800 bg-slate-900/40 p-4 mb-4 text-[12px] space-y-2">
             <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Landed cost breakdown</div>
@@ -125,7 +129,7 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
             </div>
           </div>
           <button
-            onClick={() => { onSuccess("PO draft created — pending approval"); onClose(); }}
+            onClick={handleDone}
             className="w-full px-4 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-[13px]"
           >Done</button>
         </div>
@@ -366,13 +370,15 @@ function exportWasteCSV(events: BackendWasteEvent[]) {
 
 type SupplierTab = "overview" | "contact" | "messages" | "negotiate";
 
-function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
+function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRefreshTick }: {
   supplier: Supplier;
   onClose: () => void;
   isClosing?: boolean;
   onDraftAction?: (msg: string) => void;
+  orderRefreshTick?: number;
 }) {
   const { data: liveOrders, status: ordersStatus, refetch: refetchOrders } = useSupplierOrders(supplier.id);
+  useEffect(() => { if (orderRefreshTick) refetchOrders(); }, [orderRefreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: perf } = useSupplierPerformance(supplier.id);
   const { data: drafts, status: negotiationStatus, refetch: refetchDrafts } = useNegotiationsBySupplier(supplier.id);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -637,7 +643,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
                       <span className="text-slate-200 flex-1 truncate">{p.items[0]?.ingredient_id.replace(/_/g, " ") || "—"}{p.items.length > 1 ? ` +${p.items.length - 1}` : ""}</span>
                       <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{totalKg.toLocaleString()} kg</span>
                       <span className="font-mono text-slate-500 w-28 hidden sm:inline">{p.delivery_date}</span>
-                      <Pill tone={p.status === "sent" ? "green" : p.status === "confirmed" ? "blue" : "ghost"}>{p.status}</Pill>
+                      <Pill tone={p.status === "sent" ? "green" : p.status === "confirmed" ? "blue" : p.status === "draft" ? "amber" : "ghost"}>{p.status}</Pill>
                       {canReceive && (
                         <button
                           disabled={receivingOrderId === p.order_id}
@@ -1058,6 +1064,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [supplierOverrides, setSupplierOverrides] = useState<Map<string, Supplier>>(new Map());
   const [deletedSupplierIds, setDeletedSupplierIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ msg: string; tone: "green" | "red" } | null>(null);
+  const [orderRefreshTick, setOrderRefreshTick] = useState(0);
   const { data: backendSuppliers } = useSuppliers();
   const { data: scorecardSummary } = useScorecardSummary();
 
@@ -1291,6 +1298,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           onClose={closeSupplier}
           isClosing={supplierClosing}
           onDraftAction={msg => showToast(msg)}
+          orderRefreshTick={orderRefreshTick}
         />
       )}
       {placePOTarget && (
@@ -1298,7 +1306,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           supplier={placePOTarget}
           initialContext={poContext}
           onClose={() => { setPlacePOTarget(null); setPoContext(null); }}
-          onSuccess={msg => { setPlacePOTarget(null); setPoContext(null); showToast(msg); }}
+          onSuccess={msg => { setPlacePOTarget(null); setPoContext(null); showToast(msg); setOrderRefreshTick(t => t + 1); }}
         />
       )}
       {(addSupplierOpen || editTarget) && (
