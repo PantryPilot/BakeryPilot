@@ -188,28 +188,35 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
 }
 
 function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boolean }) {
+  const truncateName = (name: string, maxChars = 20) =>
+    name.length > maxChars ? `${name.slice(0, maxChars - 1)}…` : name;
+  const label = truncateName(rr.name);
+  const cardWidth = 128;
+  const cardLeft = -cardWidth;
+  const barLeft = cardLeft + 6;
+  const barWidthMax = cardWidth - 12;
   const color = rr.shelfRisk === "red" ? "#ef4444" : rr.shelfRisk === "amber" ? "#f59e0b" : "#22c55e";
-  const barWidth = Math.min(44, 44 * rr.poRatio * 0.75);
+  const barWidth = Math.min(barWidthMax, barWidthMax * rr.poRatio * 0.75);
   return (
     <g transform={`translate(${rr.x}, ${rr.y})`}>
-      <rect x="-26" y="-14" width="52" height="28" rx="3" fill="#0c111c" stroke="#334155" strokeWidth="1.2"/>
-      <text textAnchor="middle" y="3" fontSize="10" fontWeight="600" fill="#cbd5e1">{rr.name}</text>
-      <rect x="-22" y="18" width="44" height="3" rx="1" fill="#1e293b"/>
-      <rect x="-22" y="18" width={barWidth} height="3" rx="1" fill={rr.poRatio > 1.2 ? "#f59e0b" : "#3b82f6"}/>
-      <text textAnchor="start" x="28" y="22" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{(rr.poRatio * 100).toFixed(0)}%</text>
-      <circle r="3" cx="22" cy="-10" fill={color}/>
+      <rect x={cardLeft} y="-14" width={cardWidth} height="28" rx="3" fill="#0c111c" stroke="#334155" strokeWidth="1.2"/>
+      <text textAnchor="start" x={cardLeft + 8} y="3" fontSize="10" fontWeight="600" fill="#cbd5e1">{label}</text>
+      <rect x={barLeft} y="18" width={barWidthMax} height="3" rx="1" fill="#1e293b"/>
+      <rect x={barLeft} y="18" width={barWidth} height="3" rx="1" fill={rr.poRatio > 1.2 ? "#f59e0b" : "#3b82f6"}/>
+      <text textAnchor="start" x={6} y="22" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{(rr.poRatio * 100).toFixed(0)}%</text>
+      <circle r="3" cx={-8} cy="-10" fill={color}/>
       {forecastOn && (
-        <text textAnchor="start" x="-26" y="-20" fontSize="9" fill="#3b82f6" fontFamily="ui-monospace, monospace">↑ 14d band</text>
+        <text textAnchor="start" x={cardLeft} y="-20" fontSize="9" fill="#3b82f6" fontFamily="ui-monospace, monospace">↑ 14d band</text>
       )}
     </g>
   );
 }
 
 function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; setLayer: (id: string, on: boolean) => void }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const activeCount = Object.values(layers).filter(Boolean).length;
   return (
-    <div className="absolute top-4 right-2 sm:right-4 w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl z-10">
+    <div className="w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-2xl">
       <button
         onClick={() => setCollapsed(c => !c)}
         className="w-full px-3 py-2 border-b border-slate-800 flex items-center justify-between hover:bg-slate-800/30 transition"
@@ -220,7 +227,11 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}><path d="M6 9l6 6 6-6"/></svg>
         </div>
       </button>
-      {!collapsed && (
+      <div
+        data-testid="layers-content"
+        aria-hidden={collapsed}
+        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? "max-h-0 opacity-0" : "max-h-[420px] opacity-100"}`}
+      >
         <div className="py-1">
           {LAYERS_DEF.map(l => {
             const on = layers[l.id];
@@ -235,7 +246,7 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
             );
           })}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -499,6 +510,7 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
 
 function FlowLegend() {
   const { data: esg, status: esgStatus } = useEsgCounter();
+  const [collapsed, setCollapsed] = useState(true);
   const liveEsg = esgStatus === "live";
   const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()         : "--";
   const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`           : "--";
@@ -506,32 +518,49 @@ function FlowLegend() {
   const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)           : "--";
 
   return (
-    <div className="absolute top-20 left-4 z-10 rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur px-3 py-2.5 flex flex-col gap-1.5 shadow-xl">
-      <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
-      {[
-        { color: "#3b82f6", label: "inbound" },
-        { color: "#f97316", label: "outbound" },
-        { color: "#94a3b8", label: "transfer" },
-      ].map((f, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
-          <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
-        </div>
-      ))}
-      <div className="border-t border-slate-800 mt-0.5 pt-1.5 flex flex-col gap-1">
-        <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">ESG</span>
-        {[
-          { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
-          { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
-          { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
-          { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
-        ].map((s, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <Icon name={s.icon} size={9} className={s.color}/>
-            <span className="text-[10px] font-mono tabular-nums text-slate-300">{s.value}</span>
-            <span className="text-[9px] text-slate-500">{s.label}</span>
+    <div className="w-[200px] sm:w-[244px] rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur shadow-xl">
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full px-3 py-2 border-b border-slate-800 flex items-center justify-between hover:bg-slate-800/30 transition"
+      >
+        <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Flow & ESG</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`text-slate-500 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}>
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      <div
+        data-testid="flow-legend-content"
+        aria-hidden={collapsed}
+        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? "max-h-0 opacity-0" : "max-h-[320px] opacity-100"}`}
+      >
+        <div className="px-3 py-2.5 flex flex-col gap-1.5">
+          <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
+          {[
+            { color: "#3b82f6", label: "inbound" },
+            { color: "#f97316", label: "outbound" },
+            { color: "#94a3b8", label: "transfer" },
+          ].map((f, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+              <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
+            </div>
+          ))}
+          <div className="border-t border-slate-800 mt-0.5 pt-1.5 flex flex-col gap-1">
+            <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">ESG</span>
+            {[
+              { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
+              { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
+              { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
+              { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
+            ].map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <Icon name={s.icon} size={9} className={s.color}/>
+                <span className="text-[10px] font-mono tabular-nums text-slate-300">{s.value}</span>
+                <span className="text-[9px] text-slate-500">{s.label}</span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -627,8 +656,10 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         ))}
       </svg>
       {/* Legend panel — top-left, theme-aware */}
-      <FlowLegend />
-      <LayerToggles layers={layers} setLayer={setLayer}/>
+      <div className="absolute top-4 right-2 sm:right-4 z-10 flex flex-col gap-3">
+        <LayerToggles layers={layers} setLayer={setLayer}/>
+        <FlowLegend />
+      </div>
       {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
       <TimeScrubber live={live} setLive={setLive} disruptions={disruptions}/>
       {activePlant && (
