@@ -3,19 +3,20 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Icon } from "./Icon";
+import { TourGuide, useTour } from "./TourGuide";
 import { FACILITIES } from "../lib/data";
 import { useApp } from "../lib/context";
 import { useEsgCounter } from "../lib/hooks";
 
 const NAV = [
-  { id: "home",       route: "/",                        label: "Home",       icon: "home"     },
-  { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid"     },
-  { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box"      },
-  { id: "production", route: "/production",              label: "Production", icon: "factory"  },
-  { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
-  { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
-  { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings" },
-  { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database" },
+  { id: "home",       route: "/",                        label: "Home",       icon: "home",     tour: ""                  },
+  { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid",     tour: "nav-flowsight"     },
+  { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box",      tour: "nav-inventory"     },
+  { id: "production", route: "/production",              label: "Production", icon: "factory",  tour: "nav-production"    },
+  { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck",    tour: "nav-suppliers"     },
+  { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar", tour: "nav-schedule"      },
+  { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings", tour: ""                  },
+  { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database", tour: ""                  },
 ];
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ export function Sidebar() {
 
   // Shared sidebar content rendered for both desktop and mobile overlay
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <aside className={`
+    <aside data-tour="sidebar" className={`
       flex flex-col bg-[#0a0d14] border-r border-slate-800/80 h-full
       ${mobile
         ? "w-[240px]"
@@ -66,6 +67,7 @@ export function Sidebar() {
               key={item.id}
               href={item.route}
               onClick={() => mobile && setMobileSidebarOpen(false)}
+              {...(item.tour ? { "data-tour": item.tour } : {})}
               className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 relative ${active ? "text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
             >
               {/* Active indicator with smooth transition */}
@@ -268,6 +270,7 @@ export function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const facilityRef = useRef<HTMLDivElement>(null);
+  const { open: tourOpen, start: startTour, close: closeTour } = useTour();
 
   // Close facility dropdown on outside click
   useEffect(() => {
@@ -292,104 +295,121 @@ export function TopBar() {
   };
 
   return (
-    <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[#0a0d14]/80 backdrop-blur flex items-center px-4 gap-3 z-30">
-      {/* Hamburger — mobile only */}
-      <button
-        className="md:hidden p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300"
-        onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-        aria-label="Open navigation"
-      >
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <line x1="2" y1="5" x2="16" y2="5"/>
-          <line x1="2" y1="9" x2="16" y2="9"/>
-          <line x1="2" y1="13" x2="16" y2="13"/>
-        </svg>
-      </button>
-
-      {/* Facility selector */}
-      <div className="relative" ref={facilityRef}>
+    <>
+      <header className="h-14 shrink-0 border-b border-slate-800/80 bg-[#0a0d14]/80 backdrop-blur flex items-center px-4 gap-3 z-30">
+        {/* Hamburger — mobile only */}
         <button
-          onClick={() => setFacilityOpen(o => !o)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-800 hover:border-slate-600 transition"
+          className="md:hidden p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300"
+          onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+          aria-label="Open navigation"
         >
-          <Icon name="grid" size={14} className="text-slate-400"/>
-          <span className="text-[13px] text-slate-200 hidden sm:inline">
-            {FACILITIES.find(f => f.id === facility)?.name}
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <line x1="2" y1="5" x2="16" y2="5"/>
+            <line x1="2" y1="9" x2="16" y2="9"/>
+            <line x1="2" y1="13" x2="16" y2="13"/>
+          </svg>
+        </button>
+
+        {/* Facility selector */}
+        <div className="relative" ref={facilityRef} data-tour="facility-selector">
+          <button
+            onClick={() => setFacilityOpen(o => !o)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-800 hover:border-slate-600 transition"
+          >
+            <Icon name="grid" size={14} className="text-slate-400"/>
+            <span className="text-[13px] text-slate-200 hidden sm:inline">
+              {FACILITIES.find(f => f.id === facility)?.name}
+            </span>
+            {FACILITIES.find(f => f.id === facility)?.city && (
+              <span className="text-[11px] text-slate-500 font-mono hidden lg:inline">
+                {FACILITIES.find(f => f.id === facility)?.city}
+              </span>
+            )}
+            <Icon name="chevron" size={14} className="text-slate-500"/>
+          </button>
+          {facilityOpen && (
+            <div className="absolute top-full mt-1 left-0 min-w-[220px] rounded-md border border-slate-800 bg-slate-900 shadow-xl z-40 overflow-hidden">
+              {FACILITIES.map(f => (
+                <button key={f.id} onClick={() => { setFacility(f.id); setFacilityOpen(false); }}
+                  className={`w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-[13px] ${facility === f.id ? "text-blue-300 bg-slate-800/50" : "text-slate-200"}`}>
+                  <span className="flex-1">{f.name}</span>
+                  {f.city && <span className="text-[11px] text-slate-500 font-mono">{f.city}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1"/>
+
+        {/* Live status badge */}
+        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/5">
+          <span className="relative flex w-2 h-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"/>
           </span>
-          {FACILITIES.find(f => f.id === facility)?.city && (
-            <span className="text-[11px] text-slate-500 font-mono hidden lg:inline">
-              {FACILITIES.find(f => f.id === facility)?.city}
-            </span>
-          )}
-          <Icon name="chevron" size={14} className="text-slate-500"/>
-        </button>
-        {facilityOpen && (
-          <div className="absolute top-full mt-1 left-0 min-w-[220px] rounded-md border border-slate-800 bg-slate-900 shadow-xl z-40 overflow-hidden">
-            {FACILITIES.map(f => (
-              <button key={f.id} onClick={() => { setFacility(f.id); setFacilityOpen(false); }}
-                className={`w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-[13px] ${facility === f.id ? "text-blue-300 bg-slate-800/50" : "text-slate-200"}`}>
-                <span className="flex-1">{f.name}</span>
-                {f.city && <span className="text-[11px] text-slate-500 font-mono">{f.city}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+          <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Live</span>
+          <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
+        </div>
 
-      <div className="flex-1"/>
-
-      {/* Live status badge */}
-      <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/5">
-        <span className="relative flex w-2 h-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"/>
-        </span>
-        <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Live</span>
-        <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
-      </div>
-
-      {/* Theme toggle */}
-      <button
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
-        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        suppressHydrationWarning
-      >
-        <span key={theme} className="theme-toggle-icon" suppressHydrationWarning>
-          {theme === "dark" ? <Icon name="moon" size={18}/> : <Icon name="sun" size={18}/>}
-        </span>
-      </button>
-
-      {/* Notification bell */}
-      <div className="relative">
+        {/* Theme toggle */}
         <button
-          onClick={handleNotifToggle}
-          className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
-          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          suppressHydrationWarning
         >
-          <Icon name="bell" size={18}/>
-          {unreadCount > 0 && (
-            <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] rounded-full bg-amber-400 flex items-center justify-center text-[9px] font-bold text-amber-950 px-0.5">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
+          <span key={theme} className="theme-toggle-icon" suppressHydrationWarning>
+            {theme === "dark" ? <Icon name="moon" size={18}/> : <Icon name="sun" size={18}/>}
+          </span>
         </button>
-        {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)}/>}
-      </div>
 
-      {/* User avatar */}
-      <div className="relative">
+        {/* Tour button */}
         <button
-          onClick={handleUserToggle}
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[11px] font-semibold text-white hover:opacity-90 transition-opacity"
-          aria-label="User menu"
-          aria-expanded={userOpen}
+          onClick={startTour}
+          className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 transition-colors"
+          aria-label="Start product tour"
+          title="Product tour"
         >
-          {userInitials(user.displayName)}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 8v1M12 11v5"/>
+          </svg>
         </button>
-        {userOpen && <UserMenu onClose={() => setUserOpen(false)}/>}
-      </div>
-    </header>
+
+        {/* Notification bell */}
+        <div className="relative" data-tour="notifications">
+          <button
+            onClick={handleNotifToggle}
+            className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+          >
+            <Icon name="bell" size={18}/>
+            {unreadCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] rounded-full bg-amber-400 flex items-center justify-center text-[9px] font-bold text-amber-950 px-0.5">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+          {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)}/>}
+        </div>
+
+        {/* User avatar */}
+        <div className="relative">
+          <button
+            onClick={handleUserToggle}
+            className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-[11px] font-semibold text-white hover:opacity-90 transition-opacity"
+            aria-label="User menu"
+            aria-expanded={userOpen}
+          >
+            {userInitials(user.displayName)}
+          </button>
+          {userOpen && <UserMenu onClose={() => setUserOpen(false)}/>}
+        </div>
+      </header>
+
+      {tourOpen && <TourGuide onClose={closeTour}/>}
+    </>
   );
 }
 
