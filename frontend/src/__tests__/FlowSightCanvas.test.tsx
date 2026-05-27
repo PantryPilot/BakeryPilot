@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { FlowSightCanvas } from '../components/FlowSightCanvas'
 
 jest.mock('../lib/hooks', () => ({
@@ -56,8 +56,6 @@ describe('Flow legend overlay', () => {
 describe('TimeScrubber', () => {
   test('renders play button', () => {
     render(<FlowSightCanvas />)
-    // Icon renders as SVG; look for the controls row container instead
-    const { container } = render(<FlowSightCanvas />)
     // 1× speed button is always visible
     expect(screen.getAllByText('1×')[0]).toBeInTheDocument()
   })
