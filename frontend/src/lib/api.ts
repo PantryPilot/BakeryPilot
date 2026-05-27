@@ -138,15 +138,16 @@ function adaptSupplier(b: BackendSupplier): Supplier {
 }
 
 function adaptLot(b: BackendLot): Lot {
-  const expiry = new Date(b.expiry_date);
+  // Use date-only math to avoid timezone/rounding drift between UI status and risk.
+  const [y, m, d] = b.expiry_date.split("-").map((v) => parseInt(v, 10));
+  const expiryDayUtc = Date.UTC(y, m - 1, d);
   const now = new Date();
-  const daysLeft = Math.max(
-    0,
-    Math.round((expiry.getTime() - now.getTime()) / 86_400_000),
-  );
+  const todayDayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayDelta = Math.floor((expiryDayUtc - todayDayUtc) / 86_400_000);
+  const daysLeft = Math.max(0, dayDelta);
   const risk = Math.min(1, Math.max(0, b.spoilage_risk_score));
   const status: LotStatus =
-    daysLeft <= 0
+    dayDelta < 0
       ? "expired"
       : risk >= 0.85
       ? "critical"
