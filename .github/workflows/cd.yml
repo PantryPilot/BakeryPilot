@@ -1,0 +1,168 @@
+# Continuous Deployment to the single OpenStack VM.
+#
+# - Runs on the self-hosted runner installed at /opt/actions-runner on the VM.
+# - Triggers on every push to main. Tests are NOT a precondition (CI runs in
+#   parallel via .github/workflows/ci.yml; this workflow does not depend on it).
+# - Syncs the deploy clone at /mnt/BakeryPilot to origin/main, then rebuilds
+#   only the services whose source paths changed since the previous push.
+# - Concurrency lock prevents two pushes from racing on the VM.
+#
+# Path -> service map:
+#   backend/**, agent/**     -> backend  (agent code is embedded in the backend image)
+#   frontend/**              -> frontend (Next.js bundle is baked at build time)
+#   nginx/**                 -> nginx    (config reload, no rebuild)
+#   docker-compose*.yml,
+#   */Dockerfile,
+#   .env.example             -> rebuild ALL services (safer)
+#   infra/supabase/**        -> warn only; schema changes need manual migration
+#   docs/**, *.md, tests/**,
+#   .github/**               -> sync only; no rebuild
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # allow manual reruns from the Actions tab
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VM
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    env:
+      DEPLOY_DIR: /mnt/BakeryPilot
+      COMPOSE: -f docker-compose.yml -f docker-compose.prod.yml
+
+    steps:
+      # Detect changed paths against the previous commit. dorny/paths-filter
+      # uses the `base` SHA from the push event when run on push, so it sees
+      # exactly what landed in this push (not the full diff against main).
+      - name: Check out workflow source (for paths-filter only)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event.before }}
+          ref: ${{ github.sha }}
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'agent/**'
+            frontend:
+              - 'frontend/**'
+            nginx:
+              - 'nginx/**'
+            rebuild_all:
+              - 'docker-compose.yml'
+              - 'docker-compose.prod.yml'
+              - 'backend/Dockerfile'
+              - 'frontend/Dockerfile'
+              - '.env.example'
+            schema:
+              - 'infra/supabase/**'
+
+      # Sync the deploy clone to origin/main. This is the "real-time" mirror:
+      # whatever is on main is what's on disk. Untracked local files are
+      # preserved (so a hand-edited .env on the VM is safe), but tracked-file
+      # local edits get wiped — which is what we want for CD.
+      - name: Sync /mnt/BakeryPilot to origin/main
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          git fetch --prune origin main
+          git reset --hard origin/main
+          git clean -fd -e .env -e .env.local -e '.env.*.local'
+          echo "Now at: $(git rev-parse --short HEAD) — $(git log -1 --pretty=%s)"
+
+      - name: Show what changed
+        run: |
+          {
+            echo "backend       = ${{ steps.changes.outputs.backend }}"
+            echo "frontend      = ${{ steps.changes.outputs.frontend }}"
+            echo "nginx         = ${{ steps.changes.outputs.nginx }}"
+            echo "rebuild_all   = ${{ steps.changes.outputs.rebuild_all }}"
+            echo "schema (warn) = ${{ steps.changes.outputs.schema }}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # If schema files changed, we don't auto-migrate. The Postgres init dir
+      # only runs on a fresh volume, so changing schema.sql here is a no-op
+      # until someone runs `make schema.migrate` by hand. Surface it loudly.
+      - name: Warn on schema changes
+        if: steps.changes.outputs.schema == 'true'
+        run: |
+          echo "::warning::infra/supabase/** changed. The Postgres init dir only fires on a fresh volume."
+          echo "::warning::Run \`make schema.migrate\` manually on the VM if you need the change applied."
+
+      # Path -> action mapping. Each step is conditional and a no-op when the
+      # paths it cares about didn't change.
+
+      - name: Rebuild ALL services (compose / Dockerfile / env shape changed)
+        if: steps.changes.outputs.rebuild_all == 'true'
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose $COMPOSE up -d --build
+
+      - name: Rebuild backend
+        if: steps.changes.outputs.backend == 'true' && steps.changes.outputs.rebuild_all != 'true'
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose $COMPOSE up -d --build backend
+
+      - name: Rebuild frontend
+        if: steps.changes.outputs.frontend == 'true' && steps.changes.outputs.rebuild_all != 'true'
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose $COMPOSE up -d --build frontend
+
+      - name: Reload nginx
+        if: steps.changes.outputs.nginx == 'true' && steps.changes.outputs.rebuild_all != 'true'
+        run: |
+          cd "$DEPLOY_DIR"
+          docker compose $COMPOSE up -d nginx
+          docker compose $COMPOSE exec -T nginx nginx -t
+          docker compose $COMPOSE exec -T nginx nginx -s reload
+
+      - name: Nothing to redeploy
+        if: |
+          steps.changes.outputs.backend     != 'true' &&
+          steps.changes.outputs.frontend    != 'true' &&
+          steps.changes.outputs.nginx       != 'true' &&
+          steps.changes.outputs.rebuild_all != 'true'
+        run: |
+          echo "::notice::No service paths changed; sync-only deploy. (docs / tests / workflows)"
+
+      # Smoke test always runs, even on sync-only deploys, so a broken VM is
+      # caught immediately rather than at the next real change.
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            if curl -fsS -o /dev/null -w "healthz HTTP %{http_code}\n" http://localhost/healthz; then
+              exit 0
+            fi
+            echo "attempt $i failed, retrying in 3s…"
+            sleep 3
+          done
+          echo "::error::/healthz did not return 200 after 5 attempts"
+          docker compose $COMPOSE ps
+          docker compose $COMPOSE logs --tail=100 backend nginx
+          exit 1
+
+      - name: Report
+        if: always()
+        run: |
+          echo "## Deploy summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          docker compose $COMPOSE ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' \
+            >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
