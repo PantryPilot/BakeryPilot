@@ -90,3 +90,28 @@ async def mark_sent(
         sent_at=draft.sent_at.isoformat() if draft.sent_at else None,
         action_card_id=None,
     )
+
+
+@router.post("/{draft_id}/discard", response_model=NegotiationDraft)
+async def discard_draft(
+    draft_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> NegotiationDraft:
+    draft = await db.get(DraftORM, draft_id)
+    if not draft:
+        raise HTTPException(404, f"draft {draft_id} not found")
+    if draft.status in ("sent",):
+        raise HTTPException(409, "cannot discard a sent draft")
+    draft.status = "discarded"
+    await db.commit()
+    await db.refresh(draft)
+    return NegotiationDraft(
+        draft_id=str(draft.draft_id),
+        supplier_id=draft.supplier_id,
+        trigger_kind=draft.trigger_kind,
+        body_md=draft.body_md,
+        status=draft.status,
+        created_at=draft.created_at.isoformat(),
+        sent_at=draft.sent_at.isoformat() if draft.sent_at else None,
+        action_card_id=None,
+    )

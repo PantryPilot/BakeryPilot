@@ -50,6 +50,7 @@ async def healthz() -> dict:
 
 for _router in [
     inventory.router,
+    inventory.ingredients_router,
     suppliers.router,
     orders.router,
     action_cards.router,

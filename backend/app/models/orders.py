@@ -16,7 +16,9 @@ class SupplierOrderDraftRequest(BaseModel):
 
 
 class LandedCostBreakdown(BaseModel):
-    unit_cost: float
+    unit_price: float
+    quantity_kg: float
+    base_cost: float
     overage_cost: float
     holding_cost: float
     total: float

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
@@ -14,9 +14,186 @@ import {
   useDemandForecasts,
   useScorecardSummary,
   useSupplierPerformance,
+  useIngredients,
+  useNegotiationsBySupplier,
 } from "../../lib/hooks";
-import type { BackendWasteEvent, BackendYieldTelemetryPoint } from "../../lib/api";
-import { BACKEND_URL } from "../../lib/api";
+import type { BackendWasteEvent, BackendYieldTelemetryPoint, OrderDraftResponse } from "../../lib/api";
+import { BACKEND_URL, createOrderDraft, markNegotiationSent, discardNegotiationDraft, createSupplier, updateSupplier, deleteSupplier } from "../../lib/api";
+
+function Toast({ msg, tone, onDone }: { msg: string; tone: "green" | "red"; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div className={`fixed bottom-16 right-4 z-50 px-4 py-3 rounded-lg shadow-xl text-[13px] font-medium flex items-center gap-2 ${
+      tone === "green" ? "bg-emerald-500/90 text-emerald-950" : "bg-red-500/90 text-white"
+    }`}>
+      <Icon name={tone === "green" ? "check" : "warn"} size={14}/>
+      {msg}
+    </div>
+  );
+}
+
+function PlacePOModal({ supplier, onClose, onSuccess }: {
+  supplier: Supplier;
+  onClose: () => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const { data: ingredients, status: ingStatus } = useIngredients();
+  const [ingredientId, setIngredientId] = useState("");
+  const [quantityKg, setQuantityKg] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<OrderDraftResponse | null>(null);
+
+  const canSubmit = !!(ingredientId && quantityKg && unitPrice && deliveryDate && !loading);
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setLoading(true);
+    setError(null);
+    const res = await createOrderDraft({
+      supplier_id: supplier.id.replace(/^s-/, "sup_"),
+      items: [{ ingredient_id: ingredientId, quantity_kg: parseFloat(quantityKg), unit_price: parseFloat(unitPrice) }],
+      delivery_date: deliveryDate,
+    });
+    setLoading(false);
+    if (res) {
+      setResult(res);
+    } else {
+      setError("Failed to create PO draft. Please try again.");
+    }
+  }
+
+  if (result) {
+    const lc = result.landed_cost_breakdown;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <Icon name="check" size={16} className="text-emerald-400"/>
+            </div>
+            <div>
+              <div className="text-[15px] font-semibold text-slate-100">PO Draft Created</div>
+              <div className="text-[11px] text-slate-500 font-mono">Action card pending approval</div>
+            </div>
+          </div>
+          <div className="rounded-md border border-slate-800 bg-slate-900/40 p-4 mb-4 text-[12px] space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Landed cost breakdown</div>
+            {([
+              ["Unit price", `$${lc.unit_price.toFixed(4)}/kg`],
+              ["Quantity", `${lc.quantity_kg.toLocaleString()} kg`],
+              ["Base cost", `$${lc.base_cost.toLocaleString()}`],
+              ["MOQ overage", `$${lc.overage_cost.toLocaleString()}`],
+              ["Holding cost", `$${lc.holding_cost.toLocaleString()}`],
+            ] as [string, string][]).map(([label, value], i) => (
+              <div key={i} className="flex justify-between text-slate-300">
+                <span className="text-slate-500">{label}</span>
+                <span className="font-mono tabular-nums">{value}</span>
+              </div>
+            ))}
+            <div className="flex justify-between border-t border-slate-700 pt-2 text-slate-100 font-semibold">
+              <span>Total landed cost</span>
+              <span className="font-mono tabular-nums">${lc.total.toLocaleString()}</span>
+            </div>
+          </div>
+          <button
+            onClick={() => { onSuccess("PO draft created — pending approval"); onClose(); }}
+            className="w-full px-4 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-[13px]"
+          >Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="text-[15px] font-semibold text-slate-100">Place Purchase Order</div>
+            <div className="text-[11px] text-slate-500 font-mono">{supplier.name}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Ingredient</label>
+            <select
+              value={ingredientId}
+              onChange={e => setIngredientId(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">Select ingredient…</option>
+              {ingStatus === "loading" ? (
+                <option disabled>Loading…</option>
+              ) : (
+                ingredients.map(ing => (
+                  <option key={ing.ingredient_id} value={ing.ingredient_id}>{ing.name}</option>
+                ))
+              )}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Quantity (kg)</label>
+              <input
+                type="number"
+                min="0"
+                value={quantityKg}
+                onChange={e => setQuantityKg(e.target.value)}
+                placeholder="0"
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Unit price ($/kg)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={unitPrice}
+                onChange={e => setUnitPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Delivery date</label>
+            <input
+              type="date"
+              value={deliveryDate}
+              onChange={e => setDeliveryDate(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          {error && (
+            <div className="text-[12px] text-red-400 bg-red-500/10 rounded-md px-3 py-2">{error}</div>
+          )}
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-md border border-slate-700 hover:border-slate-500 text-[13px] text-slate-300"
+          >Cancel</button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="flex-1 px-4 py-2.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed text-blue-950 font-semibold text-[13px] flex items-center justify-center gap-2"
+          >
+            {loading && <span className="w-3.5 h-3.5 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+            Create PO Draft
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
   series: { values: number[]; color: string; label: string; dashed?: boolean }[];
@@ -142,11 +319,36 @@ function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: str
   );
 }
 
-function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier; onClose: () => void; isClosing?: boolean }) {
+function exportWasteCSV(events: BackendWasteEvent[]) {
+  const headers = ["event_id", "ts", "lot_id", "ingredient_name", "quantity_kg", "value_usd", "reason", "avoided", "facility_id"];
+  const rows = events.map(e =>
+    [e.event_id, e.ts, e.lot_id ?? "", e.ingredient_name, e.quantity_kg, e.value_usd, e.reason, e.avoided ? "yes" : "no", e.facility_id]
+      .map(v => `"${String(v).replace(/"/g, '""')}"`)
+      .join(",")
+  );
+  const csv = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "waste_events.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
+  supplier: Supplier;
+  onClose: () => void;
+  isClosing?: boolean;
+  onDraftAction?: (msg: string) => void;
+}) {
   const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
   const { data: perf } = useSupplierPerformance(supplier.id);
+  const { data: drafts, status: negotiationStatus, refetch: refetchDrafts } = useNegotiationsBySupplier(supplier.id);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [discardingId, setDiscardingId] = useState<string | null>(null);
+
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
-  // Prefer backend performance history if available; pad to 12 weeks with the latest value.
   const onTime = (() => {
     if (perf && perf.points.length > 0) {
       const base = perf.points.map(p => p.on_time_rate);
@@ -173,6 +375,28 @@ function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier;
   })();
   const priceIdx = weeks.map((_, i) => 1 + Math.sin(i * 0.4) * 0.06);
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
+
+  async function handleSend(draftId: string) {
+    setSendingId(draftId);
+    const res = await markNegotiationSent(draftId);
+    setSendingId(null);
+    if (res) {
+      refetchDrafts();
+      onDraftAction?.("Negotiation draft sent");
+    }
+  }
+
+  async function handleDiscard(draftId: string) {
+    setDiscardingId(draftId);
+    const res = await discardNegotiationDraft(draftId);
+    setDiscardingId(null);
+    if (res) {
+      refetchDrafts();
+      onDraftAction?.("Draft discarded");
+    }
+  }
+
+  const showNegotiationSection = drafts.length > 0 || (negotiationStatus === "loading" && supplier.moqTaxQtd > 3000);
 
   return (
     <div
@@ -250,18 +474,44 @@ function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier;
             })}
           </div>
         </div>
-        {supplier.moqTaxQtd > 3000 && (
+        {showNegotiationSection && (
           <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300 font-semibold mb-2 flex items-center gap-2"><Icon name="warn" size={12}/>Pending negotiation draft</div>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] p-4">
-              <div className="text-[13px] text-slate-100 font-medium mb-2">Subject: Quarterly MOQ review — T55 flour</div>
-              <div className="text-[12px] text-slate-400 leading-relaxed mb-3">Over the past 90 days, we&apos;ve absorbed $3,210 in MOQ overage on T55 flour orders, driven by a 4,200 kg floor against a 3,610 kg trailing average. Proposing a revised floor of 3,800 kg in exchange for a 0.5% volume rebate at quarter-end…</div>
-              <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px]">Send</button>
-                <button className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200">Edit</button>
-                <button className="px-3 py-1.5 rounded-md text-[12px] text-red-400">Discard</button>
-              </div>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300 font-semibold mb-2 flex items-center gap-2">
+              <Icon name="warn" size={12}/>Pending negotiation {drafts.length > 1 ? "drafts" : "draft"}
             </div>
+            {negotiationStatus === "loading" && drafts.length === 0 ? (
+              <div className="text-[12px] text-slate-500 py-2">Loading drafts…</div>
+            ) : (
+              drafts.map(draft => (
+                <div key={draft.draft_id} className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] p-4 mb-2">
+                  <div className="text-[13px] text-slate-100 font-medium mb-2 capitalize">
+                    {draft.trigger_kind.replace(/_/g, " ")}
+                  </div>
+                  <div className="text-[12px] text-slate-400 leading-relaxed mb-3">
+                    {draft.body_md.length > 400 ? draft.body_md.slice(0, 400) + "…" : draft.body_md}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={!!sendingId || !!discardingId}
+                      onClick={() => handleSend(draft.draft_id)}
+                      className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
+                    >
+                      {sendingId === draft.draft_id && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+                      Send
+                    </button>
+                    <button className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200">Edit</button>
+                    <button
+                      disabled={!!sendingId || !!discardingId}
+                      onClick={() => handleDiscard(draft.draft_id)}
+                      className="px-3 py-1.5 rounded-md text-[12px] text-red-400 disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {discardingId === draft.draft_id && <span className="w-3 h-3 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin"/>}
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
@@ -269,18 +519,157 @@ function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier;
   );
 }
 
-// openChatContext prop is forwarded from ScorecardInner but not currently used in this tab
+// ── Add / Edit supplier modal ─────────────────────────────────────────────────
+function AddEditSupplierModal({ existing, onClose, onSuccess }: {
+  existing: Supplier | null;
+  onClose: () => void;
+  onSuccess: (s: Supplier) => void;
+}) {
+  const isEdit = existing !== null;
+  const [supplierId, setSupplierId] = useState(
+    isEdit ? existing!.id.replace(/^s-/, "sup_") : ""
+  );
+  const [name, setName] = useState(isEdit ? existing!.name : "");
+  const [email, setEmail] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [moqKg, setMoqKg] = useState(isEdit ? String(existing!.tier === 1 ? 1500 : 500) : "");
+  const [leadTime, setLeadTime] = useState("");
+  const [onTimeRate, setOnTimeRate] = useState(isEdit ? String(Math.round(existing!.onTime * 100)) : "90");
+  const [fillRate, setFillRate] = useState(isEdit ? String(Math.round(existing!.fill * 100)) : "95");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = !!(name && (isEdit || supplierId) && !loading);
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setLoading(true);
+    setError(null);
+    let result: Supplier | null = null;
+    if (isEdit) {
+      result = await updateSupplier(existing!.id, {
+        name: name || undefined,
+        contact_email: email || undefined,
+        payment_terms: paymentTerms || undefined,
+        moq_kg: moqKg ? parseFloat(moqKg) : undefined,
+        lead_time_mean_days: leadTime ? parseFloat(leadTime) : undefined,
+        on_time_rate: onTimeRate ? parseFloat(onTimeRate) / 100 : undefined,
+        fill_rate: fillRate ? parseFloat(fillRate) / 100 : undefined,
+      });
+    } else {
+      result = await createSupplier({
+        supplier_id: supplierId,
+        name,
+        contact_email: email || undefined,
+        payment_terms: paymentTerms || undefined,
+        moq_kg: moqKg ? parseFloat(moqKg) : undefined,
+        lead_time_mean_days: leadTime ? parseFloat(leadTime) : undefined,
+        on_time_rate: onTimeRate ? parseFloat(onTimeRate) / 100 : undefined,
+        fill_rate: fillRate ? parseFloat(fillRate) / 100 : undefined,
+      });
+    }
+    setLoading(false);
+    if (result) {
+      onSuccess(result);
+    } else {
+      setError(isEdit ? "Update failed." : "Failed to create supplier. ID may already exist.");
+    }
+  };
+
+  const inputCls = "w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="text-[15px] font-semibold text-slate-100">{isEdit ? "Edit Supplier" : "Add Supplier"}</div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="space-y-3">
+          {!isEdit && (
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Supplier ID</label>
+              <input value={supplierId} onChange={e => setSupplierId(e.target.value)} placeholder="e.g. sup_acme_flour"
+                className={inputCls}/>
+            </div>
+          )}
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Supplier name" className={inputCls}/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Email</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="contact@example.com" className={inputCls}/>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Payment terms</label>
+              <input value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="Net 30" className={inputCls}/>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">MOQ (kg)</label>
+              <input type="number" min="0" value={moqKg} onChange={e => setMoqKg(e.target.value)} placeholder="0" className={inputCls}/>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Lead time (days)</label>
+              <input type="number" min="0" value={leadTime} onChange={e => setLeadTime(e.target.value)} placeholder="7" className={inputCls}/>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">On-time rate (%)</label>
+              <input type="number" min="0" max="100" value={onTimeRate} onChange={e => setOnTimeRate(e.target.value)} placeholder="90" className={inputCls}/>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Fill rate (%)</label>
+              <input type="number" min="0" max="100" value={fillRate} onChange={e => setFillRate(e.target.value)} placeholder="95" className={inputCls}/>
+            </div>
+          </div>
+          {error && <div className="text-[12px] text-red-400 bg-red-500/10 rounded px-3 py-2">{error}</div>}
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-md border border-slate-700 hover:border-slate-500 text-[13px] text-slate-300">Cancel</button>
+          <button onClick={handleSubmit} disabled={!canSubmit}
+            className="flex-1 px-4 py-2.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-40 disabled:cursor-not-allowed text-blue-950 font-semibold text-[13px] flex items-center justify-center gap-2">
+            {loading && <span className="w-3.5 h-3.5 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+            {isEdit ? "Save changes" : "Add supplier"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
   const [supplierClosing, setSupplierClosing] = useState(false);
-  const { data: suppliers } = useSuppliers();
+  const [placePOTarget, setPlacePOTarget] = useState<Supplier | null>(null);
+  const [addSupplierOpen, setAddSupplierOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Supplier | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Supplier | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [addedSuppliers, setAddedSuppliers] = useState<Supplier[]>([]);
+  const [supplierOverrides, setSupplierOverrides] = useState<Map<string, Supplier>>(new Map());
+  const [deletedSupplierIds, setDeletedSupplierIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ msg: string; tone: "green" | "red" } | null>(null);
+  const { data: backendSuppliers } = useSuppliers();
   const { data: scorecardSummary } = useScorecardSummary();
+
+  const suppliers = useMemo(() => {
+    const base = backendSuppliers
+      .map(s => supplierOverrides.get(s.id) ?? s)
+      .filter(s => !deletedSupplierIds.has(s.id));
+    return [...addedSuppliers, ...base];
+  }, [backendSuppliers, supplierOverrides, addedSuppliers, deletedSupplierIds]);
 
   const closeSupplier = useCallback(() => {
     setSupplierClosing(true);
     setTimeout(() => { setActiveSupplier(null); setSupplierClosing(false); }, 280);
   }, []);
+
+  function showToast(msg: string, tone: "green" | "red" = "green") {
+    setToast({ msg, tone });
+  }
+
   const summary = [
     { label: "Active suppliers", value: scorecardSummary?.supplier_count ?? suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
@@ -297,7 +686,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      {/* Mobile card list — visible only on xs screens */}
+      {/* Mobile card list */}
       <div className="sm:hidden space-y-2 mb-6">
         {suppliers.map(s => (
           <div
@@ -336,6 +725,13 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
         ))}
       </div>
       <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">Supplier roster</div>
+          <button onClick={() => setAddSupplierOpen(true)}
+            className="px-3 py-1 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px]">
+            + Add supplier
+          </button>
+        </div>
         <div className="overflow-x-auto">
         <table className="bp-data-table w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
@@ -380,8 +776,24 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      {s.moqTaxQtd > 3000 && <button onClick={e => e.stopPropagation()} className="px-1.5 py-0.5 text-[11px] rounded border border-red-500/40 bg-red-500/10 text-red-200">View draft</button>}
-                      <button onClick={e => e.stopPropagation()} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Place PO</button>
+                      {s.moqTaxQtd > 3000 && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setActiveSupplier(s); }}
+                          className="px-1.5 py-0.5 text-[11px] rounded border border-red-500/40 bg-red-500/10 text-red-200"
+                        >View draft</button>
+                      )}
+                      <button
+                        onClick={e => { e.stopPropagation(); setPlacePOTarget(s); }}
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300"
+                      >Place PO</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditTarget(s); }}
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-slate-500 text-slate-300"
+                      >Edit</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setDeleteConfirm(s); }}
+                        className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60"
+                      >Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -417,7 +829,71 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      {activeSupplier && <SupplierSlideIn supplier={activeSupplier} onClose={closeSupplier} isClosing={supplierClosing}/>}
+      {activeSupplier && (
+        <SupplierSlideIn
+          supplier={activeSupplier}
+          onClose={closeSupplier}
+          isClosing={supplierClosing}
+          onDraftAction={msg => showToast(msg)}
+        />
+      )}
+      {placePOTarget && (
+        <PlacePOModal
+          supplier={placePOTarget}
+          onClose={() => setPlacePOTarget(null)}
+          onSuccess={msg => { setPlacePOTarget(null); showToast(msg); }}
+        />
+      )}
+      {(addSupplierOpen || editTarget) && (
+        <AddEditSupplierModal
+          existing={editTarget}
+          onClose={() => { setAddSupplierOpen(false); setEditTarget(null); }}
+          onSuccess={(s) => {
+            if (editTarget) {
+              setSupplierOverrides(m => new Map(m).set(s.id, s));
+              setEditTarget(null);
+              showToast(`${s.name} updated.`);
+            } else {
+              setAddedSuppliers(prev => [s, ...prev]);
+              setAddSupplierOpen(false);
+              showToast(`${s.name} added.`);
+            }
+          }}
+        />
+      )}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm bg-[#0c111c] rounded-xl border border-red-500/30 shadow-2xl p-6">
+            <div className="text-[15px] font-semibold text-slate-100 mb-1">Delete supplier?</div>
+            <div className="text-[12px] font-mono text-slate-500 mb-4">{deleteConfirm.name}</div>
+            <div className="text-[12px] text-slate-400 mb-5">Suppliers with active lots cannot be deleted.</div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setDeletingId(deleteConfirm.id);
+                  const ok = await deleteSupplier(deleteConfirm.id);
+                  setDeletingId(null);
+                  if (ok) {
+                    setDeletedSupplierIds(prev => new Set(prev).add(deleteConfirm.id));
+                    setDeleteConfirm(null);
+                    showToast(`${deleteConfirm.name} deleted.`);
+                  } else {
+                    showToast("Delete failed — supplier may have active lots.", "red");
+                    setDeleteConfirm(null);
+                  }
+                }}
+                disabled={deletingId === deleteConfirm.id}
+                className="flex-1 py-2 rounded-md bg-red-500 hover:bg-red-400 disabled:opacity-50 text-red-950 font-semibold text-[13px] flex items-center justify-center gap-2"
+              >
+                {deletingId === deleteConfirm.id && <span className="w-3.5 h-3.5 border-2 border-red-950/40 border-t-red-950 rounded-full animate-spin"/>}
+                Delete
+              </button>
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toast && <Toast msg={toast.msg} tone={toast.tone} onDone={() => setToast(null)}/>}
     </>
   );
 }
@@ -508,7 +984,11 @@ function PerformanceTab() {
                 {wasteStatus === "live" && <span className="text-emerald-400 ml-2">· live</span>}
               </div>
             </div>
-            <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-slate-500 text-[11px] text-slate-200">Export CSV</button>
+            <button
+              onClick={() => exportWasteCSV(wasteEvents)}
+              disabled={wasteEvents.length === 0}
+              className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-slate-500 text-[11px] text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >Export CSV</button>
           </div>
           <WasteLog events={wasteEvents} status={wasteStatus}/>
         </div>
