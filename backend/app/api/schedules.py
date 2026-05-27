@@ -2,10 +2,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ProductionSchedule as ScheduleORM
+from app.db.models import (
+    ActionCard as ActionCardORM,
+    ProductionSchedule as ScheduleORM,
+)
 from app.db.session import get_db
 from app.models.schedules import (
     ProductionSchedule,
@@ -26,8 +30,8 @@ def _utc_iso(dt: datetime) -> str:
 
 
 async def _resolve_schedule(db: AsyncSession, schedule_id: str) -> ScheduleORM | None:
-    """Resolve a schedule path param, including the ``current`` alias."""
-    if schedule_id == "current":
+    """Resolve a schedule path param, including ``current`` / ``latest`` aliases."""
+    if schedule_id in ("current", "latest"):
         suggested = (
             await db.execute(
                 select(ScheduleORM)
@@ -159,4 +163,42 @@ async def post_to_mes(
         "schedule_id": resolved_id,
         "mes_ack_id": f"mes-{resolved_id[:8]}",
         "accepted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+class ScheduleChangeDraftRequest(BaseModel):
+    facility_id: str
+    substitute_sku_id: str
+    requested_by_sku_id: str
+    requested_units: int
+    rationale: str | None = None
+
+
+@router.post("/draft_change", response_model=dict)
+async def draft_schedule_change(
+    req: ScheduleChangeDraftRequest, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Create a pending action_card the operator can confirm to swap one SKU
+    for another on the production line. The actual cancel-old-order + create-
+    new-order work runs inside _execute_schedule_change_card when the user
+    confirms the card."""
+    card = ActionCardORM(
+        kind="schedule_change",
+        payload={
+            "facility_id": req.facility_id,
+            "substitute_sku_id": req.substitute_sku_id,
+            "requested_by_sku_id": req.requested_by_sku_id,
+            "requested_units": req.requested_units,
+            "rationale": req.rationale or "",
+            "title": f"Swap {req.requested_by_sku_id} → {req.substitute_sku_id}",
+            "agent": "SchedulerAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {
+        "action_card_id": str(card.card_id),
+        "kind": "schedule_change",
+        "title": card.payload["title"],
     }
