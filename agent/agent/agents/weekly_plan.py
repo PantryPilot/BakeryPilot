@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 
-from agent.config import get_model
+from agent.llm import cached_react_agent
 from agent.tools.esg_tools import get_waste_counter, run_pattern_analysis
 from agent.tools.inventory_tools import query_lots, substitution_candidates
 from agent.tools.procurement_tools import build_order_draft, get_supplier_risk, preview_landed_cost
@@ -41,7 +40,6 @@ Keep the report under 600 words. Be specific — use lot IDs, run IDs, dollar am
 
 class WeeklyPlanAgent:
     def __init__(self) -> None:
-        self._llm = ChatAnthropic(model=get_model("default"), temperature=0)
         self._tools = [
             query_lots,
             suggest_production_schedule,
@@ -59,11 +57,9 @@ class WeeklyPlanAgent:
         ]
 
     def run(self, state: dict) -> dict:
-        from langgraph.prebuilt import create_react_agent
-        graph = create_react_agent(
-            model=self._llm,
+        graph = cached_react_agent(
+            "weekly_plan",
             tools=self._tools,
             prompt=SystemMessage(content=_PLAN_PROMPT),
         )
-        result = graph.invoke(state)
-        return result
+        return graph.invoke(state)

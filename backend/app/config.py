@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
 
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    google_api_key: str = ""
+    groq_api_key: str = ""
     supplier_use_mock: bool = True
     mes_use_mock: bool = True
     cmms_use_mock: bool = True

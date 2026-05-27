@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
-from langgraph.prebuilt import create_react_agent
 
-from agent.config import get_model
+from agent.llm import cached_react_agent
 from agent.prompts.store import get_prompt_store
 from agent.tools.notify_tools import identify_stakeholders, send_confirmation_email
 from agent.tools.scheduler_tools import (
@@ -36,9 +34,12 @@ class SchedulerAgent:
     def __init__(self) -> None:
         store = get_prompt_store()
         base_prompt = store.get("orchestrator")
-        system = SystemMessage(content=base_prompt + _SYSTEM_SUFFIX)
-        llm = ChatAnthropic(model=get_model("default"), temperature=0)
-        self.graph = create_react_agent(model=llm, tools=_TOOLS, prompt=system)
+        self._system = SystemMessage(content=base_prompt + _SYSTEM_SUFFIX)
 
     def run(self, state: dict) -> dict:
-        return self.graph.invoke(state)
+        graph = cached_react_agent(
+            "scheduler",
+            tools=_TOOLS,
+            prompt=self._system,
+        )
+        return graph.invoke(state)

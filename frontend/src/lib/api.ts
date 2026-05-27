@@ -1088,6 +1088,26 @@ export async function fetchFinishedGoods(
 
 // ---------- SSE: chat + events ----------
 
+export interface ChatModelOption {
+  id: string;
+  label: string;
+  provider: string;
+  tier: string;
+  description: string;
+  available: boolean;
+  is_default: boolean;
+}
+
+export async function fetchChatModels(): Promise<ChatModelOption[]> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/chat/models`);
+    if (!res.ok) return [];
+    return (await res.json()) as ChatModelOption[];
+  } catch {
+    return [];
+  }
+}
+
 export interface ChatStreamHandlers {
   onMessage: (chunk: string) => void;
   onStatus?: (text: string) => void;
@@ -1104,13 +1124,16 @@ export async function streamChat(
   message: string,
   history: { role: "user" | "assistant"; content: string }[],
   handlers: ChatStreamHandlers,
+  model?: string | null,
 ): Promise<() => void> {
   const ctrl = new AbortController();
   try {
+    const body: Record<string, unknown> = { message, history };
+    if (model) body.model = model;
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) {

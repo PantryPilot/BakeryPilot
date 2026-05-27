@@ -4,7 +4,14 @@ import { Icon } from "../../components/Icon";
 import { Pill, Dot, ToolBreadcrumbs, ActionCard } from "../../components/atoms";
 import { ChatBox } from "../../components/ChatDrawer";
 import { ActionCardData } from "../../components/atoms";
-import { streamChat, fetchActionCard, adaptActionCard } from "../../lib/api";
+import { streamChat, fetchActionCard, adaptActionCard, fetchChatModels } from "../../lib/api";
+import { ModelSelector } from "../../components/ModelSelector";
+import {
+  pickInitialModel,
+  setStoredChatModel,
+  modelLabel,
+  type ChatModelOption,
+} from "../../lib/chatModels";
 
 interface Message {
   role: "user" | "assistant";
@@ -133,7 +140,18 @@ export default function ChatPage() {
     },
   ]);
   const [isThinking, setIsThinking] = useState(false);
+  const [chatModels, setChatModels] = useState<ChatModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-6");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchChatModels().then((models) => {
+      setChatModels(models);
+      if (models.length > 0) {
+        setSelectedModel(pickInitialModel(models));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -186,7 +204,12 @@ export default function ChatPage() {
           return next;
         });
       },
-    });
+    }, selectedModel);
+  };
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    setStoredChatModel(modelId);
   };
 
   return (
@@ -196,8 +219,16 @@ export default function ChatPage() {
           <Icon name="chat" size={18} className="text-blue-400"/>
           <div className="flex-1">
             <h1 className="text-[16px] font-semibold text-slate-100">Copilot</h1>
-            <div className="text-[11px] text-slate-500 font-mono">Multi-agent · claude-sonnet · streaming SSE</div>
+            <div className="text-[11px] text-slate-500 font-mono">
+              Multi-agent · {modelLabel(chatModels, selectedModel)} · streaming SSE
+            </div>
           </div>
+          <ModelSelector
+            models={chatModels}
+            value={selectedModel}
+            onChange={handleModelChange}
+            disabled={isThinking}
+          />
           <Pill tone="green"><Dot tone="green" pulse/> connected</Pill>
         </div>
 

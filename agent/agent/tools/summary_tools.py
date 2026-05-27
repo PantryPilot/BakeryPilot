@@ -5,11 +5,11 @@ from typing import Annotated
 
 import httpx
 import opik
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool, ToolException
 
-from agent.config import BACKEND_URL, get_model
+from agent.config import BACKEND_URL
+from agent.llm import make_chat_llm
 from agent.prompts.store import get_prompt_store
 
 
@@ -77,7 +77,7 @@ def narrate_week(
         )
 
     system_prompt = get_prompt_store().get("weekly_summary")
-    llm = ChatAnthropic(model=get_model("default"), temperature=0)
+    llm = make_chat_llm(purpose="summary", temperature=0)
     response = llm.invoke(
         [
             SystemMessage(content=system_prompt),
