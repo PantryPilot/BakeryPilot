@@ -92,7 +92,7 @@ export default function AdminPage() {
       {/* Table list sidebar */}
       <div className="w-[240px] shrink-0 border-r border-slate-800/80 flex flex-col bg-[#0b0e16]">
         <div className="p-3 border-b border-slate-800/80">
-          <SectionHeader title="Tables" count={tables.length} />
+          <SectionHeader title="Tables" sub={`${tables.length} total`}/>
           <div className="mt-2 relative">
             <Icon
               name="search"

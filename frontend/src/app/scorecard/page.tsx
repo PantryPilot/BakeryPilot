@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
@@ -7,7 +7,6 @@ import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } fro
 import { SKUS, Supplier } from "../../lib/data";
 import { useSuppliers, useEsgCounter, useSupplierOrders, useWasteEvents, useYieldTelemetry, useDemandForecasts } from "../../lib/hooks";
 import type { BackendWasteEvent, BackendYieldTelemetryPoint } from "../../lib/api";
-import type { DemandForecast } from "../../lib/data";
 import { BACKEND_URL } from "../../lib/api";
 
 function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
@@ -134,7 +133,7 @@ function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: str
   );
 }
 
-function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier; onClose: () => void; isClosing?: boolean }) {
   const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
   const onTime = weeks.map((_, i) => Math.max(0.7, Math.min(1, supplier.onTime + Math.sin(i * 0.7) * 0.08 - (i === 11 ? 0.05 : 0))));
@@ -144,7 +143,10 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
 
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
+    >
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
           <ReliabilityHalo score={supplier.onTime} disrupt={supplier.status === "disrupt"} size={36}>
@@ -235,9 +237,17 @@ function SupplierSlideIn({ supplier, onClose }: { supplier: Supplier; onClose: (
   );
 }
 
+// openChatContext prop is forwarded from ScorecardInner but not currently used in this tab
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => void }) {
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
-  const { data: suppliers, status: supplierStatus } = useSuppliers();
+  const [supplierClosing, setSupplierClosing] = useState(false);
+  const { data: suppliers } = useSuppliers();
+
+  const closeSupplier = useCallback(() => {
+    setSupplierClosing(true);
+    setTimeout(() => { setActiveSupplier(null); setSupplierClosing(false); }, 280);
+  }, []);
   const summary = [
     { label: "Active suppliers", value: suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
@@ -246,7 +256,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   ];
   return (
     <>
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {summary.map((s, i) => (
           <div key={i} className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{s.label}</div>
@@ -254,8 +264,47 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden mb-6">
-        <table className="w-full text-[13px]">
+      {/* Mobile card list — visible only on xs screens */}
+      <div className="sm:hidden space-y-2 mb-6">
+        {suppliers.map(s => (
+          <div
+            key={s.id}
+            onClick={() => setActiveSupplier(s)}
+            className={`rounded-lg border px-4 py-3 cursor-pointer transition ${
+              s.status === "disrupt" ? "border-red-500/30 bg-red-500/[0.04]" :
+              s.status === "warn"    ? "border-amber-500/20 bg-amber-500/[0.03]" :
+              "border-slate-800 bg-slate-900/40"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="shrink-0">
+                <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={36}>
+                  <span className="text-[10px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
+                </ReliabilityHalo>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold text-slate-100 truncate">{s.name}</div>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                  T{s.tier} · {(s.onTime * 100).toFixed(0)}% on-time · {(s.fill * 100).toFixed(0)}% fill
+                </div>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                {s.status === "ok"     && <Pill tone="green"><Dot tone="green"/>Healthy</Pill>}
+                {s.status === "warn"   && <Pill tone="amber"><Dot tone="amber"/>Watch</Pill>}
+                {s.status === "disrupt"&& <Pill tone="redPulse"><Dot tone="red" pulse/>Disrupted</Pill>}
+                {s.moqTaxQtd > 0 && (
+                  <span className={`text-[10px] font-mono ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>
+                    MOQ ${Math.round(s.moqTaxQtd).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               {["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"].map((h, i) => (
@@ -268,21 +317,27 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
               const rowTone = s.status === "disrupt" ? "bg-red-500/[0.06]" : s.status === "warn" ? "bg-amber-500/[0.04]" : "";
               return (
                 <tr key={s.id} onClick={() => setActiveSupplier(s)} className={`border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition ${rowTone}`}>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={28}>
-                        <span className="text-[9px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
-                      </ReliabilityHalo>
-                      <span className="text-slate-100">{s.name}</span>
+                  <td className="px-3 py-2.5 max-w-[200px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="shrink-0">
+                        <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={28}>
+                          <span className="text-[9px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
+                        </ReliabilityHalo>
+                      </div>
+                      <span className="text-slate-100 truncate">{s.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5"><Pill tone={s.tier === 1 ? "blue" : "ghost"}>Tier {s.tier}</Pill></td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <Pill tone={s.tier === 1 ? "blue" : "ghost"}>
+                      <span className="hidden md:inline">Tier </span>{s.tier}
+                    </Pill>
+                  </td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.onTime * 100).toFixed(0)}%</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.fill * 100).toFixed(0)}%</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.window * 100).toFixed(0)}%</td>
                   <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${s.priceVsBench < 0 ? "text-emerald-300" : s.priceVsBench > 0.04 ? "text-red-300" : "text-amber-300"}`}>{(s.priceVsBench * 100).toFixed(1)}%</td>
                   <td className="px-3 py-2.5 text-right">
-                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${s.moqTaxQtd.toLocaleString()}</span> : <span className="text-slate-600">—</span>}
+                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${Math.round(s.moqTaxQtd).toLocaleString()}</span> : <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-slate-300">{s.contractExpiry}</td>
                   <td className="px-3 py-2.5">
@@ -301,6 +356,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
             })}
           </tbody>
         </table>
+        </div>
       </div>
       <SectionHeader title="MOQ-tax ledger" sub="Per-supplier over-ordering cost · progress toward $3K negotiation threshold"/>
       <div className="rounded-lg border border-slate-800 bg-slate-900/30 divide-y divide-slate-800/60">
@@ -312,7 +368,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                 <Pill tone="ghost">Tier {s.tier}</Pill>
               </div>
               <div className="font-mono text-[14px] tabular-nums">
-                <span className={s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}>${s.moqTaxQtd.toLocaleString()}</span>
+                <span className={s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}>${Math.round(s.moqTaxQtd).toLocaleString()}</span>
                 <span className="text-slate-500"> / $3,000 threshold</span>
               </div>
             </div>
@@ -328,7 +384,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </div>
         ))}
       </div>
-      {activeSupplier && <SupplierSlideIn supplier={activeSupplier} onClose={() => setActiveSupplier(null)}/>}
+      {activeSupplier && <SupplierSlideIn supplier={activeSupplier} onClose={closeSupplier} isClosing={supplierClosing}/>}
     </>
   );
 }
@@ -360,7 +416,7 @@ function PerformanceTab() {
 
   return (
     <>
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {tiles.map((t, i) => (
           <div key={i} className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-[10px] uppercase tracking-wider text-slate-500">{t.label}</div>

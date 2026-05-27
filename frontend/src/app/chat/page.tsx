@@ -215,7 +215,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <aside className="w-[420px] shrink-0 bg-[#0a0d14] flex flex-col">
+      <aside className="hidden lg:flex w-[420px] shrink-0 bg-[#0a0d14] flex-col">
         <div className="px-5 py-4 border-b border-slate-800/60">
           <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mb-1">Context · most recent</div>
           <div className="text-[13px] text-slate-200 font-mono">Latest ActionCard from thread</div>

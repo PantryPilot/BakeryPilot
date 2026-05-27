@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
@@ -29,7 +29,7 @@ function ChipGroup({ label, value, onChange, options }: {
   );
 }
 
-function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
+function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void; isClosing?: boolean }) {
   const backendLotId = lot.id.toLowerCase();
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
   const substitutes = rawSubs.map((s, i) => ({
@@ -41,7 +41,10 @@ function LotSlideIn({ lot, onClose }: { lot: Lot; onClose: () => void }) {
     rank: i + 1,
   }));
   return (
-    <div className="fixed top-14 right-0 bottom-12 z-30 w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col">
+    <div
+      style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
+      className="fixed top-14 right-0 bottom-12 z-30 w-full sm:w-[640px] bg-[#0c111c] border-l border-slate-800 shadow-2xl flex flex-col"
+    >
       <div className="h-14 px-5 flex items-center justify-between border-b border-slate-800">
         <div>
           <div className="font-mono text-[11px] text-slate-500">{lot.id}</div>
@@ -112,7 +115,13 @@ export default function MaterialsPage() {
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
+  const [lotClosing, setLotClosing] = useState(false);
   const { data: lots, status: backendStatus } = useLots();
+
+  const closeLot = useCallback(() => {
+    setLotClosing(true);
+    setTimeout(() => { setActiveLot(null); setLotClosing(false); }, 280);
+  }, []);
 
   const filtered = useMemo(() => {
     let l = lots.slice();
@@ -161,7 +170,7 @@ export default function MaterialsPage() {
         />
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <ChipGroup label="Facility" value={facility} onChange={setFacility} options={FILTER_FACILITY}/>
             <span className="w-px h-5 bg-slate-800"/>
             <ChipGroup label="Storage" value={storage} onChange={setStorage} options={FILTER_STORAGE.map(x => ({ id: x, label: x }))}/>
@@ -185,8 +194,36 @@ export default function MaterialsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
-          <table className="w-full text-[13px]">
+        {/* Mobile card list */}
+        <div className="sm:hidden space-y-2 mb-4">
+          {filtered.slice(0, 50).map(l => (
+            <div
+              key={l.id}
+              onClick={() => setActiveLot(l)}
+              className={`rounded-lg border px-4 py-3 cursor-pointer transition ${
+                l.status === "critical" ? "border-red-500/30 bg-red-500/[0.04]" :
+                l.status === "warn"     ? "border-amber-500/20 bg-amber-500/[0.03]" :
+                "border-slate-800 bg-slate-900/40"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-semibold text-slate-100 truncate">{l.ingredient}</div>
+                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{l.id.slice(0, 12)}… · {l.facility.toUpperCase()}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <StatusBadge status={l.status}/>
+                  <div className={`text-[11px] font-mono mt-1 ${l.daysLeft <= 2 ? "text-red-300" : l.daysLeft <= 5 ? "text-amber-300" : "text-slate-400"}`}>
+                    {l.daysLeft}d · {l.qty.toLocaleString()} kg
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
               <tr>
                 {["Lot ID", "Ingredient", "Facility", "Qty (kg)", "Expiry", "Days left", "Storage", "Risk score", "Status", "Actions"].map((h, i) => (
@@ -197,7 +234,9 @@ export default function MaterialsPage() {
             <tbody>
               {filtered.map(l => (
                 <tr key={l.id} onClick={() => setActiveLot(l)} className="border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition">
-                  <td className="px-3 py-2.5 font-mono text-slate-400">{l.id}</td>
+                  <td className="px-3 py-2.5 font-mono text-slate-400 max-w-[120px]">
+                    <span className="block truncate" title={l.id}>{l.id.slice(0, 12)}…</span>
+                  </td>
                   <td className="px-3 py-2.5 text-slate-100">{l.ingredient}</td>
                   <td className="px-3 py-2.5 font-mono text-slate-300">{l.facility.toUpperCase()}</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{l.qty.toLocaleString()}</td>
@@ -219,13 +258,14 @@ export default function MaterialsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="mt-6">
           <SectionHeader title="Stock horizon" sub="Days of stock remaining at current consumption rate. Red marker = reorder by lead time."/>
           <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4 space-y-2">
             {horizon.map((h, i) => (
-              <div key={i} className="grid grid-cols-[200px_1fr_auto] items-center gap-3">
+              <div key={i} className="grid grid-cols-[minmax(120px,200px)_1fr_auto] items-center gap-3">
                 <div className="text-[12px] text-slate-300 truncate">{h.ingredient}</div>
                 <div className="relative h-5 rounded bg-slate-800/60 overflow-hidden">
                   <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 60) * 100)}%` }}/>
@@ -238,7 +278,7 @@ export default function MaterialsPage() {
         </div>
       </div>
 
-      {activeLot && <LotSlideIn lot={activeLot} onClose={() => setActiveLot(null)}/>}
+      {activeLot && <LotSlideIn lot={activeLot} onClose={closeLot} isClosing={lotClosing}/>}
     </div>
   );
 }

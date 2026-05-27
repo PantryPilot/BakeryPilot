@@ -17,13 +17,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProvider>
           <div className="h-screen w-screen flex bg-[#0a0d14] text-slate-200 overflow-hidden">
-            <Suspense fallback={<div className={`shrink-0 w-[208px] border-r border-slate-800/80 bg-[#0a0d14]`}/>}>
+            <Suspense fallback={<div className="hidden md:block shrink-0 w-[208px] border-r border-slate-800/80 bg-[#0a0d14]"/>}>
               <Sidebar/>
             </Suspense>
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               <TopBar/>
               <main className="flex-1 min-h-0 relative overflow-hidden">
-                {children}
+                <div className="page-transition h-full">
+                  {children}
+                </div>
               </main>
               <BottomStrip/>
             </div>
