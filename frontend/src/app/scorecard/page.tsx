@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
@@ -1065,6 +1065,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [deletedSupplierIds, setDeletedSupplierIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ msg: string; tone: "green" | "red" } | null>(null);
   const [orderRefreshTick, setOrderRefreshTick] = useState(0);
+  const poAutoOpenedRef = useRef(false);
   const { data: backendSuppliers } = useSuppliers();
   const { data: scorecardSummary } = useScorecardSummary();
 
@@ -1100,13 +1101,15 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   }
 
   useEffect(() => {
-    if (!quickPoContext || placePOTarget || suppliers.length === 0) return;
+    if (poAutoOpenedRef.current) return; // fire only once — URL params persist after close
+    if (!quickPoContext || suppliers.length === 0) return;
+    poAutoOpenedRef.current = true;
     const suggested = suppliers
       .filter(s => s.status !== "disrupt")
       .sort((a, b) => b.onTime - a.onTime)[0] ?? suppliers[0];
     setPoContext(quickPoContext);
     setPlacePOTarget(suggested);
-  }, [quickPoContext, placePOTarget, suppliers]);
+  }, [quickPoContext, suppliers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = [
     { label: "Active suppliers", value: scorecardSummary?.supplier_count ?? suppliers.length, tone: "slate" },
