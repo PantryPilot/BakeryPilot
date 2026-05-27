@@ -267,6 +267,9 @@ export interface BackendSubstitutionCandidate {
   achievable_quantity: number;
   margin_score: number;
   reason: string;
+  facility_id?: string | null;
+  facility_name?: string | null;
+  allergens?: string[];
 }
 
 export interface BackendScheduleRun {
@@ -443,6 +446,197 @@ export async function fetchAdminTableRows(
     `/api/admin/tables/${encodeURIComponent(table)}/rows?${qs.toString()}`,
     undefined,
     10000,
+  );
+}
+
+// ---------- Users + settings ----------
+
+export interface BackendUser {
+  user_id: string;
+  display_name: string;
+  role: string;
+  email: string;
+  default_facility_id: string | null;
+}
+
+export interface BackendUserSettings {
+  user_id: string;
+  theme: "dark" | "light";
+  accent: "blue" | "emerald" | "violet" | "amber" | "teal" | "indigo";
+  notif_toast: boolean;
+  notif_auto_dismiss: boolean;
+  notif_expiring_lots: boolean;
+  notif_supplier_risk: boolean;
+  notif_yield_anomaly: boolean;
+}
+
+export async function fetchCurrentUser(): Promise<BackendUser | null> {
+  return safeFetch<BackendUser>("/api/users/me");
+}
+
+export async function updateCurrentUser(
+  patch: Partial<Pick<BackendUser, "display_name" | "role" | "default_facility_id">>,
+): Promise<BackendUser | null> {
+  return safeFetch<BackendUser>("/api/users/me", {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function fetchUserSettings(): Promise<BackendUserSettings | null> {
+  return safeFetch<BackendUserSettings>("/api/users/me/settings");
+}
+
+export async function updateUserSettings(
+  patch: Partial<Omit<BackendUserSettings, "user_id">>,
+): Promise<BackendUserSettings | null> {
+  return safeFetch<BackendUserSettings>("/api/users/me/settings", {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+// ---------- Facilities ----------
+
+export interface BackendFacility {
+  facility_id: string;
+  short_code: string;
+  name: string;
+  city: string | null;
+  province: string | null;
+  timezone: string;
+  cold_capacity_kg: number | null;
+  dry_capacity_kg: number | null;
+  line_count: number;
+}
+
+export interface BackendFacilityZone {
+  zone: "frozen" | "refrigerated" | "dry";
+  used_kg: number;
+  capacity_kg: number;
+  pct: number;
+}
+
+export interface BackendFacilityUtilization {
+  facility_id: string;
+  short_code: string;
+  zones: BackendFacilityZone[];
+  overall_pct: number;
+}
+
+export interface BackendActiveRun {
+  run_id: string;
+  line_id: string;
+  line_number: number;
+  sku_id: string;
+  sku_name: string;
+  started_at: string;
+  ended_at: string | null;
+  planned_kg: number | null;
+  actual_kg: number | null;
+  status: string;
+}
+
+export async function fetchFacilities(): Promise<BackendFacility[] | null> {
+  return safeFetch<BackendFacility[]>("/api/facilities");
+}
+
+export async function fetchFacility(id: string): Promise<BackendFacility | null> {
+  return safeFetch<BackendFacility>(`/api/facilities/${encodeURIComponent(id)}`);
+}
+
+export async function fetchFacilityUtilization(
+  id: string,
+): Promise<BackendFacilityUtilization | null> {
+  return safeFetch<BackendFacilityUtilization>(
+    `/api/facilities/${encodeURIComponent(id)}/utilization`,
+  );
+}
+
+export async function fetchActiveRuns(id: string): Promise<BackendActiveRun[] | null> {
+  return safeFetch<BackendActiveRun[]>(
+    `/api/facilities/${encodeURIComponent(id)}/active_runs`,
+  );
+}
+
+// ---------- Retailers ----------
+
+export interface BackendRetailer {
+  retailer_id: string;
+  name: string;
+  po_ratio: number;
+  shelf_risk: "green" | "amber" | "red";
+  open_orders: number;
+  forecast_units: number;
+}
+
+export async function fetchRetailers(): Promise<BackendRetailer[] | null> {
+  return safeFetch<BackendRetailer[]>("/api/retailers");
+}
+
+// ---------- Dashboard loops + network ----------
+
+export interface BackendLoopStat {
+  k: string;
+  v: string;
+}
+
+export interface BackendLoopCard {
+  id: string;
+  label: string;
+  stats: BackendLoopStat[];
+}
+
+export interface BackendNetworkSummary {
+  supplier_count: number;
+  plant_count: number;
+  retailer_count: number;
+  active_transfers: number;
+}
+
+export async function fetchDashboardLoops(): Promise<BackendLoopCard[] | null> {
+  return safeFetch<BackendLoopCard[]>("/api/dashboard/loops");
+}
+
+export async function fetchDashboardNetwork(): Promise<BackendNetworkSummary | null> {
+  return safeFetch<BackendNetworkSummary>("/api/dashboard/network");
+}
+
+// ---------- Scorecard summary + supplier performance history ----------
+
+export interface BackendScorecardSummary {
+  supplier_count: number;
+  tier_a: number;
+  tier_b: number;
+  tier_c: number;
+  pending_drafts: number;
+  contracts_expiring_60d: number;
+  avg_on_time_rate: number;
+  avg_fill_rate: number;
+}
+
+export interface BackendSupplierPerformancePoint {
+  week_start: string;
+  on_time_rate: number;
+  fill_rate: number;
+  window_compliance_rate: number;
+}
+
+export interface BackendSupplierPerformance {
+  supplier_id: string;
+  points: BackendSupplierPerformancePoint[];
+}
+
+export async function fetchScorecardSummary(): Promise<BackendScorecardSummary | null> {
+  return safeFetch<BackendScorecardSummary>("/api/suppliers/_meta/scorecard_summary");
+}
+
+export async function fetchSupplierPerformance(
+  supplierId: string,
+): Promise<BackendSupplierPerformance | null> {
+  const backendId = supplierId.replace(/^s-/, "sup_");
+  return safeFetch<BackendSupplierPerformance>(
+    `/api/suppliers/${encodeURIComponent(backendId)}/performance`,
   );
 }
 

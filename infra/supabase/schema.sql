@@ -447,3 +447,37 @@ DROP TRIGGER IF EXISTS weekly_summaries_append_only ON weekly_summaries;
 CREATE TRIGGER weekly_summaries_append_only
   BEFORE UPDATE OR DELETE ON weekly_summaries
   FOR EACH ROW EXECUTE FUNCTION raise_append_only();
+
+-- ============================================================================
+-- Application user & per-user settings (additive, post v2 frontend pass)
+--
+-- Backs the Shell user menu, Settings profile fields, and the persisted
+-- theme / accent / notification preferences. Single-user demo data — the
+-- hackathon build has no auth. The new routers in backend/app/api/users.py
+-- gracefully fall back to a built-in default if either table is empty,
+-- so older databases without this migration continue to work.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS app_users (
+  user_id              text PRIMARY KEY,
+  display_name         text NOT NULL,
+  role                 text NOT NULL,
+  email                text NOT NULL,
+  default_facility_id  text REFERENCES facilities(facility_id),
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id              text PRIMARY KEY REFERENCES app_users(user_id) ON DELETE CASCADE,
+  theme                text NOT NULL DEFAULT 'light'
+                       CHECK (theme IN ('dark','light')),
+  accent               text NOT NULL DEFAULT 'blue'
+                       CHECK (accent IN ('blue','emerald','violet','amber','teal','indigo')),
+  notif_toast          bool NOT NULL DEFAULT true,
+  notif_auto_dismiss   bool NOT NULL DEFAULT true,
+  notif_expiring_lots  bool NOT NULL DEFAULT true,
+  notif_supplier_risk  bool NOT NULL DEFAULT true,
+  notif_yield_anomaly  bool NOT NULL DEFAULT false,
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);

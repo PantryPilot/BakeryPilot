@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { SectionHeader } from "../../components/atoms";
-import { useApp } from "../../lib/context";
+import { FACILITIES } from "../../lib/data";
+import { useApp, type NotificationPrefs } from "../../lib/context";
 import { DEFAULT_ACCENT, type AccentColor, type ThemeMode } from "../../lib/theme";
 
 const ACCENT_COLORS = [
@@ -19,13 +20,22 @@ const THEME_CHOICES = [
   { id: "light", label: "Light", desc: "Default clean operations dashboard" },
 ] as const satisfies ReadonlyArray<{ id: ThemeMode; label: string; desc: string }>;
 
-const INITIAL_TOGGLES = {
-  toast: { label: "Toast alerts", sub: "Show banner toasts for critical and warning events", on: true },
-  autoDismiss: { label: "Auto-dismiss after 5s", sub: "Automatically hide toasts after 5 seconds", on: true },
-  expiring: { label: "Expiring lot alerts", sub: "Notify when ingredient lots are expiring soon", on: true },
-  supplier: { label: "Supplier risk alerts", sub: "Notify when a supplier is flagged as at risk", on: true },
-  yield: { label: "Yield anomaly alerts", sub: "Notify when yield drops below threshold", on: false },
-};
+const NOTIFICATION_FIELDS: { key: keyof NotificationPrefs; label: string; sub: string }[] = [
+  { key: "toast",         label: "Toast alerts",          sub: "Show banner toasts for critical and warning events" },
+  { key: "autoDismiss",   label: "Auto-dismiss after 5s", sub: "Automatically hide toasts after 5 seconds" },
+  { key: "expiringLots",  label: "Expiring lot alerts",   sub: "Notify when ingredient lots are expiring soon" },
+  { key: "supplierRisk",  label: "Supplier risk alerts",  sub: "Notify when a supplier is flagged as at risk" },
+  { key: "yieldAnomaly",  label: "Yield anomaly alerts",  sub: "Notify when yield drops below threshold" },
+];
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(p => p[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "?";
+}
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -45,13 +55,24 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export default function SettingsPage() {
-  const { theme, setTheme, accent, setAccent } = useApp();
-  const [toggles, setToggles] = useState<Record<string, boolean>>(
-    Object.fromEntries(Object.entries(INITIAL_TOGGLES).map(([k, v]) => [k, v.on]))
-  );
+  const {
+    theme, setTheme, accent, setAccent,
+    user, updateUser,
+    notificationPrefs, updateNotificationPrefs,
+  } = useApp();
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [role, setRole] = useState(user.role);
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
+  useEffect(() => { setDisplayName(user.displayName); }, [user.displayName]);
+  useEffect(() => { setRole(user.role); }, [user.role]);
+
+  const facilityLabel =
+    FACILITIES.find(f => f.id === (user.defaultFacilityId as string))?.name ??
+    user.defaultFacilityId ?? "All Plants";
+
+  const handleSave = async () => {
+    await updateUser({ displayName, role });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -82,33 +103,46 @@ export default function SettingsPage() {
                   background: "linear-gradient(135deg, var(--bp-accent), var(--bp-accent-hover))",
                 }}
               >
-                AC
+                {initials(user.displayName)}
               </div>
               <div>
-                <div className="text-[18px] font-semibold text-slate-100">Alex Chen</div>
-                <div className="text-[12px] text-slate-400">Ops Manager · FGF Brands</div>
+                <div className="text-[18px] font-semibold text-slate-100">{user.displayName}</div>
+                <div className="text-[12px] text-slate-400">{user.role} · FGF Brands</div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              {[
-                { label: "Display name", value: "Alex Chen", readOnly: false },
-                { label: "Role", value: "Ops Manager", readOnly: false },
-                { label: "Email", value: "alex.chen@fgfbrands.com", readOnly: true },
-                { label: "Facility", value: "All Plants", readOnly: true },
-              ].map((field) => (
-                <div key={field.label}>
-                  <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">{field.label}</label>
-                  <input
-                    defaultValue={field.value}
-                    readOnly={field.readOnly}
-                    className={`w-full rounded-md border px-3 py-2 text-[13px] outline-none transition ${
-                      field.readOnly
-                        ? "border-slate-800 bg-slate-900/20 text-slate-500 cursor-not-allowed"
-                        : "border-slate-700 bg-slate-950/60 text-slate-100 focus:border-[var(--bp-accent)]"
-                    }`}
-                  />
-                </div>
-              ))}
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">Display name</label>
+                <input
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition border-slate-700 bg-slate-950/60 text-slate-100 focus:border-[var(--bp-accent)]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">Role</label>
+                <input
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition border-slate-700 bg-slate-950/60 text-slate-100 focus:border-[var(--bp-accent)]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">Email</label>
+                <input
+                  value={user.email}
+                  readOnly
+                  className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition border-slate-800 bg-slate-900/20 text-slate-500 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">Facility</label>
+                <input
+                  value={facilityLabel}
+                  readOnly
+                  className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition border-slate-800 bg-slate-900/20 text-slate-500 cursor-not-allowed"
+                />
+              </div>
             </div>
             <button
               onClick={handleSave}
@@ -186,15 +220,15 @@ export default function SettingsPage() {
             <h3 className="text-[13px] font-semibold text-slate-200 uppercase tracking-wider">Notifications</h3>
           </div>
           <div className="p-5 divide-y divide-slate-800/60">
-            {Object.entries(INITIAL_TOGGLES).map(([key, notification]) => (
-              <div key={key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+            {NOTIFICATION_FIELDS.map((field) => (
+              <div key={field.key} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <div className="text-[13px] text-slate-200">{notification.label}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{notification.sub}</div>
+                  <div className="text-[13px] text-slate-200">{field.label}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{field.sub}</div>
                 </div>
                 <Toggle
-                  on={toggles[key] ?? notification.on}
-                  onClick={() => setToggles((prev) => ({ ...prev, [key]: !prev[key] }))}
+                  on={notificationPrefs[field.key]}
+                  onClick={() => void updateNotificationPrefs({ [field.key]: !notificationPrefs[field.key] })}
                 />
               </div>
             ))}

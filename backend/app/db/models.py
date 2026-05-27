@@ -362,3 +362,31 @@ class WeeklySummary(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("week_start", name="weekly_summaries_week_start_unique"),)
+
+
+class AppUser(Base):
+    __tablename__ = "app_users"
+
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    default_facility_id: Mapped[str | None] = mapped_column(Text, ForeignKey("facilities.facility_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("app_users.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    theme: Mapped[str] = mapped_column(Text, nullable=False, default="light")
+    accent: Mapped[str] = mapped_column(Text, nullable=False, default="blue")
+    notif_toast: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notif_auto_dismiss: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notif_expiring_lots: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notif_supplier_risk: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notif_yield_anomaly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

@@ -5,7 +5,16 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, Dot, ReliabilityHalo, MOQTaxBadge, Sparkline, SectionHeader } from "../../components/atoms";
 import { SKUS, Supplier } from "../../lib/data";
-import { useSuppliers, useEsgCounter, useSupplierOrders, useWasteEvents, useYieldTelemetry, useDemandForecasts } from "../../lib/hooks";
+import {
+  useSuppliers,
+  useEsgCounter,
+  useSupplierOrders,
+  useWasteEvents,
+  useYieldTelemetry,
+  useDemandForecasts,
+  useScorecardSummary,
+  useSupplierPerformance,
+} from "../../lib/hooks";
 import type { BackendWasteEvent, BackendYieldTelemetryPoint } from "../../lib/api";
 import { BACKEND_URL } from "../../lib/api";
 
@@ -135,10 +144,33 @@ function WasteLog({ events, status }: { events: BackendWasteEvent[]; status: str
 
 function SupplierSlideIn({ supplier, onClose, isClosing }: { supplier: Supplier; onClose: () => void; isClosing?: boolean }) {
   const { data: liveOrders, status: ordersStatus } = useSupplierOrders(supplier.id);
+  const { data: perf } = useSupplierPerformance(supplier.id);
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
-  const onTime = weeks.map((_, i) => Math.max(0.7, Math.min(1, supplier.onTime + Math.sin(i * 0.7) * 0.08 - (i === 11 ? 0.05 : 0))));
-  const fill   = weeks.map((_, i) => Math.max(0.75, Math.min(1, supplier.fill + Math.cos(i * 0.6) * 0.05)));
-  const win    = weeks.map((_, i) => Math.max(0.6, Math.min(1, supplier.window + Math.sin(i * 0.5 + 1) * 0.07)));
+  // Prefer backend performance history if available; pad to 12 weeks with the latest value.
+  const onTime = (() => {
+    if (perf && perf.points.length > 0) {
+      const base = perf.points.map(p => p.on_time_rate);
+      while (base.length < 12) base.unshift(base[0] ?? supplier.onTime);
+      return base.slice(-12);
+    }
+    return weeks.map((_, i) => Math.max(0.7, Math.min(1, supplier.onTime + Math.sin(i * 0.7) * 0.08 - (i === 11 ? 0.05 : 0))));
+  })();
+  const fill = (() => {
+    if (perf && perf.points.length > 0) {
+      const base = perf.points.map(p => p.fill_rate);
+      while (base.length < 12) base.unshift(base[0] ?? supplier.fill);
+      return base.slice(-12);
+    }
+    return weeks.map((_, i) => Math.max(0.75, Math.min(1, supplier.fill + Math.cos(i * 0.6) * 0.05)));
+  })();
+  const win = (() => {
+    if (perf && perf.points.length > 0) {
+      const base = perf.points.map(p => p.window_compliance_rate);
+      while (base.length < 12) base.unshift(base[0] ?? supplier.window);
+      return base.slice(-12);
+    }
+    return weeks.map((_, i) => Math.max(0.6, Math.min(1, supplier.window + Math.sin(i * 0.5 + 1) * 0.07)));
+  })();
   const priceIdx = weeks.map((_, i) => 1 + Math.sin(i * 0.4) * 0.06);
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
 
@@ -243,16 +275,17 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
   const [supplierClosing, setSupplierClosing] = useState(false);
   const { data: suppliers } = useSuppliers();
+  const { data: scorecardSummary } = useScorecardSummary();
 
   const closeSupplier = useCallback(() => {
     setSupplierClosing(true);
     setTimeout(() => { setActiveSupplier(null); setSupplierClosing(false); }, 280);
   }, []);
   const summary = [
-    { label: "Active suppliers", value: suppliers.length, tone: "slate" },
+    { label: "Active suppliers", value: scorecardSummary?.supplier_count ?? suppliers.length, tone: "slate" },
     { label: "At risk",          value: suppliers.filter(s => s.status !== "ok").length, tone: "amber" },
-    { label: "Pending drafts",   value: 2,  tone: "blue" },
-    { label: "Expiring < 60d",   value: 3,  tone: "amber" },
+    { label: "Pending drafts",   value: scorecardSummary?.pending_drafts ?? 0, tone: "blue" },
+    { label: "Expiring < 60d",   value: scorecardSummary?.contracts_expiring_60d ?? 0, tone: "amber" },
   ];
   return (
     <>

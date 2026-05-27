@@ -1,7 +1,15 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from "react";
 import { FacilityId } from "./data";
-import { BACKEND_URL } from "./api";
+import {
+  BACKEND_URL,
+  fetchCurrentUser,
+  fetchUserSettings,
+  updateCurrentUser,
+  updateUserSettings,
+  type BackendUser,
+  type BackendUserSettings,
+} from "./api";
 import {
   ACCENT_STORAGE_KEY,
   DEFAULT_ACCENT,
@@ -12,6 +20,41 @@ import {
   isAccentColor,
   isThemeMode,
 } from "./theme";
+
+export interface NotificationPrefs {
+  toast: boolean;
+  autoDismiss: boolean;
+  expiringLots: boolean;
+  supplierRisk: boolean;
+  yieldAnomaly: boolean;
+}
+
+const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  toast: true,
+  autoDismiss: true,
+  expiringLots: true,
+  supplierRisk: true,
+  yieldAnomaly: false,
+};
+
+export interface AppUserInfo {
+  userId: string;
+  displayName: string;
+  role: string;
+  email: string;
+  defaultFacilityId: string | null;
+}
+
+const FALLBACK_USER: AppUserInfo = {
+  userId: "demo_user",
+  displayName: "Alex Chen",
+  role: "Ops Manager",
+  email: "alex.chen@fgfbrands.com",
+  defaultFacilityId: "plant-toronto",
+};
+
+const USER_CACHE_KEY = "bp:user";
+const NOTIF_PREFS_CACHE_KEY = "bp:notif_prefs";
 
 export interface AppNotification {
   ref_id: string;
@@ -45,6 +88,11 @@ interface AppState {
   dismissNotification: (refId: string) => void;
   hideToast: (refId: string) => void;
   markNotificationsRead: () => void;
+  user: AppUserInfo;
+  userStatus: "loading" | "live" | "fallback";
+  updateUser: (patch: Partial<Pick<AppUserInfo, "displayName" | "role" | "defaultFacilityId">>) => Promise<void>;
+  notificationPrefs: NotificationPrefs;
+  updateNotificationPrefs: (patch: Partial<NotificationPrefs>) => Promise<void>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -71,16 +119,73 @@ function getInitialAccent(): AccentColor {
   return DEFAULT_ACCENT;
 }
 
+function getInitialUser(): AppUserInfo {
+  if (typeof window === "undefined") return FALLBACK_USER;
+  try {
+    const raw = window.localStorage.getItem(USER_CACHE_KEY);
+    if (raw) return { ...FALLBACK_USER, ...JSON.parse(raw) } as AppUserInfo;
+  } catch {}
+  return FALLBACK_USER;
+}
+
+function getInitialNotificationPrefs(): NotificationPrefs {
+  if (typeof window === "undefined") return DEFAULT_NOTIFICATION_PREFS;
+  try {
+    const raw = window.localStorage.getItem(NOTIF_PREFS_CACHE_KEY);
+    if (raw) return { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(raw) } as NotificationPrefs;
+  } catch {}
+  return DEFAULT_NOTIFICATION_PREFS;
+}
+
+function settingsToPrefs(s: BackendUserSettings): NotificationPrefs {
+  return {
+    toast: s.notif_toast,
+    autoDismiss: s.notif_auto_dismiss,
+    expiringLots: s.notif_expiring_lots,
+    supplierRisk: s.notif_supplier_risk,
+    yieldAnomaly: s.notif_yield_anomaly,
+  };
+}
+
+function userToInfo(u: BackendUser): AppUserInfo {
+  return {
+    userId: u.user_id,
+    displayName: u.display_name,
+    role: u.role,
+    email: u.email,
+    defaultFacilityId: u.default_facility_id,
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
-  const [accent, setAccent] = useState<AccentColor>(getInitialAccent);
+  const [theme, setThemeState] = useState<ThemeMode>(getInitialTheme);
+  const [accent, setAccentState] = useState<AccentColor>(getInitialAccent);
   const [facility, setFacility] = useState<FacilityId>("all");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatContext, setChatContext] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [user, setUser] = useState<AppUserInfo>(getInitialUser);
+  const [userStatus, setUserStatus] = useState<"loading" | "live" | "fallback">("loading");
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(getInitialNotificationPrefs);
+  const settingsLoadedFromBackend = useRef(false);
   const esRef = useRef<EventSource | null>(null);
+
+  // Local setters keep optimistic UX; an effect below persists to backend.
+  const setTheme = useCallback((next: ThemeMode) => {
+    setThemeState(next);
+    if (settingsLoadedFromBackend.current) {
+      void updateUserSettings({ theme: next });
+    }
+  }, []);
+
+  const setAccent = useCallback((next: AccentColor) => {
+    setAccentState(next);
+    if (settingsLoadedFromBackend.current) {
+      void updateUserSettings({ accent: next });
+    }
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -98,6 +203,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(ACCENT_STORAGE_KEY, accent);
     } catch {}
   }, [accent]);
+
+  // Cache user + notification prefs to localStorage for fast bootstrap.
+  useEffect(() => {
+    try { window.localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user)); } catch {}
+  }, [user]);
+  useEffect(() => {
+    try { window.localStorage.setItem(NOTIF_PREFS_CACHE_KEY, JSON.stringify(notificationPrefs)); } catch {}
+  }, [notificationPrefs]);
+
+  // Load user + settings from backend; backend is the source of truth and
+  // overrides cached values if it returns something different.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [u, s] = await Promise.all([fetchCurrentUser(), fetchUserSettings()]);
+      if (!alive) return;
+      if (u) {
+        setUser(userToInfo(u));
+        setUserStatus("live");
+      } else {
+        setUserStatus("fallback");
+      }
+      if (s) {
+        if (isThemeMode(s.theme)) setThemeState(s.theme);
+        if (isAccentColor(s.accent)) setAccentState(s.accent);
+        setNotificationPrefs(settingsToPrefs(s));
+        settingsLoadedFromBackend.current = true;
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const updateUser = useCallback(
+    async (patch: Partial<Pick<AppUserInfo, "displayName" | "role" | "defaultFacilityId">>) => {
+      const optimistic = { ...user, ...patch };
+      setUser(optimistic);
+      const res = await updateCurrentUser({
+        display_name: patch.displayName,
+        role: patch.role,
+        default_facility_id: patch.defaultFacilityId ?? undefined,
+      });
+      if (res) setUser(userToInfo(res));
+    },
+    [user],
+  );
+
+  const updateNotificationPrefs = useCallback(
+    async (patch: Partial<NotificationPrefs>) => {
+      const next = { ...notificationPrefs, ...patch };
+      setNotificationPrefs(next);
+      await updateUserSettings({
+        notif_toast: next.toast,
+        notif_auto_dismiss: next.autoDismiss,
+        notif_expiring_lots: next.expiringLots,
+        notif_supplier_risk: next.supplierRisk,
+        notif_yield_anomaly: next.yieldAnomaly,
+      });
+    },
+    [notificationPrefs],
+  );
 
   useEffect(() => {
     if (esRef.current) return;
@@ -151,6 +316,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mobileSidebarOpen, setMobileSidebarOpen,
       openChatContext,
       notifications, unreadCount, dismissNotification, hideToast, markNotificationsRead,
+      user, userStatus, updateUser,
+      notificationPrefs, updateNotificationPrefs,
     }}>
       {children}
     </AppContext.Provider>
