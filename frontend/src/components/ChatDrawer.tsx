@@ -42,7 +42,7 @@ export function CopilotButton() {
     <>
       <button
         onClick={handleToggle}
-        className="fixed bottom-16 right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
+        className="fixed bottom-[132px] right-5 z-50 w-12 h-12 rounded-full bg-blue-500 hover:bg-blue-400 text-white shadow-[0_8px_24px_-4px_rgba(59,130,246,0.6)] flex items-center justify-center transition-all"
         title="Copilot"
       >
         {chatOpen

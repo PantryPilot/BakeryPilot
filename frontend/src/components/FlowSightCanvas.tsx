@@ -274,9 +274,20 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
 
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => setPos(p => Math.min(1, p + 0.005 * speed)), 100);
+    const id = setInterval(() => {
+      setPos(p => {
+        const next = p + 0.005 * speed;
+        if (next >= 1) { setPlaying(false); return 1; }
+        return next;
+      });
+    }, 100);
     return () => clearInterval(id);
   }, [playing, speed]);
+
+  const handlePlay = () => {
+    if (!playing && pos >= 1) setPos(0);
+    setPlaying(p => !p);
+  };
 
   const liveEsg = esgStatus === "live";
   const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()          : "--";
@@ -286,26 +297,15 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
 
   return (
     <div className="absolute left-0 right-0 bottom-0 h-[116px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur z-10">
-      {/* Legend row */}
-      <div className="px-4 h-10 border-b border-slate-800/60 flex items-center gap-0">
-        {[
-          { color: "#3b82f6", label: "inbound" },
-          { color: "#f97316", label: "outbound" },
-          { color: "#94a3b8", label: "transfer" },
-        ].map((f, i) => (
-          <div key={i} className="flex items-center gap-1.5 pr-3">
-            <span className="inline-block w-2.5 h-[5px] rounded-sm shrink-0" style={{ background: f.color }}/>
-            <span className="text-[10px] text-slate-500 font-mono">{f.label}</span>
-          </div>
-        ))}
-        <span className="w-px h-3 bg-slate-700 mx-2 shrink-0"/>
+      {/* ESG stats row */}
+      <div className="px-4 h-10 border-b border-slate-800/60 flex items-center">
         {[
           { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
           { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
           { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
           { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
         ].map((s, i) => (
-          <div key={i} className="flex items-center gap-1 pr-3">
+          <div key={i} className="flex items-center gap-1 pr-4">
             <Icon name={s.icon} size={10} className={s.color}/>
             <span className="text-[11px] font-mono tabular-nums text-slate-200">{s.value}</span>
             <span className="text-[9px] text-slate-500 ml-0.5">{s.label}</span>
@@ -319,28 +319,45 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
         )}
       </div>
       {/* Controls row */}
-      <div className="flex items-center px-4 gap-4 h-[75px]">
+      <div className="flex items-center px-4 gap-3 h-[75px]">
+        {/* Play + speed buttons */}
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setPlaying(p => !p)} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
+          <button onClick={handlePlay} className="w-8 h-8 rounded-md border border-slate-700 hover:border-slate-500 flex items-center justify-center text-slate-200">
             <Icon name={playing ? "pause" : "play"} size={14}/>
           </button>
           {[1, 2, 5].map(s => (
             <button key={s} onClick={() => setSpeed(s)} className={`px-2 h-8 rounded-md border text-[11px] font-mono transition ${speed === s ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}>{s}×</button>
           ))}
         </div>
+        {/* Vertical flow legend */}
+        <div className="flex flex-col gap-[5px] pl-3 border-l border-slate-800">
+          {[
+            { color: "#3b82f6", label: "inbound" },
+            { color: "#f97316", label: "outbound" },
+            { color: "#94a3b8", label: "transfer" },
+          ].map((f, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+              <span className="text-[9px] text-slate-500 font-mono">{f.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* Scrubber track */}
         <div className="flex-1 relative h-12">
           <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-slate-800"/>
           <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-blue-500/50" style={{ width: `${pos * 100}%` }}/>
           {events.map((e, i) => (
             <div key={i} className="absolute top-1/2 -translate-y-1/2 w-[2px] h-3.5 rounded-sm" style={{ left: `${e.at * 100}%`, background: colorOf(e.t) }}/>
           ))}
+          {/* Time labels above the track */}
           {[0, 0.25, 0.5, 0.75, 1].map((h, i) => (
-            <div key={i} className="absolute top-full text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, transform: "translate(-50%, 4px)" }}>
+            <div key={i} className="absolute text-[10px] font-mono text-slate-500" style={{ left: `${h * 100}%`, top: "4px", transform: "translateX(-50%)" }}>
               {["-24h", "-18h", "-12h", "-6h", "now"][i]}
             </div>
           ))}
           <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-blue-400 ring-2 ring-blue-500/40" style={{ left: `${pos * 100}%` }}/>
         </div>
+        {/* LIVE button */}
         <button onClick={() => { setPos(1); setLive(true); }} className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md border ${live ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700"} font-mono text-[11px]`}>
           <span className="relative flex w-1.5 h-1.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
