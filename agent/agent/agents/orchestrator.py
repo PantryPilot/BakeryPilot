@@ -8,7 +8,7 @@ from agent.config import get_model
 from agent.prompts.store import get_prompt_store
 from agent.state import AgentState
 
-_VALID_INTENTS = {"inventory", "procurement", "scheduler", "yield", "esg", "general"}
+_VALID_INTENTS = {"inventory", "procurement", "scheduler", "yield", "esg", "weekly_plan", "weekly_summary", "general"}
 
 
 @opik.track(name="classify_intent")

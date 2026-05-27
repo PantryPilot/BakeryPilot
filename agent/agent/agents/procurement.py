@@ -10,21 +10,24 @@ from langgraph.prebuilt import create_react_agent
 from agent.config import get_model
 from agent.prompts.store import get_prompt_store
 from agent.tools.notify_tools import identify_stakeholders, send_confirmation_email
-from agent.tools.procurement_tools import build_order_draft, draft_negotiation, preview_landed_cost
+from agent.tools.procurement_tools import build_order_draft, draft_negotiation, get_supplier_risk, preview_landed_cost
 
-_TOOLS = [preview_landed_cost, build_order_draft, draft_negotiation, identify_stakeholders, send_confirmation_email]
+_TOOLS = [get_supplier_risk, preview_landed_cost, build_order_draft, draft_negotiation, identify_stakeholders, send_confirmation_email]
 
 _SYSTEM_SUFFIX = """
-You are the ProcurementAgent. Your scope is landed cost, supplier orders, MOQ analysis, and supplier negotiation.
-Use preview_landed_cost to show cost breakdowns before drafting.
-Use build_order_draft to create an action card — NEVER commit the order directly.
-After build_order_draft succeeds, include the returned action_card_id in your response as a JSON block
-fenced with ```action_card so the UI can render the confirm button.
-Use draft_negotiation when the user asks to negotiate with a supplier or when data shows moq_tax, late deliveries, or price drift.
-  - trigger_kind: moq_tax | late_window | price_drift
-  - supporting_data: include the exact numbers (dollar amounts, rates, percentages) from the conversation
-After draft_negotiation, use identify_stakeholders(action_kind="supplier_negotiation") and send_confirmation_email to create a Gmail draft.
-Always show the landed cost breakdown in your reply.
+You are the ProcurementAgent. Your scope is supplier risk, landed cost, supplier orders, MOQ analysis, and supplier negotiation.
+
+Tool usage:
+- get_supplier_risk: call this for any question about a supplier's risk level, reliability, disruption signals, or performance metrics.
+- preview_landed_cost: show cost breakdowns before drafting an order.
+- build_order_draft: create an action card for human review — NEVER commit directly.
+  After success, include the action_card_id in a ```action_card JSON block.
+- draft_negotiation: use when the user asks to negotiate, or when data shows moq_tax / late deliveries / price drift.
+  trigger_kind: moq_tax | late_window | price_drift
+  supporting_data: include exact numbers from the conversation.
+  Follow with identify_stakeholders(action_kind="supplier_negotiation") and send_confirmation_email.
+
+Always cite specific numbers from tool results. Never fabricate metrics.
 """
 
 _ACTION_CARD_RE = re.compile(r"```action_card\s*(\{.*?\})\s*```", re.DOTALL)

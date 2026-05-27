@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from agent.config import get_model
 from agent.tools.esg_tools import get_waste_counter, run_pattern_analysis
 from agent.tools.inventory_tools import query_lots, substitution_candidates
-from agent.tools.procurement_tools import build_order_draft, preview_landed_cost
+from agent.tools.procurement_tools import build_order_draft, get_supplier_risk, preview_landed_cost
 from agent.tools.scheduler_tools import run_changeover_optimizer, suggest_production_schedule, what_if_simulation
 from agent.tools.yield_tools import create_cmms_work_order, diagnose_anomaly, get_yield_variance
 
@@ -51,6 +51,7 @@ class WeeklyPlanAgent:
             diagnose_anomaly,
             run_changeover_optimizer,
             what_if_simulation,
+            get_supplier_risk,
             preview_landed_cost,
             build_order_draft,
             substitution_candidates,

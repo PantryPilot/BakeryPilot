@@ -10,8 +10,8 @@
 POSTGRES_USER ?= bakery
 POSTGRES_DB   ?= bakery
 
-# uv command — use `python -m uv` if uv is not on PATH
-UV ?= python -m uv
+# uv command — auto-detect; override with UV=/path/to/uv make ...
+UV ?= $(shell which uv 2>/dev/null || echo ~/.local/bin/uv)
 
 # --- Infra ---
 
