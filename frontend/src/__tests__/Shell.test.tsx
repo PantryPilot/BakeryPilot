@@ -105,6 +105,6 @@ describe('TopBar', () => {
   test('opens facility dropdown on click', () => {
     render(<TopBar />)
     fireEvent.click(screen.getByText('All Plants'))
-    expect(screen.getByText('Plant 1')).toBeInTheDocument()
+    expect(screen.getByText('Toronto')).toBeInTheDocument()
   })
 })
