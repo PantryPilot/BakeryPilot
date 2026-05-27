@@ -18,8 +18,14 @@
 #   infra/supabase/seed.sql   -> re-apply SQL seed   (idempotent: ON CONFLICT DO NOTHING)
 #   infra/seed_*.py,
 #   infra/event_stream.py    -> warn only; destructive scripts must be run by hand
+#   backend/alembic/versions/** -> `alembic upgrade head` (versioned forward migrations)
+#   backend/alembic/{ini,env.py,script.mako} -> same; treat config changes as if a migration ran
 #   docs/**, *.md, tests/**,
 #   .github/**               -> sync only; no rebuild
+#
+# Any of schema.sql / seed.sql / alembic-versions changing triggers a
+# pre-migration pg_dump to /var/backups/bakery-pilot/ first, with retention
+# of the last 30 dumps.
 
 name: CD
 
@@ -43,6 +49,8 @@ jobs:
       COMPOSE: -f docker-compose.yml -f docker-compose.prod.yml
       PG_USER: bakery
       PG_DB:   bakery
+      BACKUP_DIR: /var/backups/bakery-pilot
+      BACKUP_KEEP: 30
 
     steps:
       # Detect changed paths against the previous commit. dorny/paths-filter
@@ -81,6 +89,12 @@ jobs:
               - 'infra/seed_lots.py'
               - 'infra/seed_demo.py'
               - 'infra/event_stream.py'
+            alembic_versions:
+              - 'backend/alembic/versions/**'
+            alembic_config:
+              - 'backend/alembic.ini'
+              - 'backend/alembic/env.py'
+              - 'backend/alembic/script.py.mako'
 
       # Sync the deploy clone to origin/main. This is the "real-time" mirror:
       # whatever is on main is what's on disk. Untracked local files are
@@ -98,14 +112,49 @@ jobs:
       - name: Show what changed
         run: |
           {
-            echo "backend      = ${{ steps.changes.outputs.backend }}"
-            echo "frontend     = ${{ steps.changes.outputs.frontend }}"
-            echo "nginx        = ${{ steps.changes.outputs.nginx }}"
-            echo "rebuild_all  = ${{ steps.changes.outputs.rebuild_all }}"
-            echo "schema_sql   = ${{ steps.changes.outputs.schema_sql }}"
-            echo "seed_sql     = ${{ steps.changes.outputs.seed_sql }}"
-            echo "seed_scripts = ${{ steps.changes.outputs.seed_scripts }}"
+            echo "backend          = ${{ steps.changes.outputs.backend }}"
+            echo "frontend         = ${{ steps.changes.outputs.frontend }}"
+            echo "nginx            = ${{ steps.changes.outputs.nginx }}"
+            echo "rebuild_all      = ${{ steps.changes.outputs.rebuild_all }}"
+            echo "schema_sql       = ${{ steps.changes.outputs.schema_sql }}"
+            echo "seed_sql         = ${{ steps.changes.outputs.seed_sql }}"
+            echo "seed_scripts     = ${{ steps.changes.outputs.seed_scripts }}"
+            echo "alembic_versions = ${{ steps.changes.outputs.alembic_versions }}"
+            echo "alembic_config   = ${{ steps.changes.outputs.alembic_config }}"
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ---- Pre-migration backup ----------------------------------------------
+      # Dumps the live DB to a timestamped file BEFORE any schema/seed/alembic
+      # change runs, so a botched migration leaves a rollback artifact.
+      # Outputs land in $BACKUP_DIR (created if missing) and the last
+      # $BACKUP_KEEP dumps are retained — older ones are removed.
+      - name: Pre-migration pg_dump
+        if: |
+          steps.changes.outputs.schema_sql == 'true' ||
+          steps.changes.outputs.seed_sql   == 'true' ||
+          steps.changes.outputs.alembic_versions == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$BACKUP_DIR"
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          SHORT=${GITHUB_SHA::7}
+          OUT="$BACKUP_DIR/pre-deploy-${STAMP}-${SHORT}.dump"
+          echo "Dumping live DB to $OUT"
+          cd "$DEPLOY_DIR"
+          docker compose $COMPOSE exec -T postgres \
+            pg_dump -U "$PG_USER" -Fc "$PG_DB" > "$OUT"
+          SIZE=$(stat -c%s "$OUT")
+          echo "Backup written: $OUT ($SIZE bytes)"
+          # Retention: keep only the newest BACKUP_KEEP dumps.
+          ls -1t "$BACKUP_DIR"/pre-deploy-*.dump 2>/dev/null \
+            | tail -n +"$((BACKUP_KEEP + 1))" \
+            | xargs -r rm -v
+          {
+            echo "### Pre-migration backup"
+            echo "- file: \`${OUT}\`"
+            echo "- size: ${SIZE} bytes"
+            echo "- retention: last ${BACKUP_KEEP} dumps in \`${BACKUP_DIR}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ---- DB migrations: run BEFORE service rebuilds so new backend code ----
       # ---- starts against the new schema.                                  ----
@@ -184,12 +233,39 @@ jobs:
           docker compose $COMPOSE exec -T nginx nginx -t
           docker compose $COMPOSE exec -T nginx nginx -s reload
 
+      # ---- Alembic upgrade (after backend rebuild so the new image has the ----
+      # ---- latest version files / metadata).                                ----
+      # Runs when a new migration file landed in backend/alembic/versions/, OR
+      # when the alembic config itself changed (env.py, alembic.ini, template).
+      # Backend rebuild is implicit via the backend/** path filter — any change
+      # under backend/alembic/ already triggers it.
+      - name: Apply Alembic migrations (alembic upgrade head)
+        if: |
+          steps.changes.outputs.alembic_versions == 'true' ||
+          steps.changes.outputs.alembic_config   == 'true'
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          echo "::group::Current revision before upgrade"
+          docker compose $COMPOSE exec -T backend uv run alembic current || true
+          echo "::endgroup::"
+          echo "::group::Upgrading to head"
+          docker compose $COMPOSE exec -T backend uv run alembic upgrade head
+          echo "::endgroup::"
+          echo "::group::Revision after upgrade"
+          docker compose $COMPOSE exec -T backend uv run alembic current
+          echo "::endgroup::"
+
       - name: Nothing to redeploy
         if: |
-          steps.changes.outputs.backend     != 'true' &&
-          steps.changes.outputs.frontend    != 'true' &&
-          steps.changes.outputs.nginx       != 'true' &&
-          steps.changes.outputs.rebuild_all != 'true'
+          steps.changes.outputs.backend          != 'true' &&
+          steps.changes.outputs.frontend         != 'true' &&
+          steps.changes.outputs.nginx            != 'true' &&
+          steps.changes.outputs.rebuild_all      != 'true' &&
+          steps.changes.outputs.schema_sql       != 'true' &&
+          steps.changes.outputs.seed_sql         != 'true' &&
+          steps.changes.outputs.alembic_versions != 'true' &&
+          steps.changes.outputs.alembic_config   != 'true'
         run: |
           echo "::notice::No service paths changed; sync-only deploy. (docs / tests / workflows)"
 
