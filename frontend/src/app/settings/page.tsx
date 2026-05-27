@@ -3,18 +3,20 @@ import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { SectionHeader } from "../../components/atoms";
 import { useApp } from "../../lib/context";
-import { type AccentColor, type ThemeMode } from "../../lib/theme";
+import { DEFAULT_ACCENT, type AccentColor, type ThemeMode } from "../../lib/theme";
 
 const ACCENT_COLORS = [
   { id: "blue", label: "Ocean Blue", hex: "#3b82f6" },
   { id: "emerald", label: "Emerald", hex: "#10b981" },
   { id: "violet", label: "Violet", hex: "#8b5cf6" },
   { id: "amber", label: "Amber", hex: "#f59e0b" },
+  { id: "teal", label: "Teal Mist", hex: "#14b8a6" },
+  { id: "indigo", label: "Indigo", hex: "#6366f1" },
 ] as const satisfies ReadonlyArray<{ id: AccentColor; label: string; hex: string }>;
 
 const THEME_CHOICES = [
-  { id: "dark", label: "Dark", desc: "Default industrial dark slate interface" },
-  { id: "light", label: "Light", desc: "Clean light operations dashboard" },
+  { id: "dark", label: "Dark", desc: "Industrial dark slate interface" },
+  { id: "light", label: "Light", desc: "Default clean operations dashboard" },
 ] as const satisfies ReadonlyArray<{ id: ThemeMode; label: string; desc: string }>;
 
 const INITIAL_TOGGLES = {
@@ -31,11 +33,11 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       onClick={onClick}
       role="switch"
       aria-checked={on}
-      className={`relative w-10 h-6 rounded-full transition-colors duration-200 shrink-0 ${on ? "bg-[var(--bp-accent)]" : "bg-[var(--bp-toggle-off)]"}`}
+      className={`relative w-10 h-6 rounded-full overflow-hidden transition-colors duration-200 shrink-0 ${on ? "bg-[var(--bp-accent)]" : "bg-[var(--bp-toggle-off)]"}`}
     >
       <span
-        className={`absolute top-1 w-4 h-4 rounded-full shadow transition-transform duration-200 ${
-          on ? "translate-x-5 bg-[var(--bp-accent-foreground)]" : "translate-x-1 bg-[var(--bp-surface-strong)]"
+        className={`absolute left-1 top-1 w-4 h-4 rounded-full shadow transition-transform duration-200 ${
+          on ? "translate-x-4 bg-white" : "translate-x-0 bg-[var(--bp-surface-strong)]"
         }`}
       />
     </button>
@@ -52,6 +54,13 @@ export default function SettingsPage() {
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleThemeChange = (nextTheme: ThemeMode) => {
+    setTheme(nextTheme);
+    if (nextTheme === "light") {
+      setAccent(DEFAULT_ACCENT);
+    }
   };
 
   return (
@@ -129,7 +138,7 @@ export default function SettingsPage() {
                   return (
                     <button
                       key={choice.id}
-                      onClick={() => setTheme(choice.id)}
+                      onClick={() => handleThemeChange(choice.id)}
                       className={`rounded-lg border px-3 py-2 text-left transition ${
                         active
                           ? "border-[rgba(var(--bp-accent-rgb),0.45)] bg-[rgba(var(--bp-accent-rgb),0.12)]"

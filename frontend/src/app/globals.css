@@ -42,11 +42,11 @@
   --bp-border: rgb(148 163 184 / 0.44);
   --bp-border-soft: rgb(148 163 184 / 0.24);
   --bp-border-strong: rgb(100 116 139 / 0.42);
-  --bp-text-primary: #1e293b;
-  --bp-text-secondary: #334155;
-  --bp-text-muted: #475569;
-  --bp-text-subtle: #64748b;
-  --bp-text-faint: #94a3b8;
+  --bp-text-primary: #334155;
+  --bp-text-secondary: #475569;
+  --bp-text-muted: #64748b;
+  --bp-text-subtle: #7a8ca3;
+  --bp-text-faint: #9aa8bc;
   --bp-overlay: rgb(15 23 42 / 0.28);
   --bp-scrollbar: #cfd8e6;
   --bp-scrollbar-hover: #a3b1c6;
@@ -80,6 +80,20 @@
   --bp-accent: #f59e0b;
   --bp-accent-hover: #fbbf24;
   --bp-accent-foreground: #3a2203;
+}
+
+:root[data-accent="teal"] {
+  --bp-accent-rgb: 20 184 166;
+  --bp-accent: #14b8a6;
+  --bp-accent-hover: #2dd4bf;
+  --bp-accent-foreground: #062924;
+}
+
+:root[data-accent="indigo"] {
+  --bp-accent-rgb: 99 102 241;
+  --bp-accent: #6366f1;
+  --bp-accent-hover: #818cf8;
+  --bp-accent-foreground: #16173a;
 }
 
 html,

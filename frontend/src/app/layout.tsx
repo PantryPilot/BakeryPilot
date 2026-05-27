@@ -19,7 +19,7 @@ const themeInitScript = `
     const storedTheme = window.localStorage.getItem("${THEME_STORAGE_KEY}");
     const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : "${DEFAULT_THEME}";
     const storedAccent = window.localStorage.getItem("${ACCENT_STORAGE_KEY}");
-    const accent = storedAccent === "blue" || storedAccent === "emerald" || storedAccent === "violet" || storedAccent === "amber"
+    const accent = storedAccent === "blue" || storedAccent === "emerald" || storedAccent === "violet" || storedAccent === "amber" || storedAccent === "teal" || storedAccent === "indigo"
       ? storedAccent
       : "${DEFAULT_ACCENT}";
     root.dataset.theme = theme;
