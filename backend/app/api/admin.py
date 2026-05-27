@@ -3,7 +3,14 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
+from app.models.chat import ChatModelInfo
+from app.services.app_settings import (
+    COPILOT_MODEL_KEY,
+    get_copilot_model,
+    set_app_setting,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -25,6 +32,69 @@ class TableRowsResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class CopilotModelSettings(BaseModel):
+    model_id: str
+    models: list[ChatModelInfo]
+
+
+class CopilotModelUpdate(BaseModel):
+    model_id: str
+
+
+def _sync_llm_env() -> None:
+    import os
+
+    os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    if settings.openai_api_key:
+        os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+    if settings.google_api_key:
+        os.environ["GOOGLE_API_KEY"] = settings.google_api_key
+    if settings.groq_api_key:
+        os.environ["GROQ_API_KEY"] = settings.groq_api_key
+
+
+@router.get("/copilot-model", response_model=CopilotModelSettings)
+async def get_copilot_model_settings(db: AsyncSession = Depends(get_db)) -> CopilotModelSettings:
+    _sync_llm_env()
+    from agent.llm import list_available_models
+
+    model_id = await get_copilot_model(db)
+    return CopilotModelSettings(
+        model_id=model_id,
+        models=list_available_models(),
+    )
+
+
+@router.put("/copilot-model", response_model=CopilotModelSettings)
+async def update_copilot_model_settings(
+    req: CopilotModelUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> CopilotModelSettings:
+    _sync_llm_env()
+    from agent.llm import MODEL_CATALOG, is_model_available, list_available_models
+
+    if req.model_id not in MODEL_CATALOG:
+        raise HTTPException(status_code=400, detail=f"Unknown model '{req.model_id}'")
+    if not is_model_available(req.model_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{req.model_id}' is not available. Add the provider API key in .env.",
+        )
+
+    try:
+        await set_app_setting(db, COPILOT_MODEL_KEY, req.model_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="app_settings table not initialised. Run `make schema.migrate && make schema.seed`.",
+        ) from exc
+
+    return CopilotModelSettings(
+        model_id=req.model_id,
+        models=list_available_models(),
+    )
 
 
 async def _public_table_names(db: AsyncSession) -> list[str]:

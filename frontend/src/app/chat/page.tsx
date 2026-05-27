@@ -196,7 +196,9 @@ export default function ChatPage() {
           <Icon name="chat" size={18} className="text-blue-400"/>
           <div className="flex-1">
             <h1 className="text-[16px] font-semibold text-slate-100">Copilot</h1>
-            <div className="text-[11px] text-slate-500 font-mono">Multi-agent · claude-sonnet · streaming SSE</div>
+            <div className="text-[11px] text-slate-500 font-mono">
+              Multi-agent · streaming SSE
+            </div>
           </div>
           <Pill tone="green"><Dot tone="green" pulse/> connected</Pill>
         </div>

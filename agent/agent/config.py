@@ -8,6 +8,9 @@ load_dotenv()
 BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
 MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 MONGODB_DB: str = os.getenv("MONGODB_DB", "bakery_pilot")
@@ -26,7 +29,7 @@ PROMPT_CACHE_TTL_SECONDS: int = int(os.getenv("PROMPT_CACHE_TTL_SECONDS", "60"))
 
 _MODEL_MAP: dict[str, str] = {
     "default": os.getenv("DEFAULT_MODEL", "claude-sonnet-4-6"),
-    "negotiation": os.getenv("NEGOTIATION_MODEL", "claude-opus-4-7"),
+    "negotiation": os.getenv("NEGOTIATION_MODEL", "claude-sonnet-4-6"),
     "summary": os.getenv("SUMMARY_MODEL", "claude-sonnet-4-6"),
 }
 

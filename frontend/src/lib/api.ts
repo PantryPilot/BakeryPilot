@@ -14,6 +14,7 @@ import type {
   SupplierStatus,
   Kpis,
 } from "./data";
+import type { ChatModelOption } from "./chatModels";
 
 export const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "") || "http://localhost:8000";
@@ -462,6 +463,25 @@ export async function fetchAdminTableRows(
     undefined,
     10000,
   );
+}
+
+export interface AdminCopilotModelSettings {
+  model_id: string;
+  models: ChatModelOption[];
+}
+
+export async function fetchAdminCopilotModel(): Promise<AdminCopilotModelSettings | null> {
+  return safeFetch<AdminCopilotModelSettings>("/api/admin/copilot-model");
+}
+
+export async function updateAdminCopilotModel(
+  modelId: string,
+): Promise<AdminCopilotModelSettings | null> {
+  return safeFetch<AdminCopilotModelSettings>("/api/admin/copilot-model", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+  });
 }
 
 // ---------- Users + settings ----------
@@ -1201,10 +1221,11 @@ export async function streamChat(
 ): Promise<() => void> {
   const ctrl = new AbortController();
   try {
+    const body: Record<string, unknown> = { message, history };
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) {

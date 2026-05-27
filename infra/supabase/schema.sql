@@ -518,6 +518,13 @@ CREATE INDEX IF NOT EXISTS production_orders_facility_status_idx
 CREATE INDEX IF NOT EXISTS production_orders_line_idx
   ON production_orders (line_id);
 
+-- System-wide settings (admin-controlled; not exposed in end-user UI).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        text PRIMARY KEY,
+  value      text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================================
 -- Supplier engagement (additive, post v3)
 -- ============================================================================

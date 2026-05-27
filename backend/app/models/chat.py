@@ -11,3 +11,14 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    model: str | None = None
+
+
+class ChatModelInfo(BaseModel):
+    id: str
+    label: str
+    provider: str
+    tier: str
+    description: str
+    available: bool
+    is_default: bool
