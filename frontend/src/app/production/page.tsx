@@ -561,6 +561,7 @@ export default function ProductionPage() {
   const [lines, setLines] = useState<BackendProductionLine[]>([]);
   const [products, setProducts] = useState<BackendProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
 
@@ -569,15 +570,18 @@ export default function ProductionPage() {
 
   const activeFacility = facilities.find(f => f.facility_id === activeFacilityId) ?? facilities[0];
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    const background = opts?.background ?? false;
+    if (background) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     const [facilitiesData, linesData, productsData] = await Promise.all([
       fetchFacilities(),
       fetchProductionLines(activeFacilityId ?? undefined),
       fetchProducts(),
     ]);
-    setLoading(false);
+    if (background) setRefreshing(false);
+    else setLoading(false);
     if (!linesData || !productsData) {
       setError("Failed to load production data. Check that the backend is running.");
       return;
@@ -616,12 +620,12 @@ export default function ProductionPage() {
             </p>
           </div>
           <button
-            onClick={load}
-            disabled={loading}
+            onClick={() => load({ background: lines.length > 0 })}
+            disabled={loading || refreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-700 hover:bg-slate-800 text-slate-300 text-[12px] transition disabled:opacity-50"
           >
-            <Icon name="spark" size={13} className={loading ? "animate-spin" : ""} />
-            Refresh
+            <Icon name="spark" size={13} className={loading || refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Refreshing…" : "Refresh"}
           </button>
         </div>
 
@@ -654,6 +658,12 @@ export default function ProductionPage() {
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-red-700/40 bg-red-900/20 text-[12px]">
                 <span className="w-2 h-2 rounded-full bg-red-400" />
                 <span className="text-red-300">{maintenanceCount} Maintenance</span>
+              </div>
+            )}
+            {refreshing && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-700/40 bg-blue-900/20 text-[12px]">
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-blue-300">Updating…</span>
               </div>
             )}
           </div>
@@ -710,7 +720,7 @@ export default function ProductionPage() {
                   line={line}
                   facilityId={activeFacilityId ?? line.facility_id}
                   products={products}
-                  onRefresh={load}
+                  onRefresh={() => load({ background: true })}
                   onToast={showToast}
                 />
               ))}
