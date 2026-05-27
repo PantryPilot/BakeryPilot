@@ -808,9 +808,21 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
                 </button>
               </div>
             </div>
-            {negDraft && (
+            {negDraft !== null && (
               <div className="rounded-md border border-amber-700/40 bg-amber-900/20 p-4 space-y-2">
-                <div className="text-[10.5px] uppercase tracking-wider text-amber-300 font-semibold">Generated draft</div>
+                <div className="text-[10.5px] uppercase tracking-wider text-amber-300 font-semibold flex items-center gap-2">
+                  {negSending ? (
+                    <>
+                      <span className="relative flex w-1.5 h-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"/>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"/>
+                      </span>
+                      ProcurementAgent · drafting live
+                    </>
+                  ) : (
+                    "Generated draft"
+                  )}
+                </div>
                 {negSubject && (
                   <div className="text-[12px] text-slate-300 font-mono break-words">Subject: {negSubject}</div>
                 )}
@@ -818,7 +830,8 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
                   rows={10}
                   value={negDraft}
                   onChange={e => setNegDraft(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none resize-y"
+                  readOnly={negSending}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none resize-y whitespace-pre-wrap"
                 />
                 <div className="flex items-center gap-2 justify-end">
                   <button
@@ -828,7 +841,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction }: {
                     Discard
                   </button>
                   <button
-                    disabled={negSending}
+                    disabled={negSending || !negDraftId}
                     onClick={handleAgentSendDraft}
                     className="px-3 py-1.5 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-emerald-950 font-semibold text-[12px] flex items-center gap-1.5"
                   >
