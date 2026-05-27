@@ -31,26 +31,26 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bp-bg-rgb: 244 247 251;
-  --bp-bg: #f4f7fb;
-  --bp-bg-soft: #ffffff;
-  --bp-bg-canvas: #edf3fa;
+  --bp-bg-rgb: 246 248 252;
+  --bp-bg: #f6f8fc;
+  --bp-bg-soft: #f9fbff;
+  --bp-bg-canvas: #eef3f8;
   --bp-surface: #ffffff;
-  --bp-surface-soft: #f8fafc;
-  --bp-surface-muted: #f1f5f9;
+  --bp-surface-soft: #fbfdff;
+  --bp-surface-muted: #f3f6fb;
   --bp-surface-strong: #ffffff;
-  --bp-border: rgb(148 163 184 / 0.5);
-  --bp-border-soft: rgb(148 163 184 / 0.28);
-  --bp-border-strong: rgb(100 116 139 / 0.46);
-  --bp-text-primary: #0f172a;
-  --bp-text-secondary: #1e293b;
+  --bp-border: rgb(148 163 184 / 0.44);
+  --bp-border-soft: rgb(148 163 184 / 0.24);
+  --bp-border-strong: rgb(100 116 139 / 0.42);
+  --bp-text-primary: #1e293b;
+  --bp-text-secondary: #334155;
   --bp-text-muted: #475569;
   --bp-text-subtle: #64748b;
   --bp-text-faint: #94a3b8;
-  --bp-overlay: rgb(15 23 42 / 0.32);
-  --bp-scrollbar: #cbd5e1;
-  --bp-scrollbar-hover: #94a3b8;
-  --bp-toggle-off: #cbd5e1;
+  --bp-overlay: rgb(15 23 42 / 0.28);
+  --bp-scrollbar: #cfd8e6;
+  --bp-scrollbar-hover: #a3b1c6;
+  --bp-toggle-off: #d3dbe8;
 }
 
 :root,
