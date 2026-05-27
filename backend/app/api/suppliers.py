@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    IngredientLot,
     MoqTaxEntry,
     Supplier as SupplierORM,
     SupplierOrder,
@@ -170,6 +171,109 @@ async def supplier_performance(
             )
         )
     return SupplierPerformance(supplier_id=supplier_id, points=pts)
+
+
+class CreateSupplierRequest(BaseModel):
+    supplier_id: str
+    name: str
+    contact_email: str | None = None
+    payment_terms: str | None = None
+    moq_kg: float | None = None
+    lead_time_mean_days: float | None = None
+    lead_time_std_days: float | None = None
+    on_time_rate: float = 0.90
+    fill_rate: float = 0.95
+    window_compliance_rate: float = 0.88
+
+
+class UpdateSupplierRequest(BaseModel):
+    name: str | None = None
+    contact_email: str | None = None
+    payment_terms: str | None = None
+    moq_kg: float | None = None
+    lead_time_mean_days: float | None = None
+    lead_time_std_days: float | None = None
+    on_time_rate: float | None = None
+    fill_rate: float | None = None
+    window_compliance_rate: float | None = None
+
+
+@router.post("", response_model=Supplier)
+async def create_supplier(
+    req: CreateSupplierRequest, db: AsyncSession = Depends(get_db)
+) -> Supplier:
+    if await db.get(SupplierORM, req.supplier_id):
+        raise HTTPException(409, f"supplier {req.supplier_id} already exists")
+    sup = SupplierORM(
+        supplier_id=req.supplier_id,
+        name=req.name,
+        contact_email=req.contact_email,
+        payment_terms=req.payment_terms,
+        moq_kg=req.moq_kg,
+        lead_time_mean_days=req.lead_time_mean_days or 7.0,
+        lead_time_std_days=req.lead_time_std_days or 1.0,
+        on_time_rate=req.on_time_rate,
+        fill_rate=req.fill_rate,
+        window_compliance_rate=req.window_compliance_rate,
+        price_variance_vs_benchmark=0.0,
+    )
+    db.add(sup)
+    await db.commit()
+    await db.refresh(sup)
+    return await _supplier_to_model(sup, db)
+
+
+@router.patch("/{supplier_id}", response_model=Supplier)
+async def update_supplier(
+    supplier_id: str, req: UpdateSupplierRequest, db: AsyncSession = Depends(get_db)
+) -> Supplier:
+    sup = await db.get(SupplierORM, supplier_id)
+    if not sup:
+        raise HTTPException(404, f"supplier {supplier_id} not found")
+    if req.name is not None:
+        sup.name = req.name
+    if req.contact_email is not None:
+        sup.contact_email = req.contact_email
+    if req.payment_terms is not None:
+        sup.payment_terms = req.payment_terms
+    if req.moq_kg is not None:
+        sup.moq_kg = req.moq_kg
+    if req.lead_time_mean_days is not None:
+        sup.lead_time_mean_days = req.lead_time_mean_days
+    if req.lead_time_std_days is not None:
+        sup.lead_time_std_days = req.lead_time_std_days
+    if req.on_time_rate is not None:
+        sup.on_time_rate = req.on_time_rate
+    if req.fill_rate is not None:
+        sup.fill_rate = req.fill_rate
+    if req.window_compliance_rate is not None:
+        sup.window_compliance_rate = req.window_compliance_rate
+    await db.commit()
+    await db.refresh(sup)
+    return await _supplier_to_model(sup, db)
+
+
+@router.delete("/{supplier_id}", response_model=dict)
+async def delete_supplier(
+    supplier_id: str, db: AsyncSession = Depends(get_db)
+) -> dict:
+    sup = await db.get(SupplierORM, supplier_id)
+    if not sup:
+        raise HTTPException(404, f"supplier {supplier_id} not found")
+    lots = (
+        await db.execute(
+            select(func.count()).select_from(IngredientLot).where(
+                IngredientLot.supplier_id == supplier_id
+            )
+        )
+    ).scalar_one()
+    if lots > 0:
+        raise HTTPException(
+            409, f"supplier {supplier_id} has {lots} active lot(s); write them off or transfer them first"
+        )
+    await db.delete(sup)
+    await db.commit()
+    return {"deleted": supplier_id}
 
 
 @router.get("/{supplier_id}/moq_tax", response_model=list[MOQTaxEntry])

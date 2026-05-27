@@ -11,10 +11,10 @@ def compute_landed_cost(
     holding_cost = (quantity_kg + overage_kg) * holding_cost_per_kg_per_day * expected_days_held
     total = base_cost + overage_cost + holding_cost
     return {
-        "unit_cost": round(base_cost, 2),
+        "unit_price": round(unit_price, 4),
+        "quantity_kg": quantity_kg,
+        "base_cost": round(base_cost, 2),
         "overage_cost": round(overage_cost, 2),
         "holding_cost": round(holding_cost, 2),
         "total": round(total, 2),
-        "quantity_kg": quantity_kg,
-        "overage_kg": overage_kg,
     }

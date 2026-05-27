@@ -640,6 +640,283 @@ export async function fetchSupplierPerformance(
   );
 }
 
+// ---------- Ingredients ----------
+
+export interface BackendIngredient {
+  ingredient_id: string;
+  name: string;
+  category: string | null;
+  default_storage_zone: string;
+}
+
+export async function fetchIngredients(): Promise<BackendIngredient[] | null> {
+  return safeFetch<BackendIngredient[]>("/api/ingredients");
+}
+
+// ---------- Inventory actions ----------
+
+export interface LotWriteOffRequest {
+  reason: string;
+  quantity_kg?: number;
+}
+
+export async function writeOffLot(
+  lotId: string,
+  req: LotWriteOffRequest,
+): Promise<Lot | null> {
+  const data = await safeFetch<BackendLot>(
+    `/api/lots/${encodeURIComponent(lotId)}/write_off`,
+    { method: "POST", body: JSON.stringify(req) },
+  );
+  return data ? adaptLot(data) : null;
+}
+
+export interface LotTransferRequest {
+  destination_facility_id: string;
+  quantity_kg?: number;
+}
+
+export async function transferLot(
+  lotId: string,
+  req: LotTransferRequest,
+): Promise<Lot | null> {
+  const data = await safeFetch<BackendLot>(
+    `/api/lots/${encodeURIComponent(lotId)}/transfer`,
+    { method: "POST", body: JSON.stringify(req) },
+  );
+  return data ? adaptLot(data) : null;
+}
+
+export interface LotSubstituteRequest {
+  substitute_sku_id: string;
+  quantity_kg: number;
+}
+
+export async function applySubstitution(
+  lotId: string,
+  req: LotSubstituteRequest,
+): Promise<{ action_card_id: string } | null> {
+  return safeFetch<{ action_card_id: string }>(
+    `/api/lots/${encodeURIComponent(lotId)}/substitute`,
+    { method: "POST", body: JSON.stringify(req) },
+  );
+}
+
+// ---------- Lot CRUD ----------
+
+export interface CreateLotRequest {
+  facility_id: string;
+  ingredient_id: string;
+  supplier_id?: string;
+  quantity_kg: number;
+  received_date: string;
+  expiry_date: string;
+  storage_zone?: string;
+  unit_cost?: number;
+  lot_code?: string;
+}
+
+export async function createLot(req: CreateLotRequest): Promise<Lot | null> {
+  const data = await safeFetch<BackendLot>("/api/lots", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  return data ? adaptLot(data) : null;
+}
+
+export async function deleteLot(lotId: string): Promise<boolean> {
+  const data = await safeFetch<{ deleted: string }>(
+    `/api/lots/${encodeURIComponent(lotId)}`,
+    { method: "DELETE" },
+  );
+  return data !== null;
+}
+
+// ---------- Supplier CRUD ----------
+
+export interface CreateSupplierRequest {
+  supplier_id: string;
+  name: string;
+  contact_email?: string;
+  payment_terms?: string;
+  moq_kg?: number;
+  lead_time_mean_days?: number;
+  lead_time_std_days?: number;
+  on_time_rate?: number;
+  fill_rate?: number;
+  window_compliance_rate?: number;
+}
+
+export interface UpdateSupplierRequest {
+  name?: string;
+  contact_email?: string;
+  payment_terms?: string;
+  moq_kg?: number;
+  lead_time_mean_days?: number;
+  on_time_rate?: number;
+  fill_rate?: number;
+  window_compliance_rate?: number;
+}
+
+export async function createSupplier(
+  req: CreateSupplierRequest,
+): Promise<Supplier | null> {
+  const data = await safeFetch<BackendSupplier>("/api/suppliers", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  return data ? adaptSupplier(data) : null;
+}
+
+export async function updateSupplier(
+  supplierId: string,
+  req: UpdateSupplierRequest,
+): Promise<Supplier | null> {
+  const backendId = supplierId.replace(/^s-/, "sup_");
+  const data = await safeFetch<BackendSupplier>(
+    `/api/suppliers/${encodeURIComponent(backendId)}`,
+    { method: "PATCH", body: JSON.stringify(req) },
+  );
+  return data ? adaptSupplier(data) : null;
+}
+
+export async function deleteSupplier(supplierId: string): Promise<boolean> {
+  const backendId = supplierId.replace(/^s-/, "sup_");
+  const data = await safeFetch<{ deleted: string }>(
+    `/api/suppliers/${encodeURIComponent(backendId)}`,
+    { method: "DELETE" },
+  );
+  return data !== null;
+}
+
+// ---------- Ingredient CRUD ----------
+
+export interface CreateIngredientRequest {
+  ingredient_id: string;
+  name: string;
+  category?: string;
+  default_storage_zone?: string;
+  shelf_life_days_default?: number;
+  unit_of_measure?: string;
+}
+
+export interface UpdateIngredientRequest {
+  name?: string;
+  category?: string;
+  default_storage_zone?: string;
+  shelf_life_days_default?: number;
+}
+
+export async function createIngredient(
+  req: CreateIngredientRequest,
+): Promise<BackendIngredient | null> {
+  return safeFetch<BackendIngredient>("/api/ingredients", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateIngredient(
+  ingredientId: string,
+  req: UpdateIngredientRequest,
+): Promise<BackendIngredient | null> {
+  return safeFetch<BackendIngredient>(
+    `/api/ingredients/${encodeURIComponent(ingredientId)}`,
+    { method: "PATCH", body: JSON.stringify(req) },
+  );
+}
+
+export async function deleteIngredient(ingredientId: string): Promise<boolean> {
+  const data = await safeFetch<{ deleted: string }>(
+    `/api/ingredients/${encodeURIComponent(ingredientId)}`,
+    { method: "DELETE" },
+  );
+  return data !== null;
+}
+
+// ---------- Supplier orders / PO ----------
+
+export interface OrderDraftItem {
+  ingredient_id: string;
+  quantity_kg: number;
+  unit_price: number;
+}
+
+export interface OrderDraftRequest {
+  supplier_id: string;
+  items: OrderDraftItem[];
+  delivery_date: string;
+}
+
+export interface OrderDraftResponse {
+  action_card_id: string;
+  landed_cost_breakdown: {
+    unit_price: number;
+    quantity_kg: number;
+    base_cost: number;
+    overage_cost: number;
+    holding_cost: number;
+    total: number;
+  };
+}
+
+export async function createOrderDraft(
+  req: OrderDraftRequest,
+): Promise<OrderDraftResponse | null> {
+  return safeFetch<OrderDraftResponse>("/api/orders/draft", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+// ---------- Negotiations ----------
+
+export interface BackendNegotiationDraft {
+  draft_id: string;
+  supplier_id: string;
+  trigger_kind: string;
+  body_md: string;
+  status: string;
+  created_at: string;
+  sent_at: string | null;
+  action_card_id: string | null;
+}
+
+export async function fetchNegotiations(
+  supplierId?: string,
+  status?: string,
+): Promise<BackendNegotiationDraft[] | null> {
+  const qs = new URLSearchParams();
+  if (status) qs.set("status", status);
+  const all = await safeFetch<BackendNegotiationDraft[]>(
+    `/api/negotiations?${qs.toString()}`,
+  );
+  if (!all) return null;
+  if (supplierId) {
+    const backendId = supplierId.replace(/^s-/, "sup_");
+    return all.filter((d) => d.supplier_id === backendId);
+  }
+  return all;
+}
+
+export async function markNegotiationSent(
+  draftId: string,
+): Promise<BackendNegotiationDraft | null> {
+  return safeFetch<BackendNegotiationDraft>(
+    `/api/negotiations/${encodeURIComponent(draftId)}/mark_sent`,
+    { method: "POST" },
+  );
+}
+
+export async function discardNegotiationDraft(
+  draftId: string,
+): Promise<BackendNegotiationDraft | null> {
+  return safeFetch<BackendNegotiationDraft>(
+    `/api/negotiations/${encodeURIComponent(draftId)}/discard`,
+    { method: "POST" },
+  );
+}
+
 // ---------- SSE: chat + events ----------
 
 export interface ChatStreamHandlers {

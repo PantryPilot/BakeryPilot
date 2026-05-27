@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
-import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization } from "../lib/hooks";
+import type { BackendYieldTelemetryPoint } from "../lib/api";
+import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 130;
@@ -305,6 +306,8 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
   const facility = facilities.find(f => f.short_code === plant.id);
   const facilityId = facility?.facility_id ?? null;
   const { data: util } = useFacilityUtilization(facilityId);
+  const { data: activeRuns, status: runsStatus } = useActiveRuns(facilityId);
+  const { data: yieldPoints } = useYieldTelemetry();
 
   const zoneMap = new Map(util?.zones.map(z => [z.zone, z]) ?? []);
   const frozen = zoneMap.get("frozen");
@@ -318,14 +321,28 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
     { name: "Dry",          pct: dry?.pct    ?? plant.util.dry,    used: dry?.used_kg,    cap: dry?.capacity_kg    ?? 42000, color: "bg-slate-400" },
   ];
 
-  // Demo line snapshot (kept in UI for hackathon — backend active_runs is exposed
-  // via the dashboard endpoints but the visual lane composition stays UI-owned).
+  // Map backend active runs by line number for overlay.
+  const runByLine = new Map(activeRuns.map(r => [r.line_number, r]));
+
+  // Latest yield telemetry per line for this facility.
+  const latestYieldByLine = new Map<number, BackendYieldTelemetryPoint>();
+  for (const pt of yieldPoints) {
+    if (facilityId && pt.facility_id !== facilityId) continue;
+    const lineNum = parseInt(pt.line_id.replace("line_", ""), 10);
+    if (!isNaN(lineNum)) {
+      const existing = latestYieldByLine.get(lineNum);
+      if (!existing || pt.date > existing.date) latestYieldByLine.set(lineNum, pt);
+    }
+  }
+
+  // Fallback line snapshot for when the backend has no active runs.
   const batchByLine: Record<number, { sku: string; qty: number; expiryLot: string; expiryH: number | null; status: string }> = {
     1: { sku: "Blueberry Muffin 12pk", qty: 4800, expiryLot: "LOT-21884", expiryH: 6,   status: "amber" },
     2: { sku: "Butter Croissant 6pk",  qty: 3200, expiryLot: "—",         expiryH: null, status: "ok" },
     3: { sku: "Cinnamon Bagel 8pk",    qty: 6200, expiryLot: "—",         expiryH: null, status: "ok" },
     4: { sku: "Chocolate Cookie 24pk", qty: 7400, expiryLot: "LOT-21999", expiryH: 48,  status: "ok" },
   };
+  const lineCount = facility?.line_count ?? 4;
   return (
     <div className="absolute top-0 right-0 bottom-0 w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl">
       <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800">
@@ -363,18 +380,27 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Active production lines · floor view</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+            Active production lines · floor view
+            {runsStatus === "live" && activeRuns.length > 0 && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="rounded-md border border-slate-800 bg-slate-900/30 p-3 space-y-2">
-            {[1, 2, 3, 4].map(lineNum => {
+            {Array.from({ length: lineCount }, (_, i) => i + 1).map(lineNum => {
+              const run = runByLine.get(lineNum);
               const b = batchByLine[lineNum];
+              const sku = run?.sku_name ?? b?.sku ?? `Line ${lineNum}`;
+              const qty = run?.planned_kg ?? run?.actual_kg ?? b?.qty ?? 0;
+              const isLive = !!run;
+              const rowStatus = b?.status ?? "ok";
               return (
                 <div key={lineNum} className="flex items-center gap-2">
                   <div className="w-12 text-[10px] font-mono text-slate-500 shrink-0">Line {lineNum}</div>
                   <div className="flex-1 h-9 rounded bg-slate-800/40 relative overflow-hidden">
-                    <div className={`absolute inset-y-0 left-0 px-2.5 flex items-center gap-2 rounded ${b.status === "amber" ? "border-l-2 border-amber-500 bg-amber-500/5" : "border-l-2 border-emerald-500/60 bg-emerald-500/5"}`} style={{ width: "92%" }}>
-                      <span className="text-[12px] text-slate-100">{b.sku}</span>
-                      <span className="text-[10px] font-mono text-slate-500">{b.qty.toLocaleString()} u</span>
-                      {b.expiryH !== null && (
+                    <div className={`absolute inset-y-0 left-0 px-2.5 flex items-center gap-2 rounded ${rowStatus === "amber" ? "border-l-2 border-amber-500 bg-amber-500/5" : "border-l-2 border-emerald-500/60 bg-emerald-500/5"}`} style={{ width: "92%" }}>
+                      <span className="text-[12px] text-slate-100">{sku}</span>
+                      <span className="text-[10px] font-mono text-slate-500">{qty.toLocaleString()} {isLive ? "kg" : "u"}</span>
+                      {isLive && <span className="text-[9px] font-mono text-emerald-400 ml-auto mr-1">live</span>}
+                      {!isLive && b?.expiryH !== null && b?.expiryH !== undefined && (
                         <Pill tone={b.expiryH < 12 ? "red" : b.expiryH < 24 ? "amber" : "ghost"} className="ml-auto mr-2">{b.expiryLot} · {b.expiryH}h</Pill>
                       )}
                     </div>
@@ -385,12 +411,26 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Yield per line</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+            Yield per line
+            {latestYieldByLine.size > 0 && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <YieldCounter actual={93.4} target={97.1} lostDollars={2341} anomaly={plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null}/>
-            <YieldCounter actual={97.8} target={97.1} lostDollars={0}/>
-            <YieldCounter actual={96.4} target={97.1} lostDollars={420}/>
-            <YieldCounter actual={97.2} target={97.1} lostDollars={0}/>
+            {Array.from({ length: Math.min(lineCount, 4) }, (_, i) => i + 1).map(lineNum => {
+              const pt = latestYieldByLine.get(lineNum);
+              const fallbackYield: Record<number, { actual: number; target: number; lost: number; anomaly: string | null }> = {
+                1: { actual: 93.4, target: 97.1, lost: 2341, anomaly: plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null },
+                2: { actual: 97.8, target: 97.1, lost: 0, anomaly: null },
+                3: { actual: 96.4, target: 97.1, lost: 420, anomaly: null },
+                4: { actual: 97.2, target: 97.1, lost: 0, anomaly: null },
+              };
+              const fb = fallbackYield[lineNum] ?? { actual: 97.0, target: 97.1, lost: 0, anomaly: null };
+              const actual = pt?.actual_pct ?? fb.actual;
+              const target = pt?.target_pct ?? fb.target;
+              const lost = pt ? (actual < target ? Math.round((target - actual) * 100) : 0) : fb.lost;
+              const anomaly = actual < 95 && plant.id === "p1" ? "Dough divider drift — last calibrated 47 days ago." : null;
+              return <YieldCounter key={lineNum} actual={actual} target={target} lostDollars={lost} anomaly={anomaly}/>;
+            })}
           </div>
         </div>
         <div className="space-y-2">
