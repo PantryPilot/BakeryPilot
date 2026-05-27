@@ -223,7 +223,7 @@ export default function MaterialsPage() {
         </div>
         <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-[13px]">
+          <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
               <tr>
                 {["Lot ID", "Ingredient", "Facility", "Qty (kg)", "Expiry", "Days left", "Storage", "Risk score", "Status", "Actions"].map((h, i) => (

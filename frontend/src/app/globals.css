@@ -351,6 +351,21 @@ body {
   background-color: var(--bp-overlay) !important;
 }
 
+/* Softer row typography in light-mode data tables */
+:root[data-theme="light"] .bp-data-table tbody td {
+  color: var(--bp-text-muted);
+}
+:root[data-theme="light"] .bp-data-table .text-slate-100,
+:root[data-theme="light"] .bp-data-table .text-slate-200 {
+  color: var(--bp-text-secondary) !important;
+}
+:root[data-theme="light"] .bp-data-table .text-slate-300 {
+  color: var(--bp-text-muted) !important;
+}
+:root[data-theme="light"] .bp-data-table .text-slate-400 {
+  color: var(--bp-text-subtle) !important;
+}
+
 /* FlowSight SVG theme compatibility */
 .bp-flow-canvas {
   --bp-flow-node-bg: #0c111c;

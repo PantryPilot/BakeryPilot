@@ -304,7 +304,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       </div>
       <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-[13px]">
+        <table className="bp-data-table w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
               {["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"].map((h, i) => (

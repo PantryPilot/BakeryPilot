@@ -252,7 +252,7 @@ function DataGrid({
   }
 
   return (
-    <table className="w-full text-[12px] border-collapse">
+    <table className="bp-data-table w-full text-[12px] border-collapse">
       <thead className="sticky top-0 z-10">
         <tr className="bg-[#0d1017] border-b border-slate-800">
           {columns.map((col) => {
