@@ -37,16 +37,24 @@ import time
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
+
 from . import http
 from .base import Fetcher
 
 GDELT_BASE = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 # Module-level rate-limit guard: GDELT publishes 1 request per 5 seconds but
-# in practice throttles 429 on bursts even at that pace. 8 s leaves comfortable
-# margin while keeping a 7-keyword sweep under a minute.
+# in practice throttles 429 on bursts even at that pace, especially when a
+# previous run touched it minutes earlier. 8 s steady-state + 429-aware
+# retry below keeps live fetches reliable without slowing the common case.
 _MIN_INTERVAL_SECONDS = 8.0
 _last_call_at: float = 0.0
+
+# 429-specific retry schedule (in seconds). The framework's http.get() retries
+# 5xx and connection errors but treats 4xx as permanent; GDELT's 429 is the
+# one exception where a longer cooldown reliably clears the throttle.
+_RATE_LIMIT_BACKOFF_SECONDS = (15, 30, 60)
 
 
 def _gdelt_pace() -> None:
@@ -72,8 +80,6 @@ class GdeltFetcher(Fetcher):
         self.sort = sort
 
     def fetch_live(self, key: str) -> tuple[dict[str, Any], str]:
-        _gdelt_pace()
-
         params = {
             "query":      key,
             "mode":       "artlist",
@@ -83,8 +89,34 @@ class GdeltFetcher(Fetcher):
             "timespan":   self.timespan,
         }
         url = f"{GDELT_BASE}?{urlencode(params)}"
-        resp = http.get(url, check_robots=self.respects_robots, max_retries=2)
-        resp.raise_for_status()
+
+        # 429-aware loop: pace, fetch, on 429 cool down and retry. Other
+        # errors propagate up to the base Fetcher.get() so cache fallback
+        # still triggers.
+        attempts = [0, *_RATE_LIMIT_BACKOFF_SECONDS]
+        last_exc: Exception | None = None
+        for i, cooldown in enumerate(attempts):
+            if cooldown:
+                print(
+                    f"[gdelt] 429 backoff: sleeping {cooldown}s before retry "
+                    f"(attempt {i}/{len(attempts) - 1}) for query {key!r}",
+                )
+                time.sleep(cooldown)
+            _gdelt_pace()
+            resp = http.get(url, check_robots=self.respects_robots, max_retries=2)
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                break
+            last_exc = httpx.HTTPStatusError(
+                f"GDELT 429 (attempt {i + 1}/{len(attempts)})",
+                request=resp.request,
+                response=resp,
+            )
+        else:
+            # Exhausted retry schedule with 429s — let the base class fall
+            # back to cache.
+            assert last_exc is not None
+            raise last_exc
 
         # GDELT occasionally returns HTML error pages or rate-limit text
         # with HTTP 200 — guard before json().

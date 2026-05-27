@@ -1,0 +1,17 @@
+{
+  "data": {
+    "articles": [
+      {
+        "domain": "freshplaza.com",
+        "language": "English",
+        "seendate": "20260527T150000Z",
+        "sourcecountry": "China",
+        "title": "U . S . Maine wild blueberry crop losses reach US$28 million in 2025",
+        "url": "https://www.freshplaza.com/north-america/article/9841563/u-s-maine-wild-blueberry-crop-losses-reach-us-28-million-in-2025/"
+      }
+    ],
+    "query": "blueberry harvest sourcelang:english tone<-2"
+  },
+  "fetched_at": "2026-05-27T17:47:12Z",
+  "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=blueberry+harvest+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
+}

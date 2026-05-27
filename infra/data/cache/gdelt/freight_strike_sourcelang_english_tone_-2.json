@@ -1,0 +1,129 @@
+{
+  "data": {
+    "articles": [
+      {
+        "domain": "moneycontrol.com",
+        "language": "English",
+        "seendate": "20260521T064500Z",
+        "sourcecountry": "India",
+        "title": "Delhi - NCR taxi , auto strike : Stuck in traffic ? Here how you can plan travel during the 3 - day  chakka jam  ",
+        "url": "https://www.moneycontrol.com/city/delhi-ncr-taxi-auto-strike-stuck-in-traffic-here-s-how-you-can-plan-travel-during-the-3-day-chakka-jam-article-13926192.html"
+      },
+      {
+        "domain": "travel.yahoo.com",
+        "language": "English",
+        "seendate": "20260521T101500Z",
+        "sourcecountry": "United States",
+        "title": "Passenger traffic down 7 . 5 % at German airports amid strikes , Iran war",
+        "url": "https://travel.yahoo.com/news/articles/passenger-traffic-down-7-5-092527305.html"
+      },
+      {
+        "domain": "bizcommunity.com",
+        "language": "English",
+        "seendate": "20260525T090000Z",
+        "sourcecountry": "South Africa",
+        "title": "Iran war is exposing South Africa dependency on diesel : what went wrong",
+        "url": "https://www.bizcommunity.com/article/iran-war-is-exposing-south-africas-dependency-on-diesel-what-went-wrong-178866a"
+      },
+      {
+        "domain": "theglobeandmail.com",
+        "language": "English",
+        "seendate": "20260522T014500Z",
+        "sourcecountry": "Canada",
+        "title": "Employers press Ottawa to curb strike activity in key federally regulated sectors",
+        "url": "https://www.theglobeandmail.com/business/article-employers-press-ottawa-to-curb-strike-activity-in-key-federally/"
+      },
+      {
+        "domain": "theconversation.com",
+        "language": "English",
+        "seendate": "20260524T050000Z",
+        "sourcecountry": "Australia",
+        "title": "Iran war is exposing South Africa dependency on diesel : what went wrong",
+        "url": "https://theconversation.com/iran-war-is-exposing-south-africas-dependency-on-diesel-what-went-wrong-283516"
+      },
+      {
+        "domain": "allafrica.com",
+        "language": "English",
+        "seendate": "20260525T100000Z",
+        "sourcecountry": "Nigeria",
+        "title": "South Africa : Iran War Is Exposing South Africa Dependency On Diesel - What Went Wrong",
+        "url": "https://allafrica.com/stories/202605250133.html"
+      },
+      {
+        "domain": "zawya.com",
+        "language": "English",
+        "seendate": "20260526T120000Z",
+        "sourcecountry": "United Arab Emirates",
+        "title": "Iran war is exposing South Africa dependency on diesel",
+        "url": "https://www.zawya.com/en/economy/africa/iran-war-is-exposing-south-africas-dependency-on-diesel-n7w8nmnm"
+      },
+      {
+        "domain": "the-star.co.ke",
+        "language": "English",
+        "seendate": "20260522T081500Z",
+        "sourcecountry": "Kenya",
+        "title": "Diesel prices to reduce by another Sh10 in June",
+        "url": "https://www.the-star.co.ke/news/2026-05-22-diesel-prices-to-reduce-by-another-sh10-in-june-ruto"
+      },
+      {
+        "domain": "wsws.org",
+        "language": "English",
+        "seendate": "20260523T010000Z",
+        "sourcecountry": "United States",
+        "title": "Workers Struggles : Asia , Australia and the Pacific",
+        "url": "https://www.wsws.org/en/articles/2026/05/22/xtjc-m22.html"
+      },
+      {
+        "domain": "the-star.co.ke",
+        "language": "English",
+        "seendate": "20260520T181500Z",
+        "sourcecountry": "Kenya",
+        "title": "Kindiki defends State measures to cushion Kenyans from high fuel prices",
+        "url": "https://www.the-star.co.ke/news/2026-05-20-kindiki-defends-state-fuel-price-relief-measures"
+      },
+      {
+        "domain": "ghanamma.com",
+        "language": "English",
+        "seendate": "20260524T131500Z",
+        "sourcecountry": "Ghana",
+        "title": "Iran war is exposing South Africa dependency on diesel : what went wrong",
+        "url": "https://www.ghanamma.com/2026/05/24/iran-war-is-exposing-south-africas-dependency-on-diesel-what-went-wrong/"
+      },
+      {
+        "domain": "thunderousintentions.com",
+        "language": "English",
+        "seendate": "20260522T134500Z",
+        "sourcecountry": "United States",
+        "title": "Thunder must face uncomfortable reality despite just tying series with Spurs",
+        "url": "https://thunderousintentions.com/okc-thunder-must-face-uncomfortable-reality-despite-tying-series-with-spurs"
+      },
+      {
+        "domain": "miragenews.com",
+        "language": "English",
+        "seendate": "20260521T230000Z",
+        "sourcecountry": "United States",
+        "title": "MAST Charges Insider in Sydney Drug Import Plot",
+        "url": "https://www.miragenews.com/mast-charges-insider-in-sydney-drug-import-plot-1678538/"
+      },
+      {
+        "domain": "theweek.in",
+        "language": "English",
+        "seendate": "20260521T181500Z",
+        "sourcecountry": "India",
+        "title": "The price of war : Hormuz , Asia , and the Kingdoms that pay without fighting",
+        "url": "https://www.theweek.in/news/middle-east/2026/05/21/the-price-of-war-hormuz-asia-and-the-kingdoms-that-pay-without-fighting.html"
+      },
+      {
+        "domain": "newswire.co.nz",
+        "language": "English",
+        "seendate": "20260526T071500Z",
+        "sourcecountry": "New Zealand",
+        "title": "How New Zealand Is Still Getting Petrol and Diesel With Hormuz Closed",
+        "url": "https://newswire.co.nz/2026/05/how-new-zealand-is-still-getting-petrol-and-diesel-with-hormuz-closed/"
+      }
+    ],
+    "query": "freight strike sourcelang:english tone<-2"
+  },
+  "fetched_at": "2026-05-27T17:43:20Z",
+  "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=freight+strike+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
+}

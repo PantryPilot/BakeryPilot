@@ -204,6 +204,6 @@
     ],
     "query": "port congestion sourcelang:english tone<-2"
   },
-  "fetched_at": "2026-05-27T17:31:27Z",
+  "fetched_at": "2026-05-27T17:49:55Z",
   "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=port+congestion+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
 }

@@ -36,6 +36,6 @@
     ],
     "query": "bakery recall sourcelang:english tone<-2"
   },
-  "fetched_at": "2026-05-27T17:32:14Z",
+  "fetched_at": "2026-05-27T17:43:30Z",
   "source_url": "https://api.gdeltproject.org/api/v2/doc/doc?query=bakery+recall+sourcelang%3Aenglish+tone%3C-2&mode=artlist&format=json&maxrecords=50&sort=hybridrel&timespan=7d"
 }
