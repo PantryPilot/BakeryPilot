@@ -44,7 +44,7 @@ function storePosition(key: string | undefined, pos: DragPosition): void {
   }
 }
 
-function clampToViewport(p: DragPosition, w: number, h: number): DragPosition {
+function clampToViewport(p: DragPosition, w: number): DragPosition {
   if (typeof window === "undefined") return p;
   const margin = 16;
   const minVisible = 80;
@@ -106,7 +106,6 @@ export function useDraggable({
       const next = clampToViewport(
         { x: startRef.current.origX + dx, y: startRef.current.origY + dy },
         width,
-        height,
       );
       setPosition(next);
     }
