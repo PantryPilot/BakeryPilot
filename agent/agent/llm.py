@@ -35,14 +35,23 @@ MODEL_CATALOG: dict[str, ModelSpec] = {
         key_env="ANTHROPIC_API_KEY",
         description="Default agent model — strong tool use and reasoning",
     ),
-    "claude-opus-4-7": ModelSpec(
-        id="claude-opus-4-7",
-        label="Claude Opus 4.7",
-        provider="anthropic",
-        model="claude-opus-4-7",
+    "gpt-4o": ModelSpec(
+        id="gpt-4o",
+        label="GPT-4o",
+        provider="openai",
+        model="gpt-4o",
         tier="premium",
-        key_env="ANTHROPIC_API_KEY",
-        description="Highest quality — negotiation drafts and complex analysis",
+        key_env="OPENAI_API_KEY",
+        description="OpenAI flagship — strong tool use and reasoning",
+    ),
+    "gpt-4o-mini": ModelSpec(
+        id="gpt-4o-mini",
+        label="GPT-4o Mini",
+        provider="openai",
+        model="gpt-4o-mini",
+        tier="free",
+        key_env="OPENAI_API_KEY",
+        description="Cheap OpenAI model — good default for everyday calls",
     ),
     "gemini-2.0-flash": ModelSpec(
         id="gemini-2.0-flash",
@@ -91,7 +100,7 @@ MODEL_CATALOG: dict[str, ModelSpec] = {
     ),
 }
 
-_KEY_ENVS = ("ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY")
+_KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY")
 
 _react_agent_cache: dict[tuple[str, str, str], Any] = {}
 
@@ -155,7 +164,7 @@ def get_effective_model_id(purpose: str = "default") -> str:
     if normalized and is_model_available(normalized):
         return normalized
 
-    for fallback in ("claude-sonnet-4-6", "gemini-2.0-flash", "llama-3.3-70b-versatile"):
+    for fallback in ("claude-sonnet-4-6", "gpt-4o-mini", "gemini-2.0-flash", "llama-3.3-70b-versatile"):
         if is_model_available(fallback):
             return fallback
 
@@ -170,6 +179,11 @@ def make_chat_llm(*, purpose: str = "default", temperature: float = 0) -> BaseCh
         from langchain_anthropic import ChatAnthropic
 
         return ChatAnthropic(model=spec.model, temperature=temperature)
+
+    if spec.provider == "openai":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(model=spec.model, temperature=temperature)
 
     if spec.provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI

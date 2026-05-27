@@ -43,6 +43,8 @@ export function providerBadge(provider: string): string {
       return "Groq";
     case "anthropic":
       return "Claude";
+    case "openai":
+      return "OpenAI";
     default:
       return provider;
   }

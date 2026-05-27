@@ -16,6 +16,8 @@ def _sync_llm_env() -> None:
     import os
 
     os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    if settings.openai_api_key:
+        os.environ["OPENAI_API_KEY"] = settings.openai_api_key
     if settings.google_api_key:
         os.environ["GOOGLE_API_KEY"] = settings.google_api_key
     if settings.groq_api_key:

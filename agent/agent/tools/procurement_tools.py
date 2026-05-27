@@ -75,7 +75,7 @@ def draft_negotiation(
     supplier_name: Annotated[str, "Supplier name for the email greeting"],
     supporting_data: Annotated[dict, "Key metrics to reference — e.g. {moq_tax_usd, on_time_rate, price_gap_pct}"],
 ) -> dict:
-    """Draft a supplier negotiation email using Claude Opus 4.7.
+    """Draft a supplier negotiation email.
 
     Returns {subject, body_md} for human review — never sent automatically.
     Every number in the body is grounded in supporting_data.
