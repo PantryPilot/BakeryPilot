@@ -938,7 +938,7 @@ export default function ProductionPage() {
               <div className="text-[14px] text-slate-200 font-medium">Failed to load</div>
               <div className="text-[13px] text-slate-500 mt-1">{error}</div>
             </div>
-            <button onClick={load} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[13px] transition">
+            <button onClick={() => { void load(); }} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[13px] transition">
               Try again
             </button>
           </div>
