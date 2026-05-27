@@ -75,8 +75,11 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const inflightRef = useRef(false);
+  const cancelStreamRef = useRef<(() => void) | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -91,8 +94,12 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
+  useEffect(() => () => { cancelStreamRef.current?.(); }, []);
+
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isThinking) return;
+    if (!text.trim() || inflightRef.current) return;
+    inflightRef.current = true;
+    cancelStreamRef.current?.();
     const u = text.trim();
     setMessages(m => [
       ...m,
@@ -101,7 +108,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     ]);
     setIsThinking(true);
 
-    await streamChat(u, [], {
+    cancelStreamRef.current = await streamChat(u, [], {
       onMessage: (chunk) => {
         setMessages(m => {
           const next = [...m];
