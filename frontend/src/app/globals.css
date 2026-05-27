@@ -441,6 +441,26 @@ body {
 }
 :root[data-theme="light"] .bp-admin-table tbody td {
   border-right-color: var(--bp-border) !important;
+  color: #0f172a !important; /* slate-900 */
+}
+:root[data-theme="light"] .bp-admin-table tbody td.bp-admin-cell a {
+  color: #0f172a !important;
+  text-decoration-color: #94a3b8 !important;
+}
+:root[data-theme="light"] .bp-admin-table tbody td.bp-admin-cell a:hover {
+  color: #1d4ed8 !important;
+  text-decoration-color: #1d4ed8 !important;
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell {
+  color: #e2e8f0 !important; /* slate-200 */
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell a {
+  color: #f1f5f9 !important;
+  text-decoration-color: #64748b !important;
+}
+:root[data-theme="dark"] .bp-admin-table tbody td.bp-admin-cell a:hover {
+  color: #93c5fd !important;
+  text-decoration-color: #93c5fd !important;
 }
 
 /* FlowSight SVG theme compatibility */

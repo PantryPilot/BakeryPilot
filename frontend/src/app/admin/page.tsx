@@ -547,9 +547,10 @@ function DataGrid({
               return (
                 <td
                   key={col.name}
-                  className="px-3 py-2 text-slate-300 font-mono border-r border-slate-800/25 last:border-r-0 align-top"
+                  className="px-3 py-2 text-slate-900 font-mono border-r border-slate-800/25 last:border-r-0 align-top bp-admin-cell"
                 >
                   <CellValue
+                    column={col.name}
                     value={val}
                     type={col.type}
                     expanded={isExpanded}
@@ -568,24 +569,26 @@ function DataGrid({
 }
 
 function CellValue({
+  column,
   value,
   type,
   expanded,
   onToggle,
 }: {
+  column: string;
   value: unknown;
   type: string;
   expanded: boolean;
   onToggle: () => void;
 }) {
   if (value === null || value === undefined) {
-    return <span className="text-slate-600 italic">null</span>;
+    return <span className="text-slate-400 italic">null</span>;
   }
 
   if (typeof value === "boolean") {
     return (
       <span
-        className={value ? "text-emerald-400" : "text-red-400"}
+        className={value ? "text-emerald-800" : "text-red-800"}
       >
         {String(value)}
       </span>
@@ -593,6 +596,24 @@ function CellValue({
   }
 
   const str = typeof value === "object" ? JSON.stringify(value) : String(value);
+
+  const isUrl =
+    column === "source_url" ||
+    (typeof value === "string" && /^https?:\/\//i.test(str));
+
+  if (isUrl) {
+    return (
+      <a
+        href={str}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-slate-900 font-medium underline underline-offset-2 decoration-slate-400 hover:text-blue-700 hover:decoration-blue-700 break-all"
+        title={str}
+      >
+        {str}
+      </a>
+    );
+  }
 
   const isLong = str.length > 80;
   const isJsonish = type === "json" || type === "jsonb" || type === "ARRAY" ||
@@ -608,24 +629,24 @@ function CellValue({
     return (
       <button
         onClick={onToggle}
-        className="text-left max-w-[400px] break-all hover:text-blue-300 transition"
+        className="text-left max-w-[400px] break-all text-slate-900 hover:text-blue-700 transition"
       >
         {expanded ? (
-          <pre className="whitespace-pre-wrap text-[11px] text-blue-200 bg-slate-900/60 rounded p-2 mt-1 max-h-[300px] overflow-auto">
+          <pre className="whitespace-pre-wrap text-[11px] text-slate-900 bg-slate-50 rounded p-2 mt-1 max-h-[300px] overflow-auto border border-slate-200">
             {display}
           </pre>
         ) : (
-          <span className="text-slate-400">{display}</span>
+          <span className="text-slate-900">{display}</span>
         )}
       </button>
     );
   }
 
   if (type === "uuid") {
-    return <span className="text-slate-400">{str.slice(0, 8)}…</span>;
+    return <span className="text-slate-700">{str.slice(0, 8)}…</span>;
   }
 
-  return <span>{str}</span>;
+  return <span className="text-slate-900">{str}</span>;
 }
 
 function Pagination({
