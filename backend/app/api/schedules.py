@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,35 @@ def _utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+async def _resolve_schedule(db: AsyncSession, schedule_id: str) -> ScheduleORM | None:
+    """Resolve a schedule path param, including the ``current`` alias."""
+    if schedule_id == "current":
+        suggested = (
+            await db.execute(
+                select(ScheduleORM)
+                .where(ScheduleORM.status == "suggested")
+                .order_by(ScheduleORM.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if suggested:
+            return suggested
+        return (
+            await db.execute(
+                select(ScheduleORM)
+                .where(ScheduleORM.status == "approved")
+                .order_by(ScheduleORM.start_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    try:
+        sid = uuid.UUID(schedule_id)
+    except ValueError:
+        return None
+    return await db.get(ScheduleORM, sid)
 
 
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
@@ -56,17 +86,22 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
 async def get_schedule(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ProductionSchedule:
-    s = await db.get(ScheduleORM, schedule_id)
+    s = await _resolve_schedule(db, schedule_id)
     if not s:
         raise HTTPException(404, f"schedule {schedule_id} not found")
     return _to_model(s)
+
+
+@router.get("/current/diff", response_model=ScheduleDiff)
+async def current_schedule_diff(db: AsyncSession = Depends(get_db)) -> ScheduleDiff:
+    return await schedule_diff("current", db)
 
 
 @router.get("/{schedule_id}/diff", response_model=ScheduleDiff)
 async def schedule_diff(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ScheduleDiff:
-    s = await db.get(ScheduleORM, schedule_id)
+    s = await _resolve_schedule(db, schedule_id)
     if not s:
         raise HTTPException(404, f"schedule {schedule_id} not found")
     before_run = ScheduleRun(
@@ -114,13 +149,14 @@ async def what_if(
 async def post_to_mes(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    s = await db.get(ScheduleORM, schedule_id)
+    s = await _resolve_schedule(db, schedule_id)
     if not s:
         raise HTTPException(404, f"schedule {schedule_id} not found")
     s.status = "approved"
     await db.commit()
+    resolved_id = str(s.schedule_id)
     return {
-        "schedule_id": schedule_id,
-        "mes_ack_id": f"mes-{schedule_id[:8]}",
+        "schedule_id": resolved_id,
+        "mes_ack_id": f"mes-{resolved_id[:8]}",
         "accepted_at": datetime.now(timezone.utc).isoformat(),
     }

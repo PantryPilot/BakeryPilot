@@ -14,6 +14,13 @@ def test_get_schedule_diff_not_found(client):
     assert r.status_code == 404
 
 
+def test_get_current_schedule_diff(client):
+    r = client.get("/api/schedules/current/diff")
+    # Mock DB has no schedules; alias must resolve without UUID coercion crash.
+    assert r.status_code == 404
+    assert "invalid UUID" not in r.text
+
+
 def test_schedules_list_schema(client):
     schedules = client.get("/api/schedules").json()
     for sched in schedules:
