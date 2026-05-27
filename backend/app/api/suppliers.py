@@ -1,3 +1,5 @@
+import asyncio
+import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.models import (
     IngredientLot,
     MoqTaxEntry,
@@ -398,59 +401,89 @@ class NegotiateResponse(BaseModel):
     message_id: str | None
 
 
+def _pick_trigger_kind(on_time: float, window: float, moq_total: float, price_var: float) -> str:
+    if moq_total >= 3000:
+        return "moq_tax"
+    if on_time < 0.90 or window < 0.85:
+        return "late_window"
+    if abs(price_var) >= 0.05:
+        return "price_drift"
+    return "moq_tax" if moq_total > 0 else "late_window"
+
+
 @router.post("/{supplier_id}/negotiate", response_model=NegotiateResponse)
 async def agent_negotiate(
     supplier_id: str,
     req: NegotiateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> NegotiateResponse:
-    """Generate a negotiation draft for a supplier using their performance
-    profile + the operator's stated goal. Persists as a NegotiationDraft and
-    optionally records it as an outbound supplier message."""
+    """Generate a negotiation draft for a supplier by invoking the
+    ProcurementAgent's draft_negotiation tool (Claude Opus 4.7).
+
+    Persists the result as a NegotiationDraft and optionally records it
+    as an outbound supplier message."""
     sup = await db.get(SupplierORM, supplier_id)
     if not sup:
         raise HTTPException(404, f"supplier {supplier_id} not found")
 
     quarter = f"{datetime.utcnow().year}-Q{(datetime.utcnow().month - 1) // 3 + 1}"
-    moq_total = (
-        await db.execute(
-            select(func.sum(MoqTaxEntry.holding_cost)).where(
-                MoqTaxEntry.supplier_id == supplier_id,
-                MoqTaxEntry.quarter == quarter,
+    moq_total = float(
+        (
+            await db.execute(
+                select(func.sum(MoqTaxEntry.holding_cost)).where(
+                    MoqTaxEntry.supplier_id == supplier_id,
+                    MoqTaxEntry.quarter == quarter,
+                )
             )
-        )
-    ).scalar() or 0.0
+        ).scalar()
+        or 0.0
+    )
 
     on_time = float(sup.on_time_rate or 0.9)
     fill = float(sup.fill_rate or 0.95)
     window = float(sup.window_compliance_rate or 0.88)
-    contact_line = sup.contact_name or "Procurement Team"
-    body_md = (
-        f"Hi {contact_line},\n\n"
-        f"BakeryPilot procurement here. We want to discuss the following with {sup.name}:\n\n"
-        f"**Our ask:** {req.goal.strip()}\n\n"
-        f"**Why now (last 90 days):**\n"
-        f"- On-time delivery: **{on_time*100:.1f}%**\n"
-        f"- Fill rate: **{fill*100:.1f}%**\n"
-        f"- Delivery window compliance: **{window*100:.1f}%**\n"
-        f"- MOQ-tax incurred this quarter: **${moq_total:,.0f}**\n\n"
-        f"**Proposed next steps:**\n"
-        f"1. Confirm whether the change above is feasible by end of week.\n"
-        f"2. Share a written counter-proposal if it isn't, including any minimum lot constraints we should plan around.\n"
-        f"3. Lock revised terms in writing before next PO cycle.\n\n"
-        f"Tone of the conversation: {req.tone}.\n\n"
-        f"Thanks,\nBakeryPilot Procurement"
-    )
+    price_var = float(sup.price_variance_vs_benchmark or 0.0)
+
+    trigger_kind = _pick_trigger_kind(on_time, window, moq_total, price_var)
+    supporting_data = {
+        "operator_goal": req.goal.strip(),
+        "tone": req.tone,
+        "contact_name": sup.contact_name or "Procurement Team",
+        "on_time_rate_pct": round(on_time * 100, 1),
+        "fill_rate_pct": round(fill * 100, 1),
+        "window_compliance_pct": round(window * 100, 1),
+        "moq_tax_quarter_usd": round(moq_total, 0),
+        "moq_kg": float(sup.moq_kg or 0),
+        "price_variance_vs_benchmark_pct": round(price_var * 100, 2),
+    }
+
+    # Ensure Anthropic key is in env for the agent tool's LLM call
+    os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    from agent.tools.procurement_tools import draft_negotiation
+
+    try:
+        result = await asyncio.to_thread(
+            draft_negotiation.invoke,
+            {
+                "trigger_kind": trigger_kind,
+                "supplier_name": sup.name,
+                "supporting_data": supporting_data,
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"agent draft failed: {exc}") from exc
+
+    body_md = result["body_md"]
+    subject = result["subject"]
 
     draft = NegotiationDraft(
         supplier_id=supplier_id,
-        trigger_kind="agent_negotiation",
+        trigger_kind=trigger_kind,
         body_md=body_md,
     )
     db.add(draft)
     await db.flush()
 
-    subject = f"BakeryPilot negotiation request — {req.goal[:60]}"
     message_id: str | None = None
     if req.record_outbound:
         msg = SupplierMessageORM(
@@ -471,8 +504,8 @@ async def agent_negotiate(
     return NegotiateResponse(
         draft_id=str(draft.draft_id),
         supplier_id=supplier_id,
-        trigger_kind=draft.trigger_kind,
-        body_md=draft.body_md,
+        trigger_kind=trigger_kind,
+        body_md=body_md,
         proposed_subject=subject,
         message_id=message_id,
     )
