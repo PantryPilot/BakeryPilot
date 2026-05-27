@@ -403,7 +403,16 @@ class NegotiateResponse(BaseModel):
     message_id: str | None
 
 
-def _pick_trigger_kind(on_time: float, window: float, moq_total: float, price_var: float) -> str:
+def _pick_trigger_kind(goal: str, on_time: float, window: float, moq_total: float, price_var: float) -> str:
+    """Pick the negotiation trigger. The operator's stated goal wins —
+    keyword match against the goal text first, then fall back to worst-metric."""
+    g = (goal or "").lower()
+    if any(kw in g for kw in ("moq", "minimum order", "min order", "order quantity", "lot size")):
+        return "moq_tax"
+    if any(kw in g for kw in ("price", "rate", "cost", "discount", "markup", "tariff", "rebate")):
+        return "price_drift"
+    if any(kw in g for kw in ("late", "delivery", "window", "on-time", "on time", "schedule", "lead time")):
+        return "late_window"
     if moq_total >= 3000:
         return "moq_tax"
     if on_time < 0.90 or window < 0.85:
@@ -446,7 +455,7 @@ async def agent_negotiate(
     window = float(sup.window_compliance_rate or 0.88)
     price_var = float(sup.price_variance_vs_benchmark or 0.0)
 
-    trigger_kind = _pick_trigger_kind(on_time, window, moq_total, price_var)
+    trigger_kind = _pick_trigger_kind(req.goal, on_time, window, moq_total, price_var)
     supporting_data = {
         "operator_goal": req.goal.strip(),
         "tone": req.tone,
@@ -543,7 +552,7 @@ async def agent_negotiate_stream(
     fill = float(sup.fill_rate or 0.95)
     window = float(sup.window_compliance_rate or 0.88)
     price_var = float(sup.price_variance_vs_benchmark or 0.0)
-    trigger_kind = _pick_trigger_kind(on_time, window, moq_total, price_var)
+    trigger_kind = _pick_trigger_kind(req.goal, on_time, window, moq_total, price_var)
     supplier_name = sup.name
     record_outbound = req.record_outbound
     supporting_data = {
