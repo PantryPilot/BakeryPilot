@@ -289,14 +289,16 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
-        {messages.map((m, i) => (
-          <PopupMessage key={i} m={m} />
-        ))}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+        <div className={expanded ? "max-w-[820px] mx-auto space-y-5" : "space-y-4"}>
+          {messages.map((m, i) => (
+            <PopupMessage key={i} m={m} />
+          ))}
+        </div>
       </div>
 
       <div className="border-t border-slate-800 p-3 shrink-0">
-        <div className="flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition">
+        <div className={`flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
