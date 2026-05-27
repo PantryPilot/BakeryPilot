@@ -7,8 +7,25 @@ import { marked } from "marked";
 import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
+import { ChatSessionList } from "./ChatSessionList";
 import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
 import { useApp } from "../lib/context";
+import {
+  createSession,
+  getCurrentSessionId,
+  loadSession,
+  saveSession,
+  setCurrentSessionId,
+  type ChatSessionMessage,
+} from "../lib/chatSessions";
+import { useDraggable } from "../lib/useDraggable";
+
+const WELCOME_MESSAGE: Message = {
+  role: "assistant",
+  agent: "OrchestratorAgent",
+  text: "Hi. I have full read across plants, suppliers, and orders. What would you like to know?",
+  time: "now",
+};
 
 interface Message {
   role: "user" | "assistant";
@@ -76,25 +93,97 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [sessionListOpen, setSessionListOpen] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionListVersion, setSessionListVersion] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const inflightRef = useRef(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      agent: "OrchestratorAgent",
-      text: "Hi. I have full read across plants, suppliers, and orders. What would you like to know?",
-      time: nowTime(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const draggable = useDraggable({
+    storageKey: "bp-copilot-position-v1",
+    disabled: expanded,
+    width: 380,
+    height: 520,
+  });
+
+  // Restore previous session on mount.
+  useEffect(() => {
+    const existing = getCurrentSessionId();
+    if (existing) {
+      const loaded = loadSession(existing);
+      if (loaded && loaded.messages.length > 0) {
+        setSessionId(existing);
+        setMessages(loaded.messages as Message[]);
+        return;
+      }
+    }
+    // No restorable session — keep welcome in memory; session is created on first message.
+    setSessionId(null);
+  }, []);
+
+  // Persist messages to current session whenever they change in a meaningful way.
+  useEffect(() => {
+    const hasUserContent = messages.some((m) => m.role === "user");
+    if (!hasUserContent) return;
+    const t = setTimeout(() => {
+      const persistable: ChatSessionMessage[] = messages.map((m) => ({
+        role: m.role,
+        agent: m.agent,
+        text: m.text,
+        time: m.time,
+        tools: m.tools,
+        card: m.card ?? null,
+      }));
+      let id = sessionId;
+      if (!id) {
+        const fresh = createSession();
+        id = fresh.id;
+        setSessionId(id);
+      }
+      saveSession({
+        id,
+        title: "",
+        messages: persistable,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      setSessionListVersion((v) => v + 1);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [messages, sessionId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isThinking]);
 
   useEffect(() => () => { cancelStreamRef.current?.(); }, []);
+
+  const handleNewSession = useCallback(() => {
+    cancelStreamRef.current?.();
+    cancelStreamRef.current = null;
+    inflightRef.current = false;
+    setIsThinking(false);
+    setMessages([WELCOME_MESSAGE]);
+    setSessionId(null);
+    setCurrentSessionId(null);
+    setInput("");
+  }, []);
+
+  const handleSelectSession = useCallback((id: string) => {
+    cancelStreamRef.current?.();
+    cancelStreamRef.current = null;
+    inflightRef.current = false;
+    setIsThinking(false);
+    const loaded = loadSession(id);
+    if (!loaded) return;
+    setSessionId(id);
+    setCurrentSessionId(id);
+    setMessages(loaded.messages.length > 0 ? (loaded.messages as Message[]) : [WELCOME_MESSAGE]);
+    setInput("");
+  }, []);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || inflightRef.current) return;
@@ -244,17 +333,27 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
 
   return (
     <div
-      style={{ animation: isClosing ? "popup-out 220ms ease forwards" : "popup-in 220ms ease forwards" }}
+      data-drag-root
+      style={{
+        animation: isClosing ? "popup-out 220ms ease forwards" : "popup-in 220ms ease forwards",
+        ...(!expanded && draggable.position
+          ? { top: draggable.position.y, left: draggable.position.x, right: "auto", bottom: "auto" }
+          : {}),
+      }}
       className={
         expanded
           ? "fixed top-4 left-4 right-4 bottom-4 sm:top-8 sm:left-8 sm:right-8 sm:bottom-8 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
-          : "fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
+          : `fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden ${draggable.dragging ? "select-none" : ""}`
       }
     >
-      <div className="h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
+      <div
+        onPointerDown={expanded ? undefined : draggable.onPointerDown}
+        className={`h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0 ${expanded ? "" : "cursor-move"}`}
+      >
         <div className="flex items-center gap-2">
           <button
             onClick={() => setExpanded(e => !e)}
+            onPointerDown={(e) => e.stopPropagation()}
             className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
             title={expanded ? "Collapse" : "Expand"}
             aria-label={expanded ? "Collapse chat" : "Expand chat"}
@@ -269,12 +368,36 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
               </svg>
             )}
           </button>
+          <button
+            onClick={() => setSessionListOpen(o => !o)}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={`p-1 rounded hover:bg-slate-800 transition ${sessionListOpen ? "text-blue-300 bg-slate-800" : "text-slate-400 hover:text-slate-200"}`}
+            title={sessionListOpen ? "Hide chats" : "Show chats"}
+            aria-label="Toggle chat history"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <button
+            onClick={handleNewSession}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+            title="New chat"
+            aria-label="Start a new chat"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
           <span className="w-6 h-6 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">
             <Icon name="zap" size={12} />
           </span>
           <span className="text-[13px] font-semibold text-slate-100">Copilot</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" onPointerDown={(e) => e.stopPropagation()}>
           {isThinking && (
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -289,11 +412,21 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
-        <div className={expanded ? "max-w-[820px] mx-auto space-y-5" : "space-y-4"}>
-          {messages.map((m, i) => (
-            <PopupMessage key={i} m={m} />
-          ))}
+      <div className="flex-1 flex min-h-0">
+        {sessionListOpen && (
+          <ChatSessionList
+            activeSessionId={sessionId}
+            onSelect={handleSelectSession}
+            onNew={handleNewSession}
+            refreshKey={sessionListVersion}
+          />
+        )}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+          <div className={expanded ? "max-w-[820px] mx-auto space-y-5" : "space-y-4"}>
+            {messages.map((m, i) => (
+              <PopupMessage key={i} m={m} />
+            ))}
+          </div>
         </div>
       </div>
 
