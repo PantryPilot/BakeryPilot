@@ -7,14 +7,17 @@
 #   only the services whose source paths changed since the previous push.
 # - Concurrency lock prevents two pushes from racing on the VM.
 #
-# Path -> service map:
-#   backend/**, agent/**     -> backend  (agent code is embedded in the backend image)
-#   frontend/**              -> frontend (Next.js bundle is baked at build time)
-#   nginx/**                 -> nginx    (config reload, no rebuild)
+# Path -> action map:
+#   backend/**, agent/**     -> rebuild backend  (agent code is embedded in the backend image)
+#   frontend/**              -> rebuild frontend (Next.js bundle is baked at build time)
+#   nginx/**                 -> reload nginx     (config bind-mounted, no rebuild)
 #   docker-compose*.yml,
 #   */Dockerfile,
 #   .env.example             -> rebuild ALL services (safer)
-#   infra/supabase/**        -> warn only; schema changes need manual migration
+#   infra/supabase/schema.sql -> apply schema migration (idempotent: CREATE IF NOT EXISTS / DROP TRIGGER IF EXISTS)
+#   infra/supabase/seed.sql   -> re-apply SQL seed   (idempotent: ON CONFLICT DO NOTHING)
+#   infra/seed_*.py,
+#   infra/event_stream.py    -> warn only; destructive scripts must be run by hand
 #   docs/**, *.md, tests/**,
 #   .github/**               -> sync only; no rebuild
 
@@ -38,6 +41,8 @@ jobs:
     env:
       DEPLOY_DIR: /mnt/BakeryPilot
       COMPOSE: -f docker-compose.yml -f docker-compose.prod.yml
+      PG_USER: bakery
+      PG_DB:   bakery
 
     steps:
       # Detect changed paths against the previous commit. dorny/paths-filter
@@ -68,8 +73,14 @@ jobs:
               - 'backend/Dockerfile'
               - 'frontend/Dockerfile'
               - '.env.example'
-            schema:
-              - 'infra/supabase/**'
+            schema_sql:
+              - 'infra/supabase/schema.sql'
+            seed_sql:
+              - 'infra/supabase/seed.sql'
+            seed_scripts:
+              - 'infra/seed_lots.py'
+              - 'infra/seed_demo.py'
+              - 'infra/event_stream.py'
 
       # Sync the deploy clone to origin/main. This is the "real-time" mirror:
       # whatever is on main is what's on disk. Untracked local files are
@@ -87,24 +98,65 @@ jobs:
       - name: Show what changed
         run: |
           {
-            echo "backend       = ${{ steps.changes.outputs.backend }}"
-            echo "frontend      = ${{ steps.changes.outputs.frontend }}"
-            echo "nginx         = ${{ steps.changes.outputs.nginx }}"
-            echo "rebuild_all   = ${{ steps.changes.outputs.rebuild_all }}"
-            echo "schema (warn) = ${{ steps.changes.outputs.schema }}"
+            echo "backend      = ${{ steps.changes.outputs.backend }}"
+            echo "frontend     = ${{ steps.changes.outputs.frontend }}"
+            echo "nginx        = ${{ steps.changes.outputs.nginx }}"
+            echo "rebuild_all  = ${{ steps.changes.outputs.rebuild_all }}"
+            echo "schema_sql   = ${{ steps.changes.outputs.schema_sql }}"
+            echo "seed_sql     = ${{ steps.changes.outputs.seed_sql }}"
+            echo "seed_scripts = ${{ steps.changes.outputs.seed_scripts }}"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # If schema files changed, we don't auto-migrate. The Postgres init dir
-      # only runs on a fresh volume, so changing schema.sql here is a no-op
-      # until someone runs `make schema.migrate` by hand. Surface it loudly.
-      - name: Warn on schema changes
-        if: steps.changes.outputs.schema == 'true'
-        run: |
-          echo "::warning::infra/supabase/** changed. The Postgres init dir only fires on a fresh volume."
-          echo "::warning::Run \`make schema.migrate\` manually on the VM if you need the change applied."
+      # ---- DB migrations: run BEFORE service rebuilds so new backend code ----
+      # ---- starts against the new schema.                                  ----
 
-      # Path -> action mapping. Each step is conditional and a no-op when the
-      # paths it cares about didn't change.
+      # schema.sql is designed to be re-runnable: every CREATE uses IF NOT EXISTS,
+      # functions use CREATE OR REPLACE, and each trigger is wrapped in a
+      # DROP TRIGGER IF EXISTS ... CREATE TRIGGER ... pair. So applying it on a
+      # populated DB is a no-op for unchanged tables and a forward migration for
+      # new tables / columns / indexes / triggers.
+      - name: Apply schema migration (schema.sql)
+        if: steps.changes.outputs.schema_sql == 'true'
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          echo "::group::Applying infra/supabase/schema.sql"
+          docker compose $COMPOSE exec -T postgres \
+            psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" \
+            -f /docker-entrypoint-initdb.d/schema.sql
+          echo "::endgroup::"
+          echo "::notice::schema.sql applied. Existing tables emit NOTICE (skipping); new objects are created."
+
+      # seed.sql is master/reference data only (facilities, suppliers, ingredients
+      # master, warehouse_costs, etc.). All INSERTs are ON CONFLICT DO NOTHING, so
+      # re-apply is safe but will not OVERWRITE rows whose values changed upstream.
+      # If you need an upsert, change the relevant statement to ON CONFLICT (...) DO UPDATE.
+      - name: Re-apply reference seed (seed.sql)
+        if: steps.changes.outputs.seed_sql == 'true'
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          echo "::group::Applying infra/supabase/seed.sql"
+          docker compose $COMPOSE exec -T postgres \
+            psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" \
+            -f /docker-entrypoint-initdb.d/seed.sql
+          echo "::endgroup::"
+          echo "::notice::seed.sql re-applied. ON CONFLICT DO NOTHING: existing rows kept; new rows inserted."
+
+      # Python seed scripts (seed_lots.py, seed_demo.py) are destructive — they
+      # DELETE the target tables before re-inserting. Auto-running them on every
+      # push would wipe live demo state. Surface the change as a warning instead.
+      - name: Warn on python seed script changes
+        if: steps.changes.outputs.seed_scripts == 'true'
+        run: |
+          echo "::warning::Python seed scripts changed (infra/seed_*.py / infra/event_stream.py)."
+          echo "::warning::These wipe + reseed; not auto-run by CD."
+          echo "::warning::Run manually if needed:"
+          echo "::warning::  cd $DEPLOY_DIR && uv run infra/seed_lots.py"
+          echo "::warning::  cd $DEPLOY_DIR && uv run infra/seed_demo.py"
+
+      # ---- Service rebuilds ----
+      # Each step is conditional and a no-op when its paths didn't change.
 
       - name: Rebuild ALL services (compose / Dockerfile / env shape changed)
         if: steps.changes.outputs.rebuild_all == 'true'
