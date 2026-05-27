@@ -1393,8 +1393,106 @@ export async function agentNegotiateSupplier(
         tone: opts?.tone ?? "firm-but-friendly",
         record_outbound: opts?.record_outbound ?? false,
       }),
-    }
+    },
+    90000,
   );
+}
+
+export interface NegotiationStreamHandlers {
+  onTrigger?: (trigger_kind: string) => void;
+  onChunk: (text: string) => void;
+  onDone: (result: AgentNegotiationResponse & { body_md: string }) => void;
+  onError?: (err: unknown) => void;
+}
+
+/** Open a POST + SSE stream for an agent-drafted negotiation. Returns a cleanup fn. */
+export async function streamNegotiationDraft(
+  supplierId: string,
+  goal: string,
+  opts: { tone?: string; record_outbound?: boolean },
+  handlers: NegotiationStreamHandlers,
+): Promise<() => void> {
+  const ctrl = new AbortController();
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/suppliers/${encodeURIComponent(supplierId)}/negotiate/stream`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goal,
+          tone: opts.tone ?? "firm-but-friendly",
+          record_outbound: opts.record_outbound ?? false,
+        }),
+        signal: ctrl.signal,
+      },
+    );
+    if (!res.ok || !res.body) {
+      handlers.onError?.(new Error(`negotiate stream http ${res.status}`));
+      return () => ctrl.abort();
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let sseEvent = "message";
+    let sseData = "";
+    (async () => {
+      try {
+        outer: while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder
+            .decode(value, { stream: true })
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n");
+          let newline: number;
+          while ((newline = buf.indexOf("\n")) !== -1) {
+            const line = buf.slice(0, newline);
+            buf = buf.slice(newline + 1);
+            if (line === "") {
+              if (sseData) {
+                let payload: Record<string, unknown> = {};
+                try {
+                  payload = JSON.parse(sseData);
+                } catch {
+                  /* ignore */
+                }
+                if (sseEvent === "chunk") {
+                  handlers.onChunk(String(payload.text || ""));
+                } else if (sseEvent === "trigger") {
+                  handlers.onTrigger?.(String(payload.trigger_kind || ""));
+                } else if (sseEvent === "done") {
+                  handlers.onDone({
+                    draft_id: String(payload.draft_id || ""),
+                    supplier_id: supplierId,
+                    trigger_kind: String(payload.trigger_kind || ""),
+                    body_md: String(payload.body_md || ""),
+                    proposed_subject: String(payload.proposed_subject || ""),
+                    message_id: (payload.message_id as string | null) ?? null,
+                  });
+                  break outer;
+                } else if (sseEvent === "error") {
+                  handlers.onError?.(new Error(String(payload.message || "stream error")));
+                  break outer;
+                }
+              }
+              sseEvent = "message";
+              sseData = "";
+            } else if (line.startsWith("event:")) {
+              sseEvent = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+              sseData = line.slice(5).trim();
+            }
+          }
+        }
+      } catch (err) {
+        handlers.onError?.(err);
+      }
+    })();
+  } catch (err) {
+    handlers.onError?.(err);
+  }
+  return () => ctrl.abort();
 }
 
 export interface BackendSupplierOrderDetail {
