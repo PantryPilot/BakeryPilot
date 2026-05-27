@@ -917,6 +917,175 @@ export async function discardNegotiationDraft(
   );
 }
 
+// ---------- Production module ----------
+
+export interface BackendRecipeItem {
+  ingredient_id: string;
+  ingredient_name: string;
+  kg_per_unit: number;
+  total_kg: number;
+}
+
+export interface BackendProduct {
+  sku_id: string;
+  name: string;
+  category: string | null;
+  shelf_life_days: number;
+  allergen_tags: string[];
+  recipe: BackendRecipeItem[];
+}
+
+export interface BackendProductionOrder {
+  order_id: string;
+  facility_id: string;
+  line_id: string;
+  sku_id: string;
+  sku_name: string;
+  quantity_units: number;
+  status: string;
+  planned_start_at: string | null;
+  actual_start_at: string | null;
+  completed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackendProductionLine {
+  line_id: string;
+  facility_id: string;
+  name: string;
+  capacity_kg_per_hour: number;
+  supported_allergen_tags: string[];
+  status: string;
+  current_order: BackendProductionOrder | null;
+}
+
+export interface BackendValidationResult {
+  feasible: boolean;
+  ingredients: {
+    ingredient_id: string;
+    name: string;
+    needed_kg: number;
+    available_kg: number;
+    shortfall_kg: number;
+  }[];
+}
+
+export interface BackendProduceResult {
+  order: BackendProductionOrder;
+  line: BackendProductionLine;
+  pallet_id: string;
+  ingredients_consumed: { ingredient_id: string; name: string; consumed_kg: number }[];
+}
+
+export interface BackendFinishedPallet {
+  pallet_id: string;
+  sku_id: string;
+  sku_name: string;
+  facility_id: string;
+  produced_at: string;
+  shelf_life_days: number;
+  days_remaining: number;
+  quantity: number;
+  status: string;
+}
+
+export async function fetchProductionLines(
+  facilityId?: string,
+): Promise<BackendProductionLine[] | null> {
+  const qs = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
+  return safeFetch<BackendProductionLine[]>(`/api/production/lines${qs}`, undefined, 6000);
+}
+
+export async function fetchProducts(): Promise<BackendProduct[] | null> {
+  return safeFetch<BackendProduct[]>("/api/production/products", undefined, 6000);
+}
+
+export async function fetchProduct(skuId: string): Promise<BackendProduct | null> {
+  return safeFetch<BackendProduct>(`/api/production/products/${encodeURIComponent(skuId)}`);
+}
+
+export async function fetchProductionOrders(params?: {
+  facilityId?: string;
+  lineId?: string;
+  status?: string;
+}): Promise<BackendProductionOrder[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.facilityId) qs.set("facility_id", params.facilityId);
+  if (params?.lineId) qs.set("line_id", params.lineId);
+  if (params?.status) qs.set("status", params.status);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
+  return safeFetch<BackendProductionOrder[]>(`/api/production/orders${q}`, undefined, 6000);
+}
+
+export interface CreateOrderRequest {
+  facility_id: string;
+  line_id: string;
+  sku_id: string;
+  quantity_units: number;
+  planned_start_at?: string;
+  notes?: string;
+}
+
+export async function createProductionOrder(
+  req: CreateOrderRequest,
+): Promise<BackendProductionOrder | null> {
+  return safeFetch<BackendProductionOrder>("/api/production/orders", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateOrderStatus(
+  orderId: string,
+  status: string,
+): Promise<BackendProductionOrder | null> {
+  return safeFetch<BackendProductionOrder>(
+    `/api/production/orders/${encodeURIComponent(orderId)}/status`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+}
+
+export async function cancelProductionOrder(
+  orderId: string,
+): Promise<BackendProductionOrder | null> {
+  return safeFetch<BackendProductionOrder>(
+    `/api/production/orders/${encodeURIComponent(orderId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export async function validateProduction(params: {
+  skuId: string;
+  quantityUnits: number;
+  facilityId: string;
+}): Promise<BackendValidationResult | null> {
+  const qs = new URLSearchParams({
+    sku_id: params.skuId,
+    quantity_units: String(params.quantityUnits),
+    facility_id: params.facilityId,
+  });
+  return safeFetch<BackendValidationResult>(`/api/production/validate?${qs.toString()}`);
+}
+
+export async function markOrderProduced(
+  orderId: string,
+): Promise<BackendProduceResult | null> {
+  return safeFetch<BackendProduceResult>(
+    `/api/production/orders/${encodeURIComponent(orderId)}/produce`,
+    { method: "POST" },
+    10000,
+  );
+}
+
+export async function fetchFinishedGoods(
+  facilityId?: string,
+): Promise<BackendFinishedPallet[] | null> {
+  const qs = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
+  return safeFetch<BackendFinishedPallet[]>(`/api/production/finished${qs}`, undefined, 6000);
+}
+
 // ---------- SSE: chat + events ----------
 
 export interface ChatStreamHandlers {

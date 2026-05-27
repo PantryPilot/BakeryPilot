@@ -67,6 +67,8 @@ class ProductionLine(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     capacity_kg_per_hour: Mapped[float] = mapped_column(Numeric, nullable=False)
     supported_allergen_tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=[])
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="idle")
+    current_order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class Retailer(Base):
@@ -390,3 +392,36 @@ class UserSettings(Base):
     notif_supplier_risk: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notif_yield_anomaly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+
+class InventoryEvent(Base):
+    __tablename__ = "inventory_events"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    lot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ingredient_lots.lot_id"), nullable=False)
+    delta_kg: Mapped[float] = mapped_column(Numeric, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class ProductionOrder(Base):
+    __tablename__ = "production_orders"
+
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    facility_id: Mapped[str] = mapped_column(Text, ForeignKey("facilities.facility_id"), nullable=False)
+    line_id: Mapped[str] = mapped_column(Text, ForeignKey("production_lines.line_id"), nullable=False)
+    sku_id: Mapped[str] = mapped_column(Text, ForeignKey("skus.sku_id"), nullable=False)
+    quantity_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="planned")
+    planned_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actual_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    sku: Mapped["Sku"] = relationship()
+    line: Mapped["ProductionLine"] = relationship()

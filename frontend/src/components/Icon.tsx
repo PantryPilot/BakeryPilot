@@ -50,6 +50,8 @@ export function Icon({ name, size = 16, className = "" }: IconProps) {
     case "database": return <svg {...common}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 5v6c0 1.66-4 3-9 3s-9-1.34-9-3V5"/><path d="M21 11v6c0 1.66-4 3-9 3s-9-1.34-9-3v-6"/></svg>;
     case "sun":      return <svg {...common}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>;
     case "moon":     return <svg {...common}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+    case "factory":  return <svg {...common}><path d="M2 20V8l6 4V8l6 4V4l8 4v12H2z"/><path d="M6 20v-4h3v4M13 20v-4h3v4"/></svg>;
+    case "flask":    return <svg {...common}><path d="M9 3h6M9 3v8l-4 9h14L15 11V3"/><path d="M9 14h6"/></svg>;
     default: return null;
   }
 }

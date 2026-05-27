@@ -15,8 +15,10 @@ import {
   updateIngredient,
   deleteIngredient,
   fetchIngredients,
+  fetchFinishedGoods,
   type BackendSubstitutionCandidate,
   type BackendIngredient,
+  type BackendFinishedPallet,
 } from "../../lib/api";
 
 // ── Toast helper ──────────────────────────────────────────────────────────────
@@ -581,9 +583,157 @@ function LotSlideIn({
   );
 }
 
+// ── Finished Products Tab ─────────────────────────────────────────────────────
+
+const FACILITY_ID_TO_SHORT: Record<string, string> = {
+  "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
+};
+const FACILITY_SHORT_TO_ID: Record<string, string> = {
+  p1: "plant-toronto", p2: "plant-mississauga", p3: "plant-hamilton", p4: "plant-montreal",
+};
+
+function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
+  const [pallets, setPallets] = useState<BackendFinishedPallet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const facilityId = facilityFilter !== "all" ? (FACILITY_SHORT_TO_ID[facilityFilter] ?? undefined) : undefined;
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchFinishedGoods(facilityId).then(data => {
+      setLoading(false);
+      if (!data) { setError("Failed to load finished product inventory."); return; }
+      setPallets(data);
+    });
+  }, [facilityId]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return pallets;
+    const q = query.toLowerCase();
+    return pallets.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
+  }, [pallets, query]);
+
+  const STATUS_COLOR: Record<string, string> = {
+    in_warehouse: "text-emerald-300 bg-emerald-900/30 border-emerald-700/50",
+    shipped: "text-blue-300 bg-blue-900/30 border-blue-700/50",
+    donated: "text-purple-300 bg-purple-900/30 border-purple-700/50",
+    written_off: "text-slate-400 bg-slate-800/40 border-slate-700",
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <span className="w-7 h-7 border-2 border-slate-700 border-t-blue-400 rounded-full animate-spin" />
+          <span className="text-[13px] text-slate-500">Loading finished products…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <Icon name="warn" size={28} className="text-red-400" />
+        <div className="text-[13px] text-slate-400">{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-8">
+          <Icon name="search" size={13} className="text-slate-500" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search product name or SKU…"
+            className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-48"
+          />
+        </div>
+        <span className="text-[12px] text-slate-500">{filtered.length} pallets</span>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-2 mb-4">
+        {filtered.map(p => (
+          <div key={p.pallet_id} className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold text-slate-100 truncate">{p.sku_name}</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{p.sku_id} · {FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</div>
+              </div>
+              <span className={`shrink-0 px-2 py-0.5 rounded-md border text-[10px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                {p.status.replace(/_/g, " ")}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+              <div><span className="text-slate-500">Qty </span><span className="text-slate-300 font-mono">{p.quantity.toLocaleString()}</span></div>
+              <div><span className="text-slate-500">Shelf </span><span className={`font-mono ${p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}`}>{p.days_remaining}d left</span></div>
+              <div><span className="text-slate-500">Produced </span><span className="text-slate-400">{new Date(p.produced_at).toLocaleDateString()}</span></div>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="py-10 text-center text-[13px] text-slate-500">No finished products found.</div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden sm:block rounded-lg border border-slate-800 overflow-hidden">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-slate-800 bg-slate-900/60">
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Product</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">SKU</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Facility</th>
+              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Qty</th>
+              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Shelf life</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Produced</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((p, i) => (
+              <tr key={p.pallet_id} className={`border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition ${i % 2 === 0 ? "" : "bg-slate-900/20"}`}>
+                <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
+                <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
+                <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono">
+                  <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
+                    {p.days_remaining}d
+                  </span>
+                  <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
+                </td>
+                <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                <td className="px-4 py-2.5">
+                  <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                    {p.status.replace(/_/g, " ")}
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MaterialsPage() {
   const { openChatContext } = useApp();
+  const [activeTab, setActiveTab] = useState<"ingredients" | "finished">("ingredients");
   const [facility, setFacility] = useState("all");
   const [storage, setStorage] = useState("All");
   const [risk, setRisk] = useState("All");
@@ -674,21 +824,51 @@ export default function MaterialsPage() {
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Inventory"
-          sub={`${mergedLots.length} active lots · ${mergedLots.filter(l => l.status === "critical").length} critical · ${mergedLots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`}
+          sub={activeTab === "ingredients"
+            ? `${mergedLots.length} active lots · ${mergedLots.filter(l => l.status === "critical").length} critical · ${mergedLots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`
+            : "Finished product inventory from production runs"
+          }
           right={
             <div className="flex items-center gap-2">
-              <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2">
-                <Icon name="settings" size={13}/> Ingredients
-              </button>
-              <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2">
-                + Add Lot
-              </button>
+              {activeTab === "ingredients" && (
+                <>
+                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2">
+                    <Icon name="settings" size={13}/> Ingredients
+                  </button>
+                  <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2">
+                    + Add Lot
+                  </button>
+                </>
+              )}
               <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
                 <Icon name="chat" size={13}/> Ask copilot
               </button>
             </div>
           }
         />
+
+        {/* Tab strip */}
+        <div className="flex items-center gap-1 mb-5 border-b border-slate-800">
+          {([["ingredients", "Ingredients"], ["finished", "Finished Products"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === id
+                  ? "border-blue-500 text-blue-300"
+                  : "border-transparent text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "finished" && (
+          <FinishedProductsTab facilityFilter={facility} />
+        )}
+
+        {activeTab === "ingredients" && (<>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
           <div className="flex flex-wrap items-start gap-3">
@@ -804,6 +984,7 @@ export default function MaterialsPage() {
             ))}
           </div>
         </div>
+        </>)}
       </div>
 
       {activeLot && (

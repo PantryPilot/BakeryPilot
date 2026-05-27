@@ -11,6 +11,7 @@ const NAV = [
   { id: "home",       route: "/",                        label: "Home",       icon: "home"     },
   { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid"     },
   { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box"      },
+  { id: "production", route: "/production",              label: "Production", icon: "factory"  },
   { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
   { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
   { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings" },
@@ -352,8 +353,9 @@ export function TopBar() {
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
         aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        suppressHydrationWarning
       >
-        <span key={theme} className="theme-toggle-icon">
+        <span key={theme} className="theme-toggle-icon" suppressHydrationWarning>
           {theme === "dark" ? <Icon name="moon" size={18}/> : <Icon name="sun" size={18}/>}
         </span>
       </button>
