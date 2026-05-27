@@ -1,0 +1,89 @@
+# Production override for single-VM deployment behind NGINX on :80.
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What this override does:
+#  - Removes public port mappings on postgres/redis/mongo (internal-only).
+#  - Adds backend/frontend Dockerfiles via context = repo root
+#    (required because backend/pyproject.toml path-deps on ../agent).
+#  - Disables the broken `agent` service (its `__main__` is a smoke test
+#    that exits; the agent code is imported in-process by the backend).
+#  - Adds an NGINX container that proxies / -> frontend, /api/* -> backend.
+#  - restart: unless-stopped on every service.
+
+name: bakery-pilot
+
+services:
+  postgres:
+    ports: !reset []
+    restart: unless-stopped
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  mongo:
+    ports: !reset []
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    profiles: !reset []
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: bakery-pilot/backend:local
+    env_file: .env
+    environment:
+      # Inside the docker network the agent's HTTP wrappers call back to the same
+      # backend container, not the public URL.
+      BACKEND_URL: http://backend:8000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bakery}:${POSTGRES_PASSWORD:-bakery}@postgres:5432/${POSTGRES_DB:-bakery}
+      REDIS_URL: redis://redis:6379
+      MONGODB_URL: mongodb://mongo:27017
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    ports: !reset []
+    restart: unless-stopped
+
+  # The dev compose has an `agent` service that runs `python -m agent.graph`.
+  # That entrypoint is a smoke test that prints results and exits, so the
+  # container would crash-loop. The agent code is imported in-process by the
+  # backend (see backend/app/api/chat.py), so no standalone service is needed.
+  agent:
+    profiles: ["disabled"]
+
+  frontend:
+    profiles: !reset []
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # NEXT_PUBLIC_BACKEND_URL is baked into the JS at build time.
+        # It must point at the public URL of NGINX (no port, since NGINX is on :80).
+        NEXT_PUBLIC_BACKEND_URL: ${PUBLIC_ORIGIN:-http://localhost}
+    image: bakery-pilot/frontend:local
+    env_file: .env
+    depends_on:
+      backend: { condition: service_started }
+    ports: !reset []
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      backend:  { condition: service_started }
+      frontend: { condition: service_started }
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      # - "443:443"   # uncomment after wiring TLS (certbot or external terminator)
+    restart: unless-stopped
