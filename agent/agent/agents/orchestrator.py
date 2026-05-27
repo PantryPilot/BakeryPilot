@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import opik
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from agent.config import get_model
+from agent.llm import make_chat_llm
 from agent.prompts.store import get_prompt_store
 from agent.state import AgentState
 
@@ -23,7 +22,7 @@ def classify_intent(state: AgentState) -> AgentState:
     if last_user_msg is None:
         return {**state, "intent": "general"}
 
-    llm = ChatAnthropic(model=get_model("default"), temperature=0)
+    llm = make_chat_llm(temperature=0)
     response = llm.invoke(
         [
             SystemMessage(content=classifier_prompt),

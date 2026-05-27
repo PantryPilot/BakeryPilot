@@ -4,11 +4,11 @@ from typing import Annotated
 
 import httpx
 import opik
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool, ToolException
 
-from agent.config import BACKEND_URL, get_model
+from agent.config import BACKEND_URL
+from agent.llm import make_chat_llm
 from agent.prompts.store import get_prompt_store
 
 
@@ -86,7 +86,7 @@ def draft_negotiation(
 
     store = get_prompt_store()
     system_prompt = store.get("negotiation")
-    llm = ChatAnthropic(model=get_model("negotiation"), temperature=0.3)
+    llm = make_chat_llm(purpose="negotiation", temperature=0.3)
 
     user_msg = (
         f"Trigger: {trigger_kind}\n"

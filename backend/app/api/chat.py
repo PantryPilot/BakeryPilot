@@ -2,13 +2,32 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from langchain_core.messages import AIMessage, HumanMessage
 from sse_starlette.sse import EventSourceResponse
 
-from app.models.chat import ChatRequest
+from app.config import settings
+from app.models.chat import ChatModelInfo, ChatRequest
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def _sync_llm_env() -> None:
+    import os
+
+    os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    if settings.google_api_key:
+        os.environ["GOOGLE_API_KEY"] = settings.google_api_key
+    if settings.groq_api_key:
+        os.environ["GROQ_API_KEY"] = settings.groq_api_key
+
+
+@router.get("/models", response_model=list[ChatModelInfo])
+async def list_chat_models():
+    _sync_llm_env()
+    from agent.llm import list_available_models
+
+    return list_available_models()
 
 
 @router.get("/ping")
@@ -23,10 +42,17 @@ async def chat_ping():
 
 @router.post("")
 async def chat(req: ChatRequest):
-    import os
-    from app.config import settings
-    os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+    _sync_llm_env()
     from agent.graph import _graph
+    from agent.llm import is_model_available, set_request_model
+
+    if req.model and not is_model_available(req.model):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{req.model}' is not available. Check API keys and GET /api/chat/models.",
+        )
+
+    set_request_model(req.model)
 
     async def stream():
         thread_id = str(uuid.uuid4())

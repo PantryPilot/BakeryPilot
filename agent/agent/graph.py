@@ -4,7 +4,6 @@ import os
 import uuid
 
 import opik
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -18,7 +17,8 @@ from agent.agents.scheduler import SchedulerAgent
 from agent.agents.summary import SummaryAgent
 from agent.agents.weekly_plan import WeeklyPlanAgent
 from agent.agents.yield_intel import YieldAgent
-from agent.config import LANGCHAIN_API_KEY, LANGCHAIN_PROJECT, LANGCHAIN_TRACING_V2, get_model
+from agent.config import LANGCHAIN_API_KEY, LANGCHAIN_PROJECT, LANGCHAIN_TRACING_V2
+from agent.llm import make_chat_llm
 from agent.prompts.store import get_prompt_store
 from agent.state import AgentState
 
@@ -57,7 +57,7 @@ def _inventory_node(state: AgentState) -> AgentState:
     facility_id = _get_facility_from_memory(state) or state.get("facility_id")
     if facility_id:
         state = {**state, "facility_id": facility_id}
-    result = _inventory_agent.graph.invoke(state)
+    result = _inventory_agent.run(state)
     _save_facility_to_memory(state, result)
     return result
 
@@ -102,7 +102,7 @@ def _respond_node(state: AgentState) -> AgentState:
 
     store = get_prompt_store()
     system_prompt = store.get("orchestrator")
-    llm = ChatAnthropic(model=get_model("default"), temperature=0)
+    llm = make_chat_llm(temperature=0)
     response = llm.invoke([SystemMessage(content=system_prompt)] + list(messages))
     return {"messages": [response]}
 

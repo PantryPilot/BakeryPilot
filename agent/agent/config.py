@@ -8,6 +8,8 @@ load_dotenv()
 BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
 MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 MONGODB_DB: str = os.getenv("MONGODB_DB", "bakery_pilot")
