@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -103,12 +104,12 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
         messages = final_state.get("messages", [])
         last = messages[-1] if messages else None
         if isinstance(last, AIMessage) and last.content:
-            for line in last.content.splitlines(keepends=True):
+            for token in re.findall(r"\S+|\s+", last.content):
                 yield {
                     "event": "message",
-                    "data": json.dumps({"content": line}),
+                    "data": json.dumps({"content": token}),
                 }
-                await asyncio.sleep(0.008)
+                await asyncio.sleep(0.012)
 
         action_cards = final_state.get("action_cards", [])
         if action_cards:
