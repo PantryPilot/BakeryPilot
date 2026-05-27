@@ -60,7 +60,10 @@ TABLES: dict[str, tuple[str, str]] = {
         VALUES
             (%(line_id)s, %(facility_id)s, %(name)s,
              %(capacity_kg_per_hour)s, %(supported_allergen_tags)s)
-        ON CONFLICT (line_id) DO NOTHING
+        ON CONFLICT (line_id) DO UPDATE SET
+            name                    = EXCLUDED.name,
+            capacity_kg_per_hour    = EXCLUDED.capacity_kg_per_hour,
+            supported_allergen_tags = EXCLUDED.supported_allergen_tags
         """,
     ),
     "warehouse_costs.yaml": (

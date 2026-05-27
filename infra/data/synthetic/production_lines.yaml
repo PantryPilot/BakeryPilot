@@ -10,67 +10,70 @@
 # Schema target: production_lines (line_id, facility_id, name,
 # capacity_kg_per_hour, supported_allergen_tags). FK requires the row's
 # facility_id to exist; seed_toronto_facilities.py runs first.
+#
+# Lines are NOT dedicated to specific products -- any SKU can be scheduled
+# on any line. The name reflects the line identifier only.
 
 production_lines:
   - line_id: line-toronto-1
     facility_id: plant-toronto
-    name: "Toronto Line 1 (Muffin/Bread)"
+    name: "Toronto Line 1"
     capacity_kg_per_hour: 450
     supported_allergen_tags: [gluten, dairy, egg]
     source: engineering_judgment_demo_only
 
   - line_id: line-toronto-2
     facility_id: plant-toronto
-    name: "Toronto Line 2 (Pastry)"
+    name: "Toronto Line 2"
     capacity_kg_per_hour: 320
     supported_allergen_tags: [gluten, dairy, egg, tree_nut]
     source: engineering_judgment_demo_only
 
   - line_id: line-toronto-3
     facility_id: plant-toronto
-    name: "Toronto Line 3 (Cookie)"
+    name: "Toronto Line 3"
     capacity_kg_per_hour: 500
     supported_allergen_tags: [gluten, dairy, egg]
     source: engineering_judgment_demo_only
 
   - line_id: line-mississauga-1
     facility_id: plant-mississauga
-    name: "Mississauga Line 1 (Bagel)"
+    name: "Mississauga Line 1"
     capacity_kg_per_hour: 520
     supported_allergen_tags: [gluten, sesame]
     source: engineering_judgment_demo_only
 
   - line_id: line-mississauga-2
     facility_id: plant-mississauga
-    name: "Mississauga Line 2 (Bread)"
+    name: "Mississauga Line 2"
     capacity_kg_per_hour: 480
     supported_allergen_tags: [gluten]
     source: engineering_judgment_demo_only
 
   - line_id: line-hamilton-1
     facility_id: plant-hamilton
-    name: "Hamilton Line 1 (Muffin)"
+    name: "Hamilton Line 1"
     capacity_kg_per_hour: 440
     supported_allergen_tags: [gluten, dairy, egg]
     source: engineering_judgment_demo_only
 
   - line_id: line-hamilton-2
     facility_id: plant-hamilton
-    name: "Hamilton Line 2 (Cookie)"
+    name: "Hamilton Line 2"
     capacity_kg_per_hour: 510
     supported_allergen_tags: [gluten, dairy, egg]
     source: engineering_judgment_demo_only
 
   - line_id: line-montreal-1
     facility_id: plant-montreal
-    name: "Montreal Line 1 (Croissant)"
+    name: "Montreal Line 1"
     capacity_kg_per_hour: 300
     supported_allergen_tags: [gluten, dairy, egg]
     source: engineering_judgment_demo_only
 
   - line_id: line-montreal-2
     facility_id: plant-montreal
-    name: "Montreal Line 2 (Danish)"
+    name: "Montreal Line 2"
     capacity_kg_per_hour: 290
     supported_allergen_tags: [gluten, dairy, egg, tree_nut]
     source: engineering_judgment_demo_only
