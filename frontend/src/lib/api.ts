@@ -440,10 +440,38 @@ export interface AdminTableRowsResponse {
   total: number;
   page: number;
   per_page: number;
+  active_filters?: Record<string, string>;
+}
+
+export interface AdminTableFilterOption {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface AdminTableFilter {
+  column: string;
+  label: string;
+  options: AdminTableFilterOption[];
+}
+
+export interface AdminTableFiltersResponse {
+  table: string;
+  filters: AdminTableFilter[];
 }
 
 export async function fetchAdminTables(): Promise<AdminTableInfo[] | null> {
   return safeFetch<AdminTableInfo[]>("/api/admin/tables", undefined, 10000);
+}
+
+export async function fetchAdminTableFilters(
+  table: string,
+): Promise<AdminTableFiltersResponse | null> {
+  return safeFetch<AdminTableFiltersResponse>(
+    `/api/admin/tables/${encodeURIComponent(table)}/filters`,
+    undefined,
+    10000,
+  );
 }
 
 export async function fetchAdminTableRows(
@@ -452,12 +480,18 @@ export async function fetchAdminTableRows(
   perPage = 50,
   sort?: string,
   order?: "asc" | "desc",
+  filters?: Record<string, string>,
 ): Promise<AdminTableRowsResponse | null> {
   const qs = new URLSearchParams();
   qs.set("page", String(page));
   qs.set("per_page", String(perPage));
   if (sort) qs.set("sort", sort);
   if (order) qs.set("order", order);
+  if (filters) {
+    for (const [column, value] of Object.entries(filters)) {
+      if (value) qs.set(`filter_${column}`, value);
+    }
+  }
   return safeFetch<AdminTableRowsResponse>(
     `/api/admin/tables/${encodeURIComponent(table)}/rows?${qs.toString()}`,
     undefined,

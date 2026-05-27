@@ -8,6 +8,7 @@ import { providerBadge, type ChatModelOption } from "../../lib/chatModels";
 import {
   fetchAdminTables,
   fetchAdminTableRows,
+  fetchAdminTableFilters,
   fetchAdminCopilotModel,
   updateAdminCopilotModel,
   fetchAdminDataSources,
@@ -16,6 +17,8 @@ import {
   type AdminTableInfo,
   type AdminColumnInfo,
   type AdminTableRowsResponse,
+  type AdminTableFilter,
+  type AdminTableFilterOption,
   type AdminDataSource,
 } from "../../lib/api";
 
@@ -33,6 +36,8 @@ export default function AdminPage() {
   const [sort, setSort] = useState<SortState>(null);
   const [expandedCell, setExpandedCell] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [tableFilterSpecs, setTableFilterSpecs] = useState<AdminTableFilter[]>([]);
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
 
   const perPage = 50;
 
@@ -48,7 +53,12 @@ export default function AdminPage() {
   }, []);
 
   const loadRows = useCallback(
-    async (table: string, p: number, s: SortState) => {
+    async (
+      table: string,
+      p: number,
+      s: SortState,
+      filters: Record<string, string>,
+    ) => {
       setDataLoading(true);
       const data = await fetchAdminTableRows(
         table,
@@ -56,12 +66,18 @@ export default function AdminPage() {
         perPage,
         s?.column,
         s?.order,
+        filters,
       );
       setTableData(data);
       setDataLoading(false);
     },
     [],
   );
+
+  const loadTableFilters = useCallback(async (table: string) => {
+    const data = await fetchAdminTableFilters(table);
+    setTableFilterSpecs(data?.filters ?? []);
+  }, []);
 
   const selectTable = (name: string) => {
     setView("tables");
@@ -70,14 +86,36 @@ export default function AdminPage() {
     setSort(null);
     setExpandedCell(null);
     setSearch("");
-    loadRows(name, 1, null);
+    setActiveFilters({});
+    setTableFilterSpecs([]);
+    loadTableFilters(name);
+    loadRows(name, 1, null, {});
+  };
+
+  const applyFilter = (column: string, value: string) => {
+    if (!activeTable) return;
+    const next = { ...activeFilters };
+    if (value) next[column] = value;
+    else delete next[column];
+    setActiveFilters(next);
+    setPage(1);
+    setExpandedCell(null);
+    loadRows(activeTable, 1, sort, next);
+  };
+
+  const clearFilters = () => {
+    if (!activeTable) return;
+    setActiveFilters({});
+    setPage(1);
+    setExpandedCell(null);
+    loadRows(activeTable, 1, sort, {});
   };
 
   const changePage = (newPage: number) => {
     if (!activeTable) return;
     setPage(newPage);
     setExpandedCell(null);
-    loadRows(activeTable, newPage, sort);
+    loadRows(activeTable, newPage, sort, activeFilters);
   };
 
   const toggleSort = (col: string) => {
@@ -89,7 +127,7 @@ export default function AdminPage() {
     setSort(newSort);
     setPage(1);
     setExpandedCell(null);
-    loadRows(activeTable, 1, newSort);
+    loadRows(activeTable, 1, newSort, activeFilters);
   };
 
   const totalPages = tableData ? Math.max(1, Math.ceil(tableData.total / perPage)) : 1;
@@ -210,6 +248,14 @@ export default function AdminPage() {
               total={tableData?.total ?? 0}
               loading={dataLoading}
             />
+            {tableFilterSpecs.length > 0 && (
+              <TableFilterBar
+                filters={tableFilterSpecs}
+                active={activeFilters}
+                onChange={applyFilter}
+                onClear={clearFilters}
+              />
+            )}
             <div className="flex-1 overflow-auto">
               {dataLoading && !tableData ? (
                 <div className="flex items-center justify-center h-full text-slate-500 text-[13px]">
@@ -354,6 +400,54 @@ function EmptyState() {
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-500">
       <Icon name="database" size={40} className="text-slate-700" />
       <p className="text-[14px]">Select a table to browse its data</p>
+    </div>
+  );
+}
+
+function TableFilterBar({
+  filters,
+  active,
+  onChange,
+  onClear,
+}: {
+  filters: AdminTableFilter[];
+  active: Record<string, string>;
+  onChange: (column: string, value: string) => void;
+  onClear: () => void;
+}) {
+  const hasActive = Object.keys(active).length > 0;
+
+  return (
+    <div className="shrink-0 flex flex-wrap items-center gap-3 px-5 py-3 border-b border-slate-800/80 bg-[#0b0e16]/80">
+      <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold shrink-0">
+        Filters
+      </span>
+      {filters.map((f) => (
+        <label key={f.column} className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-400 shrink-0">{f.label}</span>
+          <select
+            value={active[f.column] ?? ""}
+            onChange={(e) => onChange(f.column, e.target.value)}
+            className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 text-[12px] pl-2 pr-7 py-1.5 outline-none focus:border-blue-500/60 max-w-[220px]"
+          >
+            <option value="">All</option>
+            {f.options.map((opt: AdminTableFilterOption) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label} ({opt.count.toLocaleString()})
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+      {hasActive && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[11px] text-slate-500 hover:text-slate-200 transition"
+        >
+          Clear filters
+        </button>
+      )}
     </div>
   );
 }

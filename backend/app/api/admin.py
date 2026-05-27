@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from app.config import settings
 from app.db.session import get_db
 from app.models.chat import ChatModelInfo
 from app.services import data_refresh
+from app.services.admin_filters import TABLE_FILTER_DEFS, filter_columns_for_table, option_label
 from app.services.app_settings import (
     COPILOT_MODEL_KEY,
     get_copilot_model,
@@ -33,6 +34,24 @@ class TableRowsResponse(BaseModel):
     total: int
     page: int
     per_page: int
+    active_filters: dict[str, str] = {}
+
+
+class TableFilterOption(BaseModel):
+    value: str
+    label: str
+    count: int
+
+
+class TableFilterSpec(BaseModel):
+    column: str
+    label: str
+    options: list[TableFilterOption]
+
+
+class TableFiltersResponse(BaseModel):
+    table: str
+    filters: list[TableFilterSpec]
 
 
 class CopilotModelSettings(BaseModel):
@@ -152,9 +171,77 @@ async def _table_columns(db: AsyncSession, table_name: str) -> list[ColumnInfo]:
     return [ColumnInfo(name=r[0], type=r[1]) for r in result.fetchall()]
 
 
+def _parse_table_filters(table_name: str, query_params) -> dict[str, str]:
+    allowed = filter_columns_for_table(table_name)
+    if not allowed:
+        return {}
+    out: dict[str, str] = {}
+    for key, val in query_params.multi_items():
+        if not key.startswith("filter_") or not val:
+            continue
+        column = key.removeprefix("filter_")
+        if column in allowed:
+            out[column] = val
+    return out
+
+
+def _where_clause(table_name: str, filters: dict[str, str]) -> tuple[str, dict[str, object]]:
+    allowed = filter_columns_for_table(table_name)
+    parts: list[str] = []
+    params: dict[str, object] = {}
+    for i, (column, value) in enumerate(filters.items()):
+        if column not in allowed:
+            continue
+        param = f"filter_{i}"
+        parts.append(f"\"{column}\" = :{param}")
+        params[param] = value
+    if not parts:
+        return "", params
+    return " WHERE " + " AND ".join(parts), params
+
+
+@router.get("/tables/{table_name}/filters", response_model=TableFiltersResponse)
+async def list_table_filters(
+    table_name: str,
+    db: AsyncSession = Depends(get_db),
+) -> TableFiltersResponse:
+    valid_tables = await _public_table_names(db)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    defs = TABLE_FILTER_DEFS.get(table_name, ())
+    filters_out: list[TableFilterSpec] = []
+    for fdef in defs:
+        result = await db.execute(
+            text(
+                f"SELECT \"{fdef.column}\", COUNT(*) "
+                f"FROM \"{table_name}\" "
+                f"GROUP BY 1 ORDER BY 1 NULLS LAST"  # noqa: S608
+            )
+        )
+        options: list[TableFilterOption] = []
+        for row in result.fetchall():
+            if row[0] is None:
+                continue
+            val = str(row[0])
+            options.append(
+                TableFilterOption(
+                    value=val,
+                    label=option_label(table_name, fdef.column, val),
+                    count=int(row[1]),
+                )
+            )
+        filters_out.append(
+            TableFilterSpec(column=fdef.column, label=fdef.label, options=options)
+        )
+
+    return TableFiltersResponse(table=table_name, filters=filters_out)
+
+
 @router.get("/tables/{table_name}/rows", response_model=TableRowsResponse)
 async def list_table_rows(
     table_name: str,
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=500),
     sort: str | None = Query(None),
@@ -165,10 +252,16 @@ async def list_table_rows(
     if table_name not in valid_tables:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
+    active_filters = _parse_table_filters(table_name, request.query_params)
+    where_sql, filter_params = _where_clause(table_name, active_filters)
+
     columns = await _table_columns(db, table_name)
     column_names = {c.name for c in columns}
 
-    count_result = await db.execute(text(f"SELECT COUNT(*) FROM \"{table_name}\""))  # noqa: S608
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) FROM \"{table_name}\"{where_sql}"),  # noqa: S608
+        filter_params,
+    )
     total = count_result.scalar_one()
 
     order_clause = ""
@@ -181,9 +274,10 @@ async def list_table_rows(
         order_clause = f" ORDER BY \"{sort}\" {direction}"
 
     offset = (page - 1) * per_page
+    query_params = {**filter_params, "lim": per_page, "off": offset}
     result = await db.execute(
-        text(f"SELECT * FROM \"{table_name}\"{order_clause} LIMIT :lim OFFSET :off"),  # noqa: S608
-        {"lim": per_page, "off": offset},
+        text(f"SELECT * FROM \"{table_name}\"{where_sql}{order_clause} LIMIT :lim OFFSET :off"),  # noqa: S608
+        query_params,
     )
     raw_rows = result.fetchall()
     col_keys = list(result.keys())
@@ -199,6 +293,7 @@ async def list_table_rows(
         total=total,
         page=page,
         per_page=per_page,
+        active_filters=active_filters,
     )
 
 
