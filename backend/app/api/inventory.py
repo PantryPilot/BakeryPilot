@@ -196,6 +196,8 @@ async def transfer_lot(
         raise HTTPException(404, f"lot {lot_id} not found")
     if lot.quantity_kg <= 0:
         raise HTTPException(400, "lot is already empty")
+    if lot.expiry_date < date.today():
+        raise HTTPException(400, "expired lots cannot be transferred; write off the lot instead")
 
     dest = await db.get(Facility, req.destination_facility_id)
     if not dest:
@@ -208,7 +210,7 @@ async def transfer_lot(
     if transfer_kg <= 0 or transfer_kg > float(lot.quantity_kg):
         raise HTTPException(400, "quantity_kg must be > 0 and <= lot quantity")
 
-    # Append-only inventory event.
+    # Append-only inventory event for the source lot.
     await db.execute(
         text(
             "INSERT INTO inventory_events (kind, lot_id, delta_kg, source, note) "
@@ -221,8 +223,23 @@ async def transfer_lot(
         },
     )
 
-    # Move the lot (full transfer only; partial transfer would require a split).
-    lot.facility_id = req.destination_facility_id
+    full_transfer = transfer_kg >= float(lot.quantity_kg) - 1e-9
+    if full_transfer:
+        lot.facility_id = req.destination_facility_id
+    else:
+        lot.quantity_kg = float(lot.quantity_kg) - transfer_kg
+        new_lot = IngredientLot(
+            facility_id=req.destination_facility_id,
+            ingredient_id=lot.ingredient_id,
+            supplier_id=lot.supplier_id,
+            quantity_kg=transfer_kg,
+            received_date=lot.received_date,
+            expiry_date=lot.expiry_date,
+            storage_zone=lot.storage_zone,
+            unit_cost=lot.unit_cost,
+            lot_code=(lot.lot_code + "-T" if lot.lot_code else None),
+        )
+        db.add(new_lot)
     await db.commit()
     await db.refresh(lot, ["ingredient"])
 
@@ -258,7 +275,7 @@ async def apply_substitution(
         raise HTTPException(404, f"lot {lot_id} not found")
 
     card = ActionCardORM(
-        kind="transfer",
+        kind="schedule_change",
         payload={
             "title": f"Apply substitution for lot {lot_id}",
             "lot_id": lot_id,

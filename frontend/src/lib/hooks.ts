@@ -146,9 +146,11 @@ export function useLotSubstitutions(lotId: string | null): {
 export function useSupplierOrders(supplierId: string | null): {
   data: BackendOrder[];
   status: BackendStatus;
+  refetch: () => void;
 } {
   const [data, setData] = useState<BackendOrder[]>([]);
   const [status, setStatus] = useState<BackendStatus>("loading");
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!supplierId) return;
@@ -165,9 +167,9 @@ export function useSupplierOrders(supplierId: string | null): {
       }
     });
     return () => { alive = false; };
-  }, [supplierId]);
+  }, [supplierId, tick]);
 
-  return { data, status };
+  return { data, status, refetch: () => setTick((t) => t + 1) };
 }
 
 export function useWasteEvents(facilityId?: string): Result<BackendWasteEvent[]> {

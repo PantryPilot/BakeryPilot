@@ -8,7 +8,6 @@ import { useLots, useLotSubstitutions, useIngredients } from "../../lib/hooks";
 import {
   writeOffLot,
   transferLot,
-  applySubstitution,
   createLot,
   deleteLot,
   createIngredient,
@@ -72,7 +71,7 @@ function WriteOffModal({ lot, onClose, onSuccess }: {
       <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <div className="text-[15px] font-semibold text-slate-100">Write off lot</div>
+            <div className="text-[15px] font-semibold text-slate-100">Write-off lot (dispose)</div>
             <div className="text-[12px] font-mono text-slate-500 mt-0.5">{lot.id} · {lot.ingredient}</div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -450,18 +449,15 @@ function IngredientsManagerModal({ onClose }: { onClose: () => void }) {
 
 // ── Lot slide-in ──────────────────────────────────────────────────────────────
 function LotSlideIn({
-  lot, onClose, isClosing, onToast,
+  lot, onClose, isClosing,
 }: {
   lot: Lot;
   onClose: () => void;
   isClosing?: boolean;
   onLotUpdate?: (updated: Lot) => void;
-  onToast: (msg: string, kind: "success" | "error") => void;
 }) {
   const backendLotId = lot.id.toLowerCase();
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
-  const [usingIdx, setUsingIdx] = useState<number | null>(null);
-  const [usedIdx, setUsedIdx] = useState<number | null>(null);
 
   const substitutes = rawSubs.map((s: BackendSubstitutionCandidate, i: number) => ({
     name: s.sku_name,
@@ -472,26 +468,6 @@ function LotSlideIn({
     rank: i + 1,
     sku_id: s.sku_id,
   }));
-
-  const handleUse = async (idx: number, sub: typeof substitutes[0]) => {
-    setUsingIdx(idx);
-    try {
-      const result = await applySubstitution(backendLotId, {
-        substitute_sku_id: sub.sku_id,
-        quantity_kg: lot.qty,
-      });
-      if (!result) {
-        onToast("Failed to apply substitution. Please try again.", "error");
-      } else {
-        setUsedIdx(idx);
-        onToast(`Substitution action card created (${result.action_card_id.slice(0, 8)}…)`, "success");
-      }
-    } catch {
-      onToast("Unexpected error applying substitution.", "error");
-    } finally {
-      setUsingIdx(null);
-    }
-  };
 
   return (
     <div
@@ -543,14 +519,9 @@ function LotSlideIn({
                   <div className="text-[14px] font-mono tabular-nums text-emerald-300">{Math.round(s.compat * 100)}%</div>
                   <div className="text-[10px] text-slate-500">compat</div>
                 </div>
-                <button
-                  onClick={() => handleUse(i, s)}
-                  disabled={usingIdx === i || usedIdx === i}
-                  className="px-2.5 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-60 disabled:cursor-not-allowed text-blue-950 font-semibold text-[12px] flex items-center gap-1.5 transition"
-                >
-                  {usingIdx === i && <span className="w-3 h-3 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
-                  {usedIdx === i ? "Applied" : "Use"}
-                </button>
+                <div className="px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 text-[11px]">
+                  Use in Production
+                </div>
               </div>
             ))}
           </div>
@@ -986,9 +957,15 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
-                <button onClick={() => setTransferLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
-                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                <button
+                  onClick={() => setTransferLotTarget(l)}
+                  disabled={l.status === "expired"}
+                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Transfer
+                </button>
+                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
               </div>
             </div>
           ))}
@@ -1022,9 +999,15 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
-                      <button onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
-                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
+                        disabled={l.status === "expired"}
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Transfer
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
                       <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-500 hover:text-red-400 border border-red-500/30 hover:border-red-500/60">Delete</button>
                     </div>
                   </td>
@@ -1061,7 +1044,6 @@ export default function MaterialsPage() {
             lot={activeLot}
             onClose={closeLot}
             isClosing={lotClosing}
-            onToast={showToast}
           />
         </>
       )}

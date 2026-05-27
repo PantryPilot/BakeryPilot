@@ -80,3 +80,79 @@ async def substitution_candidates(
 
     results.sort(key=lambda x: x["margin_score"], reverse=True)
     return results[:5]
+
+
+async def production_substitution_candidates(
+    requested_units: int,
+    facility_id: str,
+    session: AsyncSession,
+    *,
+    exclude_sku_id: str | None = None,
+) -> list[dict]:
+    """Order-level substitution options for production.
+
+    Returns SKUs that can be produced at the target facility using the full
+    recipe, with achievable quantity computed from current on-hand stock.
+    """
+    if requested_units <= 0:
+        return []
+
+    sku_rows = (
+        await session.execute(
+            select(Sku).options(selectinload(Sku.formulas))
+        )
+    ).scalars().all()
+
+    lots = (
+        await session.execute(
+            select(IngredientLot).where(
+                IngredientLot.facility_id == facility_id,
+                IngredientLot.quantity_kg > 0,
+            )
+        )
+    ).scalars().all()
+    stock_by_ingredient: dict[str, float] = {}
+    for lot in lots:
+        stock_by_ingredient[lot.ingredient_id] = stock_by_ingredient.get(lot.ingredient_id, 0.0) + float(lot.quantity_kg or 0)
+
+    results: list[dict] = []
+    for sku in sku_rows:
+        if exclude_sku_id and sku.sku_id == exclude_sku_id:
+            continue
+        if not sku.formulas:
+            continue
+
+        positive_formulas = [f for f in sku.formulas if float(f.kg_per_unit) > 0]
+        if not positive_formulas:
+            continue
+
+        achievable = int(
+            min(
+                stock_by_ingredient.get(f.ingredient_id, 0.0) / float(f.kg_per_unit)
+                for f in positive_formulas
+            )
+        )
+        if achievable <= 0:
+            continue
+
+        fully_covering = achievable >= requested_units
+        results.append(
+            {
+                "sku_id": sku.sku_id,
+                "sku_name": sku.name,
+                "achievable_quantity": achievable,
+                "covers_requested_units": fully_covering,
+                "margin_score": float(sku.margin_per_unit or 0),
+                "reason": (
+                    f"Can produce requested {requested_units} units with current stock"
+                    if fully_covering
+                    else f"Only {achievable} units possible with current stock"
+                ),
+            }
+        )
+
+    results.sort(
+        key=lambda x: (bool(x["covers_requested_units"]), float(x["margin_score"])),
+        reverse=True,
+    )
+    return results[:5]

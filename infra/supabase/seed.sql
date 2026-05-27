@@ -44,6 +44,78 @@ INSERT INTO suppliers (supplier_id, name, contact_email, payment_terms, contract
   ('sup-newleaf',        'New Leaf Specialty Foods',  'hello@newleaf.example',       '1/15 net-60',  DATE '2027-03-31', 'new')
 ON CONFLICT (supplier_id) DO NOTHING;
 
+-- Contact info enrichment (idempotent).
+UPDATE suppliers SET contact_name = 'Karen Phelps', phone = '+1-204-555-0117',
+       website = 'https://northgrain.example', address = '210 Mill Rd, Winnipeg MB R3B 1G3',
+       notes = 'Primary flour supplier. Pipeline is reliable; volume tier hits at 50t.'
+  WHERE supplier_id = 'sup-northgrain';
+UPDATE suppliers SET contact_name = 'Marco Bellini', phone = '+1-905-555-0298',
+       website = 'https://valleydairy.example', address = '47 Creek Ln, Hamilton ON L8H 5R2',
+       notes = 'Cheap but historically late. Negotiate firmer delivery windows.'
+  WHERE supplier_id = 'sup-valleydairy';
+UPDATE suppliers SET contact_name = 'Sandra Wei', phone = '+1-306-555-0473',
+       website = 'https://prairiebulk.example', address = '1100 Industrial Pkwy, Saskatoon SK S7M 0V1',
+       notes = 'High MOQ; explicit MOQ-tax tracking. Renegotiate tier breakpoints.'
+  WHERE supplier_id = 'sup-prairiebulk';
+UPDATE suppliers SET contact_name = 'Jamal Carter', phone = '+1-604-555-0152',
+       website = 'https://coastal.example', address = '88 Harbour St, Vancouver BC V6B 3K9',
+       notes = 'Disrupted: ongoing weather/yield issues. Hold dual-source plan.'
+  WHERE supplier_id = 'sup-coastalberry';
+UPDATE suppliers SET contact_name = 'Aliya Rahman', phone = '+1-416-555-0631',
+       website = 'https://newleaf.example', address = '512 Queen St W, Toronto ON M5V 2B7',
+       notes = 'New onboarding. Smaller MOQ flexibility, specialty SKUs.'
+  WHERE supplier_id = 'sup-newleaf';
+
+-- Sample supplier_messages so the chat tab isn't empty (idempotent insert
+-- guarded by NOT EXISTS so re-running seed doesn't duplicate).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM supplier_messages WHERE supplier_id = 'sup-northgrain') THEN
+    INSERT INTO supplier_messages (supplier_id, direction, channel, subject, body, author, sent_at) VALUES
+      ('sup-northgrain', 'outbound', 'email', 'Confirming next bread flour PO',
+        'Hi Karen — confirming 24t bread flour for week 22. Please acknowledge ETA.',
+        'demo_user', now() - interval '14 days'),
+      ('sup-northgrain', 'inbound', 'email', 'Re: Confirming next bread flour PO',
+        'Acknowledged — truck departs Friday AM, expected dock at Toronto Tue 7am.',
+        'Karen Phelps', now() - interval '13 days 22 hours'),
+      ('sup-northgrain', 'inbound', 'email', 'Quarterly volume tier review',
+        'Heads up: hitting 50t/quarter unlocks a 1.8% rebate. Currently at 41t.',
+        'Karen Phelps', now() - interval '3 days');
+
+    INSERT INTO supplier_messages (supplier_id, direction, channel, subject, body, author, sent_at) VALUES
+      ('sup-valleydairy', 'outbound', 'email', 'Late delivery — week 19',
+        'Marco, the cream truck was 11h late again. Need a written remediation plan.',
+        'demo_user', now() - interval '21 days'),
+      ('sup-valleydairy', 'inbound', 'email', 'Re: Late delivery — week 19',
+        'Apologies — driver shortage. Offering 2% credit on next two POs.',
+        'Marco Bellini', now() - interval '20 days');
+
+    INSERT INTO supplier_messages (supplier_id, direction, channel, subject, body, author, sent_at) VALUES
+      ('sup-prairiebulk', 'outbound', 'agent', 'MOQ tier renegotiation',
+        'Sandra — Q1 MOQ-tax hit ~$8k due to 20-ton minimum. Proposing 12-ton tier @ matched price.',
+        'ProcurementAgent', now() - interval '7 days'),
+      ('sup-prairiebulk', 'inbound', 'email', 'Re: MOQ tier renegotiation',
+        'Open to 15-ton tier. Can we close on contract amendment by month end?',
+        'Sandra Wei', now() - interval '5 days');
+
+    INSERT INTO supplier_messages (supplier_id, direction, channel, subject, body, author, sent_at) VALUES
+      ('sup-coastalberry', 'inbound', 'email', 'Blueberry yield update',
+        'Heads up — Fraser Valley yields down 14% YoY. We can hold current allocations but no upside.',
+        'Jamal Carter', now() - interval '10 days'),
+      ('sup-coastalberry', 'outbound', 'email', 'Dual-sourcing plan',
+        'Jamal — given the yield warning we are bringing in a secondary supplier for buffer. No volume cut on your side this quarter.',
+        'demo_user', now() - interval '9 days');
+
+    INSERT INTO supplier_messages (supplier_id, direction, channel, subject, body, author, sent_at) VALUES
+      ('sup-newleaf', 'outbound', 'email', 'Onboarding kickoff',
+        'Welcome — first PO will be 200 kg of specialty seeds, dock window Tue/Thu mornings.',
+        'demo_user', now() - interval '4 days'),
+      ('sup-newleaf', 'inbound', 'email', 'Re: Onboarding kickoff',
+        'Thanks! Confirming pricing sheet attached. Insurance + COI by Friday.',
+        'Aliya Rahman', now() - interval '3 days 18 hours');
+  END IF;
+END $$;
+
 -- ============================================================================
 -- F2.3: retailers — 4 sample customers
 -- ============================================================================

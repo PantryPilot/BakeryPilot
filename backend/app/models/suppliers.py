@@ -20,6 +20,25 @@ class Supplier(BaseModel):
     window_compliance_rate: float
     price_variance_vs_benchmark: float
     moq_tax_quarter_usd: float
+    contact_name: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
+class SupplierMessage(BaseModel):
+    message_id: str
+    supplier_id: str
+    direction: str
+    channel: str
+    subject: str | None
+    body: str
+    author: str | None
+    related_order_id: str | None
+    related_negotiation_id: str | None
+    sent_at: str
+    read_at: str | None
 
 
 class MOQTaxEntry(BaseModel):

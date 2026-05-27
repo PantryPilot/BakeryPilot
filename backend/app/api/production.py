@@ -15,6 +15,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    ActionCard as ActionCardORM,
     Facility,
     FinishedGoodsPallet,
     Ingredient,
@@ -26,6 +27,7 @@ from app.db.models import (
     Sku,
 )
 from app.db.session import get_db
+from app.services.substitution import production_substitution_candidates
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 
@@ -77,7 +79,9 @@ class LineRow(BaseModel):
 
 class ValidationResult(BaseModel):
     feasible: bool
-    ingredients: list[dict]  # {ingredient_id, name, needed_kg, available_kg, shortfall_kg}
+    ingredients: list[dict]  # {ingredient_id, name, needed_kg, available_kg, shortfall_kg, transfer_options}
+    transfer_plan: Optional[dict] = None  # order-level coordinated transfer plan covering ALL shortfalls
+    substitute_skus: list[dict] = []  # order-level alternative SKUs producible at this facility
 
 
 class ProduceResult(BaseModel):
@@ -488,29 +492,259 @@ async def validate_production(
 
     formulas = await _get_recipe(db, sku_id)
     if not formulas:
-        return ValidationResult(feasible=True, ingredients=[])
+        return ValidationResult(feasible=True, ingredients=[], transfer_plan=None, substitute_skus=[])
 
     ing_ids = {f.ingredient_id for f in formulas}
     ing_names = await _ingredient_names(db, ing_ids)
 
+    # Compute per-ingredient need / availability locally.
+    needs: list[tuple[str, float, float, float]] = []  # (ingredient_id, needed, available, shortfall)
     feasible = True
-    details: list[dict] = []
     for f in formulas:
         needed = float(f.kg_per_unit) * quantity_units
         available = await _available_kg(db, facility_id, f.ingredient_id)
         shortfall = max(0.0, needed - available)
         if shortfall > 0:
             feasible = False
-        details.append(
-            {
-                "ingredient_id": f.ingredient_id,
-                "name": ing_names.get(f.ingredient_id, f.ingredient_id),
-                "needed_kg": round(needed, 3),
-                "available_kg": round(available, 3),
+        needs.append((f.ingredient_id, needed, available, shortfall))
+
+    # Preload facility names once (for both transfer detail and plan).
+    facility_names = {
+        r.facility_id: r.name
+        for r in (
+            await db.execute(select(Facility.facility_id, Facility.name))
+        ).all()
+    }
+
+    # Cross-facility stock per shorted ingredient (sorted by available desc).
+    shorted_ids = [iid for iid, _, _, sh in needs if sh > 0]
+    cross_stock: dict[str, list[tuple[str, float]]] = {}
+    if shorted_ids:
+        rows = (
+            await db.execute(
+                select(
+                    IngredientLot.ingredient_id,
+                    IngredientLot.facility_id,
+                    func.sum(IngredientLot.quantity_kg).label("available_kg"),
+                ).where(
+                    IngredientLot.ingredient_id.in_(shorted_ids),
+                    IngredientLot.facility_id != facility_id,
+                    IngredientLot.quantity_kg > 0,
+                ).group_by(IngredientLot.ingredient_id, IngredientLot.facility_id)
+            )
+        ).all()
+        for r in rows:
+            qty = float(r.available_kg or 0)
+            if qty <= 0:
+                continue
+            cross_stock.setdefault(r.ingredient_id, []).append((r.facility_id, qty))
+        for iid in cross_stock:
+            cross_stock[iid].sort(key=lambda t: t[1], reverse=True)
+
+    # Build per-ingredient detail (with transparency transfer_options) +
+    # the order-level transfer_plan (greedy allocation across facilities).
+    details: list[dict] = []
+    plan_items: list[dict] = []
+    total_shortfall = 0.0
+    total_covered = 0.0
+
+    for ing_id, needed, available, shortfall in needs:
+        transfer_options: list[dict] = []
+        item_sources: list[dict] = []
+        covered_kg = 0.0
+
+        if shortfall > 0:
+            sources = cross_stock.get(ing_id, [])
+            transfer_options = [
+                {
+                    "from_facility_id": fid,
+                    "from_facility_name": facility_names.get(fid, fid),
+                    "available_kg": round(qty, 3),
+                    "transferable_kg": round(min(qty, shortfall), 3),
+                }
+                for fid, qty in sources
+            ]
+
+            # Greedy allocation across facilities to cover this shortfall.
+            remaining = shortfall
+            for fid, qty in sources:
+                if remaining <= 0:
+                    break
+                take = min(qty, remaining)
+                if take <= 0:
+                    continue
+                item_sources.append({
+                    "from_facility_id": fid,
+                    "from_facility_name": facility_names.get(fid, fid),
+                    "transfer_kg": round(take, 3),
+                })
+                remaining -= take
+                covered_kg += take
+
+            total_shortfall += shortfall
+            total_covered += covered_kg
+            plan_items.append({
+                "ingredient_id": ing_id,
+                "ingredient_name": ing_names.get(ing_id, ing_id),
                 "shortfall_kg": round(shortfall, 3),
-            }
+                "covered_kg": round(covered_kg, 3),
+                "uncovered_kg": round(max(0.0, shortfall - covered_kg), 3),
+                "sources": item_sources,
+            })
+
+        details.append({
+            "ingredient_id": ing_id,
+            "name": ing_names.get(ing_id, ing_id),
+            "needed_kg": round(needed, 3),
+            "available_kg": round(available, 3),
+            "shortfall_kg": round(shortfall, 3),
+            "transfer_options": transfer_options,
+        })
+
+    transfer_plan: Optional[dict] = None
+    if plan_items:
+        transfer_plan = {
+            "fully_covers": all(it["uncovered_kg"] == 0 for it in plan_items),
+            "total_shortfall_kg": round(total_shortfall, 3),
+            "total_covered_kg": round(total_covered, 3),
+            "total_uncovered_kg": round(max(0.0, total_shortfall - total_covered), 3),
+            "items": plan_items,
+        }
+
+    # Order-level substitute SKUs: alternative products producible at this
+    # facility using current local stock (full-recipe satisfied).
+    substitute_skus: list[dict] = []
+    if not feasible:
+        subs = await production_substitution_candidates(
+            quantity_units, facility_id, db, exclude_sku_id=sku_id,
         )
-    return ValidationResult(feasible=feasible, ingredients=details)
+        substitute_skus = [
+            {
+                "sku_id": s["sku_id"],
+                "sku_name": s["sku_name"],
+                "achievable_quantity": int(s.get("achievable_quantity", 0)),
+                "covers_requested_units": bool(s.get("covers_requested_units", False)),
+                "reason": s.get("reason", ""),
+            }
+            for s in subs
+        ]
+
+    return ValidationResult(
+        feasible=feasible,
+        ingredients=details,
+        transfer_plan=transfer_plan,
+        substitute_skus=substitute_skus,
+    )
+
+
+class TransferRequestCardIn(BaseModel):
+    facility_id: str
+    ingredient_id: str
+    from_facility_id: str
+    quantity_kg: float = Field(..., gt=0)
+    requested_by_sku_id: str
+    requested_units: int = Field(..., gt=0)
+
+
+class TransferPlanItemIn(BaseModel):
+    ingredient_id: str
+    from_facility_id: str
+    quantity_kg: float = Field(..., gt=0)
+
+
+class TransferPlanRequestIn(BaseModel):
+    facility_id: str
+    requested_by_sku_id: str
+    requested_units: int = Field(..., gt=0)
+    items: list[TransferPlanItemIn]
+
+
+class SubstitutionRequestCardIn(BaseModel):
+    facility_id: str
+    substitute_sku_id: str
+    requested_by_sku_id: str
+    requested_units: int = Field(..., gt=0)
+    blocked_ingredient_ids: list[str] = []  # informational
+
+
+@router.post("/shortfalls/request_transfer", response_model=dict)
+async def request_shortfall_transfer(
+    req: TransferRequestCardIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    card = ActionCardORM(
+        kind="transfer",
+        payload={
+            "title": f"Transfer {req.ingredient_id} to {req.facility_id}",
+            "facility_id": req.facility_id,
+            "ingredient_id": req.ingredient_id,
+            "from_facility_id": req.from_facility_id,
+            "quantity_kg": req.quantity_kg,
+            "requested_by_sku_id": req.requested_by_sku_id,
+            "requested_units": req.requested_units,
+            "agent": "ProductionAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {"action_card_id": str(card.card_id)}
+
+
+@router.post("/shortfalls/request_transfer_plan", response_model=dict)
+async def request_shortfall_transfer_plan(
+    req: TransferPlanRequestIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a single action card representing a multi-ingredient, multi-source
+    transfer plan to resolve shortfalls for a production order."""
+    if not req.items:
+        raise HTTPException(400, "transfer plan must contain at least one item")
+    card = ActionCardORM(
+        kind="transfer",
+        payload={
+            "title": f"Transfer plan for {req.requested_by_sku_id} ({len(req.items)} ingredient(s))",
+            "facility_id": req.facility_id,
+            "requested_by_sku_id": req.requested_by_sku_id,
+            "requested_units": req.requested_units,
+            "items": [
+                {
+                    "ingredient_id": it.ingredient_id,
+                    "from_facility_id": it.from_facility_id,
+                    "quantity_kg": it.quantity_kg,
+                }
+                for it in req.items
+            ],
+            "agent": "ProductionAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {"action_card_id": str(card.card_id)}
+
+
+@router.post("/shortfalls/request_substitution", response_model=dict)
+async def request_shortfall_substitution(
+    req: SubstitutionRequestCardIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    card = ActionCardORM(
+        kind="schedule_change",
+        payload={
+            "title": f"Substitute {req.requested_by_sku_id} → {req.substitute_sku_id}",
+            "facility_id": req.facility_id,
+            "substitute_sku_id": req.substitute_sku_id,
+            "requested_by_sku_id": req.requested_by_sku_id,
+            "requested_units": req.requested_units,
+            "blocked_ingredient_ids": req.blocked_ingredient_ids,
+            "agent": "ProductionAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {"action_card_id": str(card.card_id)}
 
 
 # ---------------------------------------------------------------------------
