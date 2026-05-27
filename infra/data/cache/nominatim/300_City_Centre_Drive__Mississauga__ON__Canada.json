@@ -1,0 +1,23 @@
+{
+  "data": {
+    "address": {
+      "ISO3166-2-lvl4": "CA-ON",
+      "amenity": "Mississauga Civic Centre",
+      "city": "Mississauga",
+      "country": "Canada",
+      "country_code": "ca",
+      "county": "Peel Region",
+      "house_number": "300",
+      "postcode": "L5B 3C9",
+      "road": "City Centre Drive",
+      "state": "Ontario",
+      "state_district": "Golden Horseshoe",
+      "suburb": "City Centre"
+    },
+    "display_name": "Mississauga Civic Centre, 300, City Centre Drive, City Centre, Mississauga, Peel Region, Golden Horseshoe, Ontario, L5B 3C9, Canada",
+    "lat": 43.5889446,
+    "lng": -79.6446182
+  },
+  "fetched_at": "2026-05-27T00:08:24Z",
+  "source_url": "https://nominatim.openstreetmap.org/search?q=300+City+Centre+Drive%2C+Mississauga%2C+ON%2C+Canada&format=json&limit=1&addressdetails=1"
+}

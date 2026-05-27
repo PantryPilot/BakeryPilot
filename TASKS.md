@@ -1280,6 +1280,41 @@ not an atomic task -- if pulled in, decompose into the same `F/NF` task format.
 **Files:** `backend/app/services/notification_analytics.py` (NEW), `frontend/src/app/scorecard/notifications.tsx` (NEW)
 **Sizing:** ~2 days for the basic dashboard; Gmail-send-detection requires Gmail webhook setup (~1 day extra).
 
+### S.7 [M3] Disruption signals via 4 public APIs (BoC + StatsCan + Environment Canada + News RSS)
+
+**What:** Replace the seeded `disruption_signals` rows with a continuous live-fetch pipeline. Four new `infra/fetchers/` modules — Bank of Canada Valet (FX rates), StatsCan WDS (CPI food categories), Environment Canada RSS (ON/QC weather alerts), and a public news RSS — refresh every few minutes and write into `disruption_signals`. Each signal carries its public source URL so an analyst can audit it back to the regulator/bureau.
+**Why:** Today's signals are a hardcoded snapshot in `seed.sql`. A procurement copilot that reacts to *real* BoC FX moves and *real* Environment Canada storm warnings is a categorically stronger pitch than one reading mock data. Also the highest-impact next test of the live-fetcher framework — exercises the continuous-refresh path that today's seed-time fetchers (Nominatim, FGF) never hit.
+**Files:** `infra/fetchers/boc_valet.py` (NEW), `infra/fetchers/statscan_wds.py` (NEW), `infra/fetchers/env_canada.py` (NEW), `infra/fetchers/news_rss.py` (NEW), `infra/seed_disruption_signals.py` (NEW), refresh hook in `infra/event_stream.py`.
+**Sizing:** ~2 days (each source is keyless and well-documented JSON or RSS).
+
+### S.8 [M3] Ingredients via USDA FoodData Central
+
+**What:** Replace the 90-row hardcoded `INSERT INTO ingredients` block in `seed.sql` with a live fetch from USDA FoodData Central (`api.nal.usda.gov/fdc/v1/foods/search`). Each ingredient row pulls its category, allergen tags, and shelf-life-relevant nutrition fields from FDC; the framework caches snapshots so repeat seeds are offline-friendly.
+**Why:** Cheapest live-fetcher win — USDA FDC is keyless for v1 endpoints, public, and JSON-only. Strips the largest single hardcoded block from `seed.sql` and lets the ingredient list stay current with USDA additions over time.
+**Files:** `infra/fetchers/usda.py` (NEW), `infra/seed_ingredients.py` (NEW), strip ingredients block from `infra/supabase/seed.sql`, update `make schema.seed` chain to insert it before facilities/synthetic seeds.
+**Sizing:** ~1 day.
+
+### S.9 [M3] SKUs via FGF brand HTML scrapers
+
+**What:** Replace the curated branded-SKU list in `seed_toronto_skus.py` with one HTML scraper per public brand site: `acebakery.com`, `stonefire.com`, `casamendosa.ca`. Each scraper finds product cards on the brand's catalog page and emits `(name, category, allergen_tags, pack_size)`. Wonder / D'Italiano / Country Harvest don't have public product pages — flag those explicitly as "no public source" and keep their rows in attributed `infra/data/synthetic/skus.yaml`.
+**Why:** The SKU catalog is hand-curated today and goes stale the moment a brand launches a new product. Scrapers keep the catalog current and prove the framework on three different real-world page shapes — useful as a template for follow-up brand integrations.
+**Files:** `infra/fetchers/brands/ace_bakery.py` (NEW), `infra/fetchers/brands/stonefire.py` (NEW), `infra/fetchers/brands/casa_mendosa.py` (NEW), refactor `infra/seed_toronto_skus.py` to read scrapers, `infra/data/synthetic/skus.yaml` (NEW) for the three brands without public catalogs.
+**Sizing:** ~1.5 days.
+
+### S.10 [M3] Retailers via parent-company directory scrapers
+
+**What:** Replace the 4 hardcoded retailer rows with directory scrapers that pull banner inventory from each retailer's parent company: Loblaw Companies (Loblaws / No Frills / Shoppers / etc.), Empire Company (Sobeys / FreshCo / etc.), Metro Inc. The scrapers populate `retailers` with the full banner roster instead of a hand-picked subset.
+**Why:** Demo today shows 4 retailers; the real Canadian retail landscape is dozens. A live-fetched banner directory makes the FlowSight retailer rail more credible and exercises the framework on three more page shapes.
+**Files:** `infra/fetchers/retailers/loblaw.py` (NEW), `infra/fetchers/retailers/empire.py` (NEW), `infra/fetchers/retailers/metro.py` (NEW), refactor `infra/seed_toronto_retailers.py` to use them.
+**Sizing:** ~1 day.
+
+### S.11 [M3] Per-supplier HTML scrapers
+
+**What:** For each of the 12 demo suppliers, write a per-site scraper that pulls the supplier's name, contact email, address, and phone from their own contact / about page. Replaces the hardcoded supplier rows in `seed.sql` and the enrichment hardcoded in `seed_toronto_suppliers.py`. Some sites (e.g. Sysco enterprise) likely forbid scraping; those fall back to a manual snapshot file with explicit attribution and a `scraping_forbidden: true` flag the agent surfaces.
+**Why:** Supplier directories drift constantly. Scraping the canonical source-of-truth means a supplier rebrand or contact change shows up next seed run. Also flushes out which suppliers actively forbid scraping — useful intelligence for the negotiation-draft tone.
+**Files:** `infra/fetchers/suppliers/*.py` (12 new modules), refactor `infra/seed_toronto_suppliers.py` to use them, attributed-snapshot fallback (`infra/data/manual_snapshots/suppliers/`) for sites whose ToS forbids automated access.
+**Sizing:** ~3 days, more if multiple sites require ToS review.
+
 ---
 
 # Assignment summary
@@ -1639,3 +1674,8 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | S.4 | M3+M5 | Real ERP integration playbook | ~2d + 1d/integration |
 | S.5 | M5+M4 | Floor-worker mobile PWA | ~3-4d |
 | S.6 | M3+M2 | Outbound notification analytics | ~2-3d |
+| S.7 | M3 | Disruption signals via 4 public APIs (BoC + StatsCan + EnvCanada + News RSS) | ~2d |
+| S.8 | M3 | Ingredients via USDA FoodData Central | ~1d |
+| S.9 | M3 | SKUs via FGF brand HTML scrapers | ~1.5d |
+| S.10 | M3 | Retailers via parent-company directory scrapers | ~1d |
+| S.11 | M3 | Per-supplier HTML scrapers | ~3d |

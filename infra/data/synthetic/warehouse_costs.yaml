@@ -1,0 +1,88 @@
+# Warehouse storage costs per facility per storage type.
+#
+# This data has no public machine-readable source. Per-plant storage
+# cost rates are internal procurement / operations data not disclosed
+# in any FGF Brands public document. Values below are calibrated against
+# typical North American 3PL industry norms (~$0.01-0.013 / kg / day for
+# frozen, ~$0.007-0.008 for refrigerated, ~$0.002-0.003 for dry) and
+# reflect engineering-judgment proxies for the four FGF plants.
+#
+# Every row carries `source: engineering_judgment_demo_only` so observers
+# can audit-trail it as non-real.
+#
+# Schema target: warehouse_costs (facility_id, storage_type,
+# cost_per_kg_per_day, capacity_kg). FK requires the facility_id to
+# exist; seed_toronto_facilities.py runs first.
+
+warehouse_costs:
+  - facility_id: plant-toronto
+    storage_type: frozen
+    cost_per_kg_per_day: 0.0120
+    capacity_kg: 120000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-toronto
+    storage_type: refrigerated
+    cost_per_kg_per_day: 0.0080
+    capacity_kg: 60000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-toronto
+    storage_type: dry
+    cost_per_kg_per_day: 0.0025
+    capacity_kg: 250000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-mississauga
+    storage_type: frozen
+    cost_per_kg_per_day: 0.0115
+    capacity_kg: 90000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-mississauga
+    storage_type: refrigerated
+    cost_per_kg_per_day: 0.0078
+    capacity_kg: 50000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-mississauga
+    storage_type: dry
+    cost_per_kg_per_day: 0.0024
+    capacity_kg: 200000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-hamilton
+    storage_type: frozen
+    cost_per_kg_per_day: 0.0118
+    capacity_kg: 80000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-hamilton
+    storage_type: refrigerated
+    cost_per_kg_per_day: 0.0079
+    capacity_kg: 45000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-hamilton
+    storage_type: dry
+    cost_per_kg_per_day: 0.0026
+    capacity_kg: 180000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-montreal
+    storage_type: frozen
+    cost_per_kg_per_day: 0.0125
+    capacity_kg: 70000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-montreal
+    storage_type: refrigerated
+    cost_per_kg_per_day: 0.0082
+    capacity_kg: 40000
+    source: engineering_judgment_demo_only
+
+  - facility_id: plant-montreal
+    storage_type: dry
+    cost_per_kg_per_day: 0.0027
+    capacity_kg: 160000
+    source: engineering_judgment_demo_only

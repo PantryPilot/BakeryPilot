@@ -1,17 +1,36 @@
 -- BakeryPilot deterministic seed data.
 -- Idempotent: every INSERT uses ON CONFLICT DO NOTHING so re-running is safe.
--- Faker-generated rows (ingredient_lots, etc.) live in infra/seed_lots.py.
-
+--
 -- ============================================================================
--- F1.6: facilities — 4 FGF Brands Canadian plants
+-- New seed flow (post live-fetcher refactor)
 -- ============================================================================
-
-INSERT INTO facilities (facility_id, name, city, province, timezone, cold_capacity_kg, dry_capacity_kg) VALUES
-  ('plant-toronto',     'FGF Toronto (Etobicoke)', 'Etobicoke',   'ON', 'America/Toronto',  120000, 250000),
-  ('plant-mississauga', 'FGF Mississauga',         'Mississauga', 'ON', 'America/Toronto',   90000, 200000),
-  ('plant-hamilton',    'FGF Hamilton',            'Hamilton',    'ON', 'America/Toronto',   80000, 180000),
-  ('plant-montreal',    'FGF Montreal',            'Montreal',    'QC', 'America/Montreal',  70000, 160000)
-ON CONFLICT (facility_id) DO NOTHING;
+--
+-- This file no longer covers every table. Tables whose values come from a
+-- public source (geocoded coordinates, scraped contact details) are seeded
+-- by Python scripts that fetch live and cache snapshots. Tables whose values
+-- have no public source (engineering operations data) live in attributed
+-- YAML config under infra/data/synthetic/ and are seeded by a separate
+-- script. This split makes the synthetic-vs-real distinction explicit in
+-- source control.
+--
+-- Full bootstrap order (chained by `make schema.seed`):
+--   1. This file                      -- ingredients, suppliers, retailers,
+--                                        skus, retailer_orders
+--   2. infra/seed_toronto_facilities  -- facilities (live fetched: FGF
+--                                        contact page + Nominatim geocoder,
+--                                        cache snapshots in infra/data/cache/)
+--   3. infra/seed_synthetic           -- production_lines, warehouse_costs,
+--                                        allergen_changeovers,
+--                                        production_formulas
+--                                        (engineering_judgment_demo_only)
+--   4. infra/seed_lots                -- ingredient_lots (Faker-generated
+--                                        from a fixed seed; FK to facilities,
+--                                        suppliers, ingredients)
+--
+-- Faker-generated rows live in infra/seed_lots.py.
+-- See infra/data/synthetic/*.yaml for the four moved tables and
+-- infra/data/demo_placeholders/facilities.yaml for facility operational
+-- defaults that feed the live fetcher.
 
 -- ============================================================================
 -- F1.6: suppliers — one per personality (reliable / cheap_late / high_moq / disrupted / new)
@@ -26,26 +45,6 @@ INSERT INTO suppliers (supplier_id, name, contact_email, payment_terms, contract
 ON CONFLICT (supplier_id) DO NOTHING;
 
 -- ============================================================================
--- F1.6: warehouse_costs — 4 facilities x 3 storage types = 12 rows
---   Values in $CAD per kg per day, calibrated against industry norms for cold/dry storage.
--- ============================================================================
-
-INSERT INTO warehouse_costs (facility_id, storage_type, cost_per_kg_per_day, capacity_kg) VALUES
-  ('plant-toronto',     'frozen',       0.0120, 120000),
-  ('plant-toronto',     'refrigerated', 0.0080,  60000),
-  ('plant-toronto',     'dry',          0.0025, 250000),
-  ('plant-mississauga', 'frozen',       0.0115,  90000),
-  ('plant-mississauga', 'refrigerated', 0.0078,  50000),
-  ('plant-mississauga', 'dry',          0.0024, 200000),
-  ('plant-hamilton',    'frozen',       0.0118,  80000),
-  ('plant-hamilton',    'refrigerated', 0.0079,  45000),
-  ('plant-hamilton',    'dry',          0.0026, 180000),
-  ('plant-montreal',    'frozen',       0.0125,  70000),
-  ('plant-montreal',    'refrigerated', 0.0082,  40000),
-  ('plant-montreal',    'dry',          0.0027, 160000)
-ON CONFLICT (facility_id, storage_type) DO NOTHING;
-
--- ============================================================================
 -- F2.3: retailers — 4 sample customers
 -- ============================================================================
 
@@ -55,41 +54,6 @@ INSERT INTO retailers (retailer_id, name, edi_endpoint) VALUES
   ('loblaws',    'Loblaws Companies Ltd.',     'https://edi-mock.local/loblaws'),
   ('wholefoods', 'Whole Foods Market Canada',  'https://edi-mock.local/wholefoods')
 ON CONFLICT (retailer_id) DO NOTHING;
-
--- ============================================================================
--- F2.6: allergen_changeovers — minutes lost per transition between allergen classes
---   Self-transitions are 0; transitions involving major allergens incur deep-clean time.
--- ============================================================================
-
-INSERT INTO allergen_changeovers (from_allergen, to_allergen, changeover_minutes) VALUES
-  ('none',     'none',     0),
-  ('gluten',   'gluten',   0),
-  ('dairy',    'dairy',    0),
-  ('egg',      'egg',      0),
-  ('tree_nut', 'tree_nut', 0),
-  ('peanut',   'peanut',   0),
-  ('sesame',   'sesame',   0),
-  ('none',     'gluten',   15),
-  ('none',     'dairy',    15),
-  ('none',     'egg',      15),
-  ('none',     'tree_nut', 60),
-  ('none',     'peanut',   90),
-  ('none',     'sesame',   45),
-  ('gluten',   'none',     45),
-  ('dairy',    'none',     30),
-  ('egg',      'none',     30),
-  ('tree_nut', 'none',     120),
-  ('peanut',   'none',     180),
-  ('sesame',   'none',     60),
-  ('gluten',   'dairy',    30),
-  ('dairy',    'gluten',   30),
-  ('tree_nut', 'peanut',   60),
-  ('peanut',   'tree_nut', 60),
-  ('gluten',   'tree_nut', 90),
-  ('tree_nut', 'gluten',   120),
-  ('peanut',   'gluten',   180),
-  ('gluten',   'peanut',   90)
-ON CONFLICT (from_allergen, to_allergen) DO NOTHING;
 
 -- ============================================================================
 -- ingredients — USDA-informed master, 90 bakery-relevant items
@@ -192,133 +156,26 @@ INSERT INTO ingredients (ingredient_id, name, category, default_storage_zone, sh
 ON CONFLICT (ingredient_id) DO NOTHING;
 
 -- ============================================================================
--- skus — 12 finished bakery products with realistic margins
+-- skus — 12 real FGF Brands SKUs across six labels (ACE Bakery, Stonefire,
+--   Wonder, D'Italiano, Country Harvest, Casa Mendosa). Margins, allergens,
+--   and shelf life calibrated against each brand's published product line.
+--   Source-of-truth seed for the same data is infra/seed_toronto_skus.py.
 -- ============================================================================
 
 INSERT INTO skus (sku_id, name, category, margin_per_unit, allergen_tags, shelf_life_days) VALUES
-  ('sku-blueberry-muffin-4pk',  'Blueberry Muffin 4-pack',         'muffin',    1.20, '{gluten,dairy,egg}',         5),
-  ('sku-lemon-poppy-muffin-4pk','Lemon Poppy Seed Muffin 4-pack',  'muffin',    1.15, '{gluten,dairy,egg}',         5),
-  ('sku-choc-chip-muffin-4pk',  'Chocolate Chip Muffin 4-pack',    'muffin',    1.25, '{gluten,dairy,egg}',         5),
-  ('sku-banana-bread-loaf',     'Banana Bread Loaf',               'bread',     1.80, '{gluten,dairy,egg}',         7),
-  ('sku-cinnamon-roll-6pk',     'Cinnamon Roll 6-pack',            'pastry',    2.10, '{gluten,dairy,egg}',         5),
-  ('sku-croissant-butter-4pk',  'Butter Croissant 4-pack',         'pastry',    2.40, '{gluten,dairy,egg}',         3),
-  ('sku-bagel-plain-6pk',       'Plain Bagel 6-pack',              'bread',     0.95, '{gluten}',                   7),
-  ('sku-bagel-sesame-6pk',      'Sesame Bagel 6-pack',             'bread',     1.05, '{gluten,sesame}',            7),
-  ('sku-sourdough-loaf',        'Sourdough Bread Loaf',            'bread',     1.65, '{gluten}',                   7),
-  ('sku-choc-chip-cookie-12pk', 'Chocolate Chip Cookie 12-pack',   'cookie',    1.40, '{gluten,dairy,egg}',         14),
-  ('sku-oatmeal-cookie-12pk',   'Oatmeal Raisin Cookie 12-pack',   'cookie',    1.35, '{gluten,dairy,egg}',         14),
-  ('sku-almond-danish-4pk',     'Almond Danish 4-pack',            'pastry',    2.25, '{gluten,dairy,egg,tree_nut}', 4)
+  ('sku-ace-baguette-classic',          'ACE White Baguette',                  'bread',     1.65, '{gluten}',         4),
+  ('sku-ace-rustic-italian-oval',       'ACE Rustic Italian Oval Loaf',        'bread',     1.85, '{gluten}',         5),
+  ('sku-ace-rosemary-focaccia',         'ACE Rosemary Focaccia',               'bread',     2.10, '{gluten}',         4),
+  ('sku-ace-ciabatta-piccolo-6pk',      'ACE Ciabatta Piccolo 6-pack',         'bread',     1.55, '{gluten}',         5),
+  ('sku-ace-sourdough-bistro',          'ACE Sourdough Bistro Loaf',           'bread',     1.95, '{gluten}',         6),
+  ('sku-stonefire-original-naan-2pk',   'Stonefire Original Naan 2-pack',      'flatbread', 1.40, '{gluten,dairy}',   7),
+  ('sku-stonefire-mini-naan-8pk',       'Stonefire Mini Naan 8-pack',          'flatbread', 1.60, '{gluten,dairy}',   7),
+  ('sku-stonefire-naan-dippers-original','Stonefire Naan Dippers Original',    'flatbread', 1.30, '{gluten,dairy}',  14),
+  ('sku-stonefire-pizza-crust-2pk',     'Stonefire Artisan Pizza Crust 2-pack','flatbread', 1.75, '{gluten}',        14),
+  ('sku-wonder-classic-white-loaf',     'Wonder Classic White Bread',          'bread',     0.85, '{gluten}',         7),
+  ('sku-d-italiano-hot-dog-buns-8pk',   'D''Italiano Hot Dog Buns 8-pack',     'bread',     1.05, '{gluten}',         7),
+  ('sku-country-harvest-12-grain-loaf', 'Country Harvest 12 Grain Bread',      'bread',     1.25, '{gluten}',         7)
 ON CONFLICT (sku_id) DO NOTHING;
-
--- ============================================================================
--- production_formulas — bill of materials per SKU (3-6 ingredients each, F2.1)
--- ============================================================================
-
-INSERT INTO production_formulas (sku_id, ingredient_id, kg_per_unit) VALUES
-  -- Blueberry Muffin 4-pack (per pack of 4)
-  ('sku-blueberry-muffin-4pk',  'ing-flour-ap',             0.180),
-  ('sku-blueberry-muffin-4pk',  'ing-sugar-granulated',     0.090),
-  ('sku-blueberry-muffin-4pk',  'ing-butter-unsalted',      0.060),
-  ('sku-blueberry-muffin-4pk',  'ing-eggs-whole',           0.045),
-  ('sku-blueberry-muffin-4pk',  'ing-blueberry-frozen',     0.070),
-  ('sku-blueberry-muffin-4pk',  'ing-baking-powder',        0.005),
-
-  -- Lemon Poppy Seed Muffin 4-pack
-  ('sku-lemon-poppy-muffin-4pk','ing-flour-ap',             0.180),
-  ('sku-lemon-poppy-muffin-4pk','ing-sugar-granulated',     0.090),
-  ('sku-lemon-poppy-muffin-4pk','ing-butter-unsalted',      0.060),
-  ('sku-lemon-poppy-muffin-4pk','ing-eggs-whole',           0.045),
-  ('sku-lemon-poppy-muffin-4pk','ing-lemon-fresh',          0.030),
-  ('sku-lemon-poppy-muffin-4pk','ing-poppy-seeds',          0.008),
-
-  -- Chocolate Chip Muffin 4-pack
-  ('sku-choc-chip-muffin-4pk',  'ing-flour-ap',             0.180),
-  ('sku-choc-chip-muffin-4pk',  'ing-sugar-granulated',     0.090),
-  ('sku-choc-chip-muffin-4pk',  'ing-butter-unsalted',      0.060),
-  ('sku-choc-chip-muffin-4pk',  'ing-eggs-whole',           0.045),
-  ('sku-choc-chip-muffin-4pk',  'ing-chocolate-chips-dark', 0.080),
-
-  -- Banana Bread Loaf
-  ('sku-banana-bread-loaf',     'ing-flour-ap',             0.280),
-  ('sku-banana-bread-loaf',     'ing-sugar-brown-light',    0.140),
-  ('sku-banana-bread-loaf',     'ing-butter-unsalted',      0.110),
-  ('sku-banana-bread-loaf',     'ing-eggs-whole',           0.060),
-  ('sku-banana-bread-loaf',     'ing-banana-fresh',         0.220),
-
-  -- Cinnamon Roll 6-pack
-  ('sku-cinnamon-roll-6pk',     'ing-flour-bread',          0.360),
-  ('sku-cinnamon-roll-6pk',     'ing-sugar-brown-dark',     0.120),
-  ('sku-cinnamon-roll-6pk',     'ing-butter-unsalted',      0.180),
-  ('sku-cinnamon-roll-6pk',     'ing-yeast-instant',        0.008),
-  ('sku-cinnamon-roll-6pk',     'ing-cinnamon-ground',      0.012),
-  ('sku-cinnamon-roll-6pk',     'ing-milk-whole',           0.120),
-
-  -- Butter Croissant 4-pack
-  ('sku-croissant-butter-4pk',  'ing-flour-bread',          0.240),
-  ('sku-croissant-butter-4pk',  'ing-butter-unsalted',      0.180),
-  ('sku-croissant-butter-4pk',  'ing-milk-whole',           0.080),
-  ('sku-croissant-butter-4pk',  'ing-yeast-instant',        0.005),
-  ('sku-croissant-butter-4pk',  'ing-sugar-granulated',     0.020),
-
-  -- Plain Bagel 6-pack
-  ('sku-bagel-plain-6pk',       'ing-flour-bread',          0.420),
-  ('sku-bagel-plain-6pk',       'ing-yeast-instant',        0.006),
-  ('sku-bagel-plain-6pk',       'ing-salt-kosher',          0.008),
-  ('sku-bagel-plain-6pk',       'ing-sugar-granulated',     0.012),
-
-  -- Sesame Bagel 6-pack
-  ('sku-bagel-sesame-6pk',      'ing-flour-bread',          0.420),
-  ('sku-bagel-sesame-6pk',      'ing-yeast-instant',        0.006),
-  ('sku-bagel-sesame-6pk',      'ing-salt-kosher',          0.008),
-  ('sku-bagel-sesame-6pk',      'ing-sugar-granulated',     0.012),
-  ('sku-bagel-sesame-6pk',      'ing-sesame-seeds',         0.018),
-
-  -- Sourdough Loaf
-  ('sku-sourdough-loaf',        'ing-flour-bread',          0.450),
-  ('sku-sourdough-loaf',        'ing-flour-whole-wheat',    0.090),
-  ('sku-sourdough-loaf',        'ing-salt-kosher',          0.010),
-  ('sku-sourdough-loaf',        'ing-yeast-active-dry',     0.004),
-
-  -- Chocolate Chip Cookie 12-pack
-  ('sku-choc-chip-cookie-12pk', 'ing-flour-ap',             0.240),
-  ('sku-choc-chip-cookie-12pk', 'ing-sugar-brown-light',    0.120),
-  ('sku-choc-chip-cookie-12pk', 'ing-butter-unsalted',      0.150),
-  ('sku-choc-chip-cookie-12pk', 'ing-eggs-whole',           0.050),
-  ('sku-choc-chip-cookie-12pk', 'ing-chocolate-chips-dark', 0.180),
-  ('sku-choc-chip-cookie-12pk', 'ing-vanilla-extract',      0.006),
-
-  -- Oatmeal Raisin Cookie 12-pack
-  ('sku-oatmeal-cookie-12pk',   'ing-flour-ap',             0.180),
-  ('sku-oatmeal-cookie-12pk',   'ing-oats-rolled',          0.150),
-  ('sku-oatmeal-cookie-12pk',   'ing-sugar-brown-light',    0.120),
-  ('sku-oatmeal-cookie-12pk',   'ing-butter-unsalted',      0.140),
-  ('sku-oatmeal-cookie-12pk',   'ing-eggs-whole',           0.050),
-  ('sku-oatmeal-cookie-12pk',   'ing-raisins',              0.110),
-
-  -- Almond Danish 4-pack
-  ('sku-almond-danish-4pk',     'ing-flour-pastry',         0.220),
-  ('sku-almond-danish-4pk',     'ing-butter-unsalted',      0.160),
-  ('sku-almond-danish-4pk',     'ing-sugar-granulated',     0.060),
-  ('sku-almond-danish-4pk',     'ing-eggs-whole',           0.045),
-  ('sku-almond-danish-4pk',     'ing-almonds-sliced',       0.040),
-  ('sku-almond-danish-4pk',     'ing-flour-almond',         0.030)
-ON CONFLICT (sku_id, ingredient_id) DO NOTHING;
-
--- ============================================================================
--- production_lines — 2-3 lines per plant, distinguished by allergen support
--- ============================================================================
-
-INSERT INTO production_lines (line_id, facility_id, name, capacity_kg_per_hour, supported_allergen_tags) VALUES
-  ('line-toronto-1',     'plant-toronto',     'Toronto Line 1 (Muffin/Bread)',  450, '{gluten,dairy,egg}'),
-  ('line-toronto-2',     'plant-toronto',     'Toronto Line 2 (Pastry)',        320, '{gluten,dairy,egg,tree_nut}'),
-  ('line-toronto-3',     'plant-toronto',     'Toronto Line 3 (Cookie)',        500, '{gluten,dairy,egg}'),
-  ('line-mississauga-1', 'plant-mississauga', 'Mississauga Line 1 (Bagel)',     520, '{gluten,sesame}'),
-  ('line-mississauga-2', 'plant-mississauga', 'Mississauga Line 2 (Bread)',     480, '{gluten}'),
-  ('line-hamilton-1',    'plant-hamilton',    'Hamilton Line 1 (Muffin)',       440, '{gluten,dairy,egg}'),
-  ('line-hamilton-2',    'plant-hamilton',    'Hamilton Line 2 (Cookie)',       510, '{gluten,dairy,egg}'),
-  ('line-montreal-1',    'plant-montreal',    'Montreal Line 1 (Croissant)',    300, '{gluten,dairy,egg}'),
-  ('line-montreal-2',    'plant-montreal',    'Montreal Line 2 (Danish)',       290, '{gluten,dairy,egg,tree_nut}')
-ON CONFLICT (line_id) DO NOTHING;
 
 -- ============================================================================
 -- retailer_orders — 8 sample firm POs (F2.3)
@@ -330,14 +187,14 @@ DO $$
 BEGIN
   IF (SELECT count(*) FROM retailer_orders) = 0 THEN
     INSERT INTO retailer_orders (retailer_id, sku_id, quantity_units, requested_delivery_date, status) VALUES
-      ('costco',     'sku-blueberry-muffin-4pk',  12000, DATE '2026-05-28', 'open'),
-      ('costco',     'sku-choc-chip-cookie-12pk',  8000, DATE '2026-05-29', 'open'),
-      ('walmart',    'sku-banana-bread-loaf',      6000, DATE '2026-05-27', 'scheduled'),
-      ('walmart',    'sku-bagel-plain-6pk',        9000, DATE '2026-05-30', 'open'),
-      ('loblaws',    'sku-cinnamon-roll-6pk',      4500, DATE '2026-05-29', 'open'),
-      ('loblaws',    'sku-sourdough-loaf',         3200, DATE '2026-06-01', 'open'),
-      ('wholefoods', 'sku-almond-danish-4pk',      2400, DATE '2026-05-28', 'open'),
-      ('wholefoods', 'sku-croissant-butter-4pk',   3600, DATE '2026-05-30', 'open');
+      ('costco',     'sku-ace-baguette-classic',          12000, DATE '2026-05-28', 'open'),
+      ('costco',     'sku-wonder-classic-white-loaf',      8000, DATE '2026-05-29', 'open'),
+      ('walmart',    'sku-country-harvest-12-grain-loaf',  6000, DATE '2026-05-27', 'scheduled'),
+      ('walmart',    'sku-d-italiano-hot-dog-buns-8pk',    9000, DATE '2026-05-30', 'open'),
+      ('loblaws',    'sku-stonefire-original-naan-2pk',    4500, DATE '2026-05-29', 'open'),
+      ('loblaws',    'sku-ace-sourdough-bistro',           3200, DATE '2026-06-01', 'open'),
+      ('wholefoods', 'sku-ace-rosemary-focaccia',          2400, DATE '2026-05-28', 'open'),
+      ('wholefoods', 'sku-stonefire-pizza-crust-2pk',      3600, DATE '2026-05-30', 'open');
   END IF;
 END $$;
 
@@ -435,12 +292,12 @@ BEGIN
       'lgbm-v0.1' AS model_version
     FROM (
       VALUES
-        ('sku-blueberry-muffin-4pk',  850),
-        ('sku-choc-chip-muffin-4pk',  720),
-        ('sku-lemon-poppy-muffin-4pk',610),
-        ('sku-bagel-plain-6pk',       940),
-        ('sku-bagel-sesame-6pk',      480),
-        ('sku-croissant-butter-4pk',  390)
+        ('sku-wonder-classic-white-loaf',     850),
+        ('sku-ace-baguette-classic',          720),
+        ('sku-country-harvest-12-grain-loaf', 610),
+        ('sku-ace-ciabatta-piccolo-6pk',      940),
+        ('sku-d-italiano-hot-dog-buns-8pk',   480),
+        ('sku-stonefire-pizza-crust-2pk',     390)
     ) AS skus(sku_id, base_qty)
     CROSS JOIN generate_series(0, 13) AS gs(day_offset);
   END IF;

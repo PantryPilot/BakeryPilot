@@ -173,7 +173,7 @@ Expected counts:
 ## Conventions
 
 - IDs: `text` for human-readable references (`plant-toronto`, `sup-northgrain`,
-  `sku-blueberry-muffin-4pk`); `uuid DEFAULT gen_random_uuid()` for system-generated
+  `sku-ace-baguette-classic`); `uuid DEFAULT gen_random_uuid()` for system-generated
   rows (lots, action_cards, orders).
 - Timestamps: always `timestamptz`. Dates only where date-only semantics matter
   (`expiry_date`, `requested_delivery_date`).

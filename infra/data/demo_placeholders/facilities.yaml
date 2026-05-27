@@ -1,0 +1,75 @@
+# Facility seed configuration for the four FGF Brands plants.
+#
+# This file is the input config for `seed_toronto_facilities.py`. It
+# carries the fields that have NO public source (operational defaults
+# like timezone, cold/dry capacity, plant name) and the placeholder
+# address strings that feed the live Nominatim geocoder.
+#
+# Address + lat/lng are NOT stored here -- they come from live fetchers:
+#   - plant-toronto: scraped from fgfbrands.com/contact + Nominatim geocode
+#   - other plants:  Nominatim geocode of `placeholder_address` below
+#
+# Per-row attribution:
+#   - kind: literal_fgf       -- fields below are operational defaults;
+#                                address/coords overlaid from live FGF site.
+#   - kind: demo_placeholder  -- entire row is engineering-judgment demo
+#                                config. FGF does NOT publicly disclose a
+#                                plant in these cities; the placeholder
+#                                addresses are public city landmarks chosen
+#                                so the geocoder returns a sensible point.
+#
+# Operational fields (timezone, cold_capacity_kg, dry_capacity_kg) carry
+# `source: engineering_judgment_demo_only` because FGF does not publish
+# plant capacities anywhere -- they're internal supply-chain data.
+
+facilities:
+  # Province codes are quoted because YAML 1.1 (the default in PyYAML) treats
+  # bare ON / OFF / YES / NO as booleans -- unquoted "ON" loads as True.
+
+  - facility_id: plant-toronto
+    name: FGF Toronto (Ormont Drive)
+    timezone: America/Toronto
+    cold_capacity_kg: 120000
+    dry_capacity_kg: 250000
+    kind: literal_fgf
+    source: engineering_judgment_demo_only
+    # Address + coordinates fetched live from fgfbrands.com/contact.
+
+  - facility_id: plant-mississauga
+    name: FGF Mississauga
+    timezone: America/Toronto
+    cold_capacity_kg: 90000
+    dry_capacity_kg: 200000
+    kind: demo_placeholder
+    source: engineering_judgment_demo_only
+    # Mississauga Civic Centre / Square One area -- public landmark proxy.
+    placeholder_address: "300 City Centre Drive"
+    placeholder_city: Mississauga
+    placeholder_province: "ON"
+    placeholder_postal: "L5B 3C1"
+
+  - facility_id: plant-hamilton
+    name: FGF Hamilton
+    timezone: America/Toronto
+    cold_capacity_kg: 80000
+    dry_capacity_kg: 180000
+    kind: demo_placeholder
+    source: engineering_judgment_demo_only
+    # Hamilton City Hall -- public landmark proxy.
+    placeholder_address: "71 Main Street West"
+    placeholder_city: Hamilton
+    placeholder_province: "ON"
+    placeholder_postal: "L8R 2K3"
+
+  - facility_id: plant-montreal
+    name: FGF Montreal
+    timezone: America/Montreal
+    cold_capacity_kg: 70000
+    dry_capacity_kg: 160000
+    kind: demo_placeholder
+    source: engineering_judgment_demo_only
+    # Montreal City Hall (Hôtel de Ville) -- public landmark proxy.
+    placeholder_address: "275 Rue Notre-Dame Est"
+    placeholder_city: Montreal
+    placeholder_province: "QC"
+    placeholder_postal: "H2X 3X1"

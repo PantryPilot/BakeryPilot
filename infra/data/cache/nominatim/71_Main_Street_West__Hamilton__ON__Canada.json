@@ -1,0 +1,22 @@
+{
+  "data": {
+    "address": {
+      "ISO3166-2-lvl4": "CA-ON",
+      "amenity": "Hamilton City Hall",
+      "city": "Hamilton",
+      "country": "Canada",
+      "country_code": "ca",
+      "house_number": "71",
+      "postcode": "L8P 1H6",
+      "road": "Main Street West",
+      "state": "Ontario",
+      "state_district": "Golden Horseshoe",
+      "suburb": "Durand"
+    },
+    "display_name": "Hamilton City Hall, 71, Main Street West, Durand, Hamilton, Golden Horseshoe, Ontario, L8P 1H6, Canada",
+    "lat": 43.255507,
+    "lng": -79.8733397
+  },
+  "fetched_at": "2026-05-27T00:08:25Z",
+  "source_url": "https://nominatim.openstreetmap.org/search?q=71+Main+Street+West%2C+Hamilton%2C+ON%2C+Canada&format=json&limit=1&addressdetails=1"
+}
