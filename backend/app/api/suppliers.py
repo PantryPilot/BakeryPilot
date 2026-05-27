@@ -575,11 +575,23 @@ async def agent_negotiate_stream(
     from agent.prompts.store import get_prompt_store
 
     system_prompt = get_prompt_store().get("negotiation")
+    recipient = supporting_data.get("contact_name") or "Procurement Team"
     user_msg = (
-        f"Trigger: {trigger_kind}\n"
-        f"Supplier: {supplier_name}\n"
-        f"Data: {supporting_data}\n\n"
-        "Draft the negotiation email now."
+        f"## Operator's stated goal (PRIMARY SUBJECT OF THIS EMAIL)\n"
+        f"{req.goal.strip()}\n\n"
+        f"The email MUST be focused on this goal. Use the supporting data below to back it up,\n"
+        f"but do NOT pivot the email to a different topic just because other metrics look bad.\n\n"
+        f"## Recipient\n"
+        f"Address the email exactly to: \"Dear {recipient},\". Do NOT invent a different name.\n\n"
+        f"## Tone\n"
+        f"{req.tone}\n\n"
+        f"## Supplier\n"
+        f"{supplier_name}\n\n"
+        f"## Trigger category (style hint only — operator goal above is the topic)\n"
+        f"{trigger_kind}\n\n"
+        f"## Supporting data (cite ONLY these numbers; never invent figures)\n"
+        f"{supporting_data}\n\n"
+        f"Draft the negotiation email now."
     )
 
     async def stream():
