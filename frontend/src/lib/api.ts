@@ -484,6 +484,49 @@ export async function updateAdminCopilotModel(
   });
 }
 
+export interface AdminDataSource {
+  id: string;
+  label: string;
+  description: string;
+  target_tables: string[];
+  typical_runtime_seconds: number;
+  last_at: string | null;
+  last_status: "ok" | "failed" | null;
+  last_message: string | null;
+  last_rows: number | null;
+  interval_seconds: number;
+  running: boolean;
+}
+
+export async function fetchAdminDataSources(): Promise<AdminDataSource[] | null> {
+  return safeFetch<AdminDataSource[]>("/api/admin/data-sources", undefined, 10000);
+}
+
+export async function refreshAdminDataSource(
+  sourceId: string,
+): Promise<AdminDataSource | null> {
+  return safeFetch<AdminDataSource>(
+    `/api/admin/data-sources/${encodeURIComponent(sourceId)}/refresh`,
+    { method: "POST" },
+    10000,
+  );
+}
+
+export async function setAdminDataSourceInterval(
+  sourceId: string,
+  intervalSeconds: number,
+): Promise<AdminDataSource | null> {
+  return safeFetch<AdminDataSource>(
+    `/api/admin/data-sources/${encodeURIComponent(sourceId)}/interval`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interval_seconds: intervalSeconds }),
+    },
+    10000,
+  );
+}
+
 // ---------- Users + settings ----------
 
 export interface BackendUser {

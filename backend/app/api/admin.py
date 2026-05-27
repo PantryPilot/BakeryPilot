@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.models.chat import ChatModelInfo
+from app.services import data_refresh
 from app.services.app_settings import (
     COPILOT_MODEL_KEY,
     get_copilot_model,
@@ -41,6 +42,24 @@ class CopilotModelSettings(BaseModel):
 
 class CopilotModelUpdate(BaseModel):
     model_id: str
+
+
+class DataSourceMetaResponse(BaseModel):
+    id: str
+    label: str
+    description: str
+    target_tables: list[str]
+    typical_runtime_seconds: int
+    last_at: str | None = None
+    last_status: str | None = None
+    last_message: str | None = None
+    last_rows: int | None = None
+    interval_seconds: int
+    running: bool
+
+
+class DataSourceIntervalUpdate(BaseModel):
+    interval_seconds: int = Field(ge=0, description="0 disables auto-refresh.")
 
 
 def _sync_llm_env() -> None:
@@ -192,3 +211,75 @@ def _serialize(value: object) -> object:
     if isinstance(value, (list, dict)):
         return value
     return str(value)
+
+
+# --- Data sources (manual refresh + auto-refresh interval) --------------
+
+def _meta_to_response(m: data_refresh.DataSourceMeta) -> DataSourceMetaResponse:
+    return DataSourceMetaResponse(
+        id=m.id,
+        label=m.label,
+        description=m.description,
+        target_tables=m.target_tables,
+        typical_runtime_seconds=m.typical_runtime_seconds,
+        last_at=m.last_at,
+        last_status=m.last_status,
+        last_message=m.last_message,
+        last_rows=m.last_rows,
+        interval_seconds=m.interval_seconds,
+        running=m.running,
+    )
+
+
+@router.get("/data-sources", response_model=list[DataSourceMetaResponse])
+async def list_data_sources(db: AsyncSession = Depends(get_db)) -> list[DataSourceMetaResponse]:
+    metas = await data_refresh.list_meta(db)
+    return [_meta_to_response(m) for m in metas]
+
+
+@router.post("/data-sources/{source_id}/refresh", response_model=DataSourceMetaResponse)
+async def refresh_data_source(
+    source_id: str,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> DataSourceMetaResponse:
+    if source_id not in data_refresh.DATA_SOURCES:
+        raise HTTPException(status_code=404, detail=f"Unknown data source '{source_id}'")
+    if data_refresh.is_running(source_id):
+        meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+        return _meta_to_response(meta)
+
+    # Fire-and-forget the long-running subprocess. The endpoint returns
+    # immediately with `running=True` so the UI can poll status.
+    background.add_task(_run_refresh_task, source_id)
+
+    meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+    # Force the running flag in the immediate response — the BackgroundTask
+    # hasn't actually started yet but logically the refresh has been queued.
+    response = _meta_to_response(meta)
+    response.running = True
+    return response
+
+
+async def _run_refresh_task(source_id: str) -> None:
+    """Background task: open its own DB session so the request-scoped one is freed."""
+    from app.db.session import session_scope
+
+    async with session_scope() as bg_db:
+        try:
+            await data_refresh.trigger_refresh(bg_db, source_id)
+        except Exception:  # pragma: no cover — surfaced via last_status in meta
+            pass
+
+
+@router.put("/data-sources/{source_id}/interval", response_model=DataSourceMetaResponse)
+async def update_data_source_interval(
+    source_id: str,
+    req: DataSourceIntervalUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> DataSourceMetaResponse:
+    if source_id not in data_refresh.DATA_SOURCES:
+        raise HTTPException(status_code=404, detail=f"Unknown data source '{source_id}'")
+    await data_refresh.set_interval(db, source_id, req.interval_seconds)
+    meta = await data_refresh.get_meta(db, data_refresh.DATA_SOURCES[source_id])
+    return _meta_to_response(meta)
