@@ -506,6 +506,16 @@ main {
   to   { opacity: 0; transform: translateY(8px)  scale(0.97); }
 }
 
+/* Theme toggle spin-in animation */
+@keyframes theme-toggle-spin {
+  from { transform: rotate(-70deg) scale(0.5); opacity: 0; }
+  to   { transform: rotate(0deg)   scale(1);   opacity: 1; }
+}
+.theme-toggle-icon {
+  display: inline-flex;
+  animation: theme-toggle-spin 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
 /* Page mount fade-in transition (Bug 5) */
 @keyframes page-fade-in {
   from {

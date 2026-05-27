@@ -278,7 +278,12 @@ export default function MaterialsPage() {
         </div>
       </div>
 
-      {activeLot && <LotSlideIn lot={activeLot} onClose={closeLot} isClosing={lotClosing}/>}
+      {activeLot && (
+        <>
+          <div className="fixed inset-0 z-20 bg-black/20" onClick={closeLot}/>
+          <LotSlideIn lot={activeLot} onClose={closeLot} isClosing={lotClosing}/>
+        </>
+      )}
     </div>
   );
 }

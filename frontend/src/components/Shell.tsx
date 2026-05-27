@@ -13,7 +13,6 @@ const NAV = [
   { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box"      },
   { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck"    },
   { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar" },
-  { id: "scorecard",  route: "/scorecard",               label: "Scorecard",  icon: "bars"     },
   { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings" },
   { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database" },
 ];
@@ -263,7 +262,7 @@ function userInitials(name: string): string {
 }
 
 export function TopBar() {
-  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user } = useApp();
+  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user, theme, setTheme } = useApp();
   const [facilityOpen, setFacilityOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -347,6 +346,17 @@ export function TopBar() {
         <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Live</span>
         <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
       </div>
+
+      {/* Theme toggle */}
+      <button
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        <span key={theme} className="theme-toggle-icon">
+          {theme === "dark" ? <Icon name="moon" size={18}/> : <Icon name="sun" size={18}/>}
+        </span>
+      </button>
 
       {/* Notification bell */}
       <div className="relative">
