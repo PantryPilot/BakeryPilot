@@ -144,13 +144,13 @@ function adaptLot(b: BackendLot): Lot {
     0,
     Math.round((expiry.getTime() - now.getTime()) / 86_400_000),
   );
-  const risk = Math.min(1, b.spoilage_risk_score);
+  const risk = Math.min(1, Math.max(0, b.spoilage_risk_score));
   const status: LotStatus =
     daysLeft <= 0
       ? "expired"
-      : risk >= 1.0
+      : risk >= 0.85
       ? "critical"
-      : risk >= 0.5
+      : risk >= 0.55
       ? "warn"
       : "ok";
   return {
