@@ -525,6 +525,29 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Daily commodity price feeds (CBOT wheat, ICE sugar, CBOT corn, etc.).
+-- Sourced live via infra/fetchers/yahoo_finance.py (free, no API key) by
+-- infra/seed_commodity_prices.py. Used by the ProcurementAgent for
+-- price-drift detection vs. supplier contracts and as a negotiation
+-- trigger when contracted prices drift above the commodity benchmark.
+CREATE TABLE IF NOT EXISTS commodity_prices (
+  commodity_id  text        NOT NULL,
+  price_date    date        NOT NULL,
+  open_price    numeric,
+  high_price    numeric,
+  low_price     numeric,
+  close_price   numeric     NOT NULL,
+  volume        bigint,
+  unit          text        NOT NULL,
+  source        text        NOT NULL,
+  source_url    text,
+  fetched_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (commodity_id, price_date)
+);
+
+CREATE INDEX IF NOT EXISTS commodity_prices_date_idx
+  ON commodity_prices (commodity_id, price_date DESC);
+
 -- ============================================================================
 -- Supplier engagement (additive, post v3)
 -- ============================================================================

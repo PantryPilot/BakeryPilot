@@ -1,6 +1,7 @@
 .PHONY: up up.full down reset \
         schema.migrate schema.seed seed.lots seed.events seed.demo seed.synthetic \
         seed.toronto seed.toronto.retailers seed.toronto.facilities seed.toronto.skus \
+        seed.commodity_prices \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -10,8 +11,13 @@
 POSTGRES_USER ?= bakery
 POSTGRES_DB   ?= bakery
 
-# uv command — auto-detect; override with UV=/path/to/uv make ...
-UV ?= $(shell which uv 2>/dev/null || echo ~/.local/bin/uv)
+# uv command — auto-detect; override with UV="..." make ...
+# Windows lacks `which` and the ~/.local/bin/uv fallback isn't a real path there.
+ifeq ($(OS),Windows_NT)
+    UV ?= python -m uv
+else
+    UV ?= $(shell command -v uv 2>/dev/null || echo ~/.local/bin/uv)
+endif
 
 # --- Infra ---
 
@@ -47,9 +53,12 @@ schema.migrate:
 #   3. seed_synthetic.py            -- production_lines, warehouse_costs,
 #                                       allergen_changeovers, production_formulas
 #                                       (engineering_judgment_demo_only)
-#   4. seed_lots.py                 -- ingredient_lots (curated scenarios +
+#   4. seed.sql (again)             -- production_orders + finished_goods_pallets +
+#                                       app_users DO blocks depend on facilities
+#                                       being present, so re-apply once seeded.
+#   5. seed_lots.py                 -- ingredient_lots (curated scenarios +
 #                                       Faker bulk fill)
-#   5. seed_demo.py                 -- transactional layer: action_cards,
+#   6. seed_demo.py                 -- transactional layer: action_cards,
 #                                       supplier_orders, production_schedules,
 #                                       production_runs, waste_events,
 #                                       finished_goods_pallets (with
@@ -62,8 +71,6 @@ schema.seed:
 		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_toronto_facilities.py
 	$(UV) run infra/seed_synthetic.py
-	# Re-apply seed.sql so the production_orders + finished_goods_pallets +
-	# app_users DO blocks (which depend on facilities being present) can run.
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
 	$(UV) run infra/seed_lots.py
@@ -98,6 +105,11 @@ seed.toronto.facilities:
 
 seed.toronto.skus:
 	$(UV) run infra/seed_toronto_skus.py
+
+# Live-fetches daily CBOT wheat OHLCV from Yahoo Finance and upserts into
+# commodity_prices. No API key required. Re-run any time to refresh.
+seed.commodity_prices:
+	$(UV) run infra/seed_commodity_prices.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:
