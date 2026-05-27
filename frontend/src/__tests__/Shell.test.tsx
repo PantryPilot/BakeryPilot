@@ -31,6 +31,23 @@ jest.mock('../lib/context', () => ({
     dismissNotification: jest.fn(),
     hideToast: jest.fn(),
     markNotificationsRead: jest.fn(),
+    user: {
+      userId: 'demo_user',
+      displayName: 'Alex Chen',
+      role: 'Ops Manager',
+      email: 'alex.chen@fgfbrands.com',
+      defaultFacilityId: 'plant-toronto',
+    },
+    userStatus: 'live',
+    updateUser: jest.fn(),
+    notificationPrefs: {
+      toast: true,
+      autoDismiss: true,
+      expiringLots: true,
+      supplierRisk: true,
+      yieldAnomaly: false,
+    },
+    updateNotificationPrefs: jest.fn(),
   }),
 }))
 

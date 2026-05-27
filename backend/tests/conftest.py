@@ -28,6 +28,9 @@ class _Result:
     def scalar(self):
         return 0
 
+    def scalar_one(self):
+        return 0
+
     def one(self):
         return _AggRow()
 

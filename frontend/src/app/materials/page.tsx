@@ -34,10 +34,10 @@ function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
   const substitutes = rawSubs.map((s, i) => ({
     name: s.sku_name,
-    facility: "—",
+    facility: s.facility_name ?? s.facility_id ?? "—",
     qty: s.achievable_quantity,
     compat: s.margin_score,
-    allergen: "—",
+    allergen: s.allergens && s.allergens.length > 0 ? s.allergens.join(", ") : "none",
     rank: i + 1,
   }));
   return (

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
-import { useSuppliers, useDisruptions } from "../lib/hooks";
+import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 130;
@@ -19,14 +19,17 @@ const PLANT_POS = [
 
 type PlantData = { id: string; name: string; city: string; x: number; y: number; status: string; util: { frozen: number; ref: number; dry: number } };
 
-// UI visual config for the map — retailer lane positions (no backend endpoint)
-const RETAILER_POS = [
+// UI visual config — retailer lane positions only; po_ratio / shelf_risk come
+// from the backend (see useRetailers). FALLBACK is used until the API responds
+// or when the backend is unreachable.
+const RETAILER_LANES_Y = [386, 434, 482, 530];
+const RETAILER_POS_FALLBACK = [
   { id: "r1", name: "Costco",  poRatio: 1.28, shelfRisk: "amber" as const, x: RETAILER_X, y: 386 },
   { id: "r2", name: "Walmart", poRatio: 0.94, shelfRisk: "green" as const, x: RETAILER_X, y: 434 },
   { id: "r3", name: "Loblaws", poRatio: 0.88, shelfRisk: "green" as const, x: RETAILER_X, y: 482 },
   { id: "r4", name: "Metro",   poRatio: 1.05, shelfRisk: "red" as const,   x: RETAILER_X, y: 530 },
 ];
-type RetailerPos = typeof RETAILER_POS[number];
+type RetailerPos = (typeof RETAILER_POS_FALLBACK)[number];
 
 const FLOWS = [
   { id: "f1", from: { x: SUPPLIER_X, y: 130 }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "inbound",  cargo: "wheat T55 · 4,200 kg" },
@@ -298,6 +301,25 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
 }
 
 export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData; onClose: () => void; onAskCopilot: () => void }) {
+  const { data: facilities } = useFacilities();
+  const facility = facilities.find(f => f.short_code === plant.id);
+  const facilityId = facility?.facility_id ?? null;
+  const { data: util } = useFacilityUtilization(facilityId);
+
+  const zoneMap = new Map(util?.zones.map(z => [z.zone, z]) ?? []);
+  const frozen = zoneMap.get("frozen");
+  const refrig = zoneMap.get("refrigerated");
+  const dry = zoneMap.get("dry");
+
+  // Storage cards prefer backend utilisation, fall back to mock util values on the plant.
+  const storageCards = [
+    { name: "Frozen",       pct: frozen?.pct ?? plant.util.frozen, used: frozen?.used_kg, cap: frozen?.capacity_kg ?? 18000, color: "bg-blue-500" },
+    { name: "Refrigerated", pct: refrig?.pct ?? plant.util.ref,    used: refrig?.used_kg, cap: refrig?.capacity_kg ?? 12000, color: "bg-teal-500" },
+    { name: "Dry",          pct: dry?.pct    ?? plant.util.dry,    used: dry?.used_kg,    cap: dry?.capacity_kg    ?? 42000, color: "bg-slate-400" },
+  ];
+
+  // Demo line snapshot (kept in UI for hackathon — backend active_runs is exposed
+  // via the dashboard endpoints but the visual lane composition stays UI-owned).
   const batchByLine: Record<number, { sku: string; qty: number; expiryLot: string; expiryH: number | null; status: string }> = {
     1: { sku: "Blueberry Muffin 12pk", qty: 4800, expiryLot: "LOT-21884", expiryH: 6,   status: "amber" },
     2: { sku: "Butter Croissant 6pk",  qty: 3200, expiryLot: "—",         expiryH: null, status: "ok" },
@@ -321,20 +343,21 @@ export function FactoryView({ plant, onClose, onAskCopilot }: { plant: PlantData
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Storage utilisation</div>
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+            Storage utilisation
+            {util && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+          </div>
           <div className="grid grid-cols-3 gap-2">
-            {[
-              { name: "Frozen",       val: plant.util.frozen, cap: 18000, color: "bg-blue-500" },
-              { name: "Refrigerated", val: plant.util.ref,    cap: 12000, color: "bg-teal-500" },
-              { name: "Dry",          val: plant.util.dry,    cap: 42000, color: "bg-slate-400" },
-            ].map((s, i) => (
+            {storageCards.map((s, i) => (
               <div key={i} className="rounded-md border border-slate-800 bg-slate-900/40 p-2">
                 <div className="text-[10px] text-slate-500">{s.name}</div>
-                <div className="text-[18px] font-mono tabular-nums text-slate-100 mt-0.5">{Math.round(s.val * 100)}%</div>
+                <div className="text-[18px] font-mono tabular-nums text-slate-100 mt-0.5">{Math.round(s.pct * 100)}%</div>
                 <div className="h-1 rounded-full bg-slate-800 overflow-hidden mt-1">
-                  <div className={`h-full ${s.color}`} style={{ width: `${s.val * 100}%` }}/>
+                  <div className={`h-full ${s.color}`} style={{ width: `${s.pct * 100}%` }}/>
                 </div>
-                <div className="text-[10px] font-mono text-slate-500 mt-1 tabular-nums">{Math.round(s.cap * s.val).toLocaleString()} / {s.cap.toLocaleString()} kg</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-1 tabular-nums">
+                  {Math.round(s.used ?? s.cap * s.pct).toLocaleString()} / {Math.round(s.cap).toLocaleString()} kg
+                </div>
               </div>
             ))}
           </div>
@@ -400,7 +423,20 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
 
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
+  const { data: retailers } = useRetailers();
   const supplierPos = suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
+
+  // Map backend retailers to canvas lanes, falling back to demo positions.
+  const retailerPos: RetailerPos[] = retailers.length > 0
+    ? retailers.slice(0, RETAILER_LANES_Y.length).map((r, i) => ({
+        id: r.retailer_id,
+        name: r.name,
+        poRatio: r.po_ratio || 1,
+        shelfRisk: r.shelf_risk,
+        x: RETAILER_X,
+        y: RETAILER_LANES_Y[i],
+      }))
+    : RETAILER_POS_FALLBACK;
 
   return (
     <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">
@@ -410,7 +446,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       }}/>
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>
-        <span className="text-[11px] text-slate-500 font-mono">live · {supplierPos.length} suppliers · {PLANT_POS.length} plants · {RETAILER_POS.length} retailers</span>
+        <span className="text-[11px] text-slate-500 font-mono">live · {supplierPos.length} suppliers · {PLANT_POS.length} plants · {retailerPos.length} retailers</span>
       </div>
       <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} preserveAspectRatio="xMidYMid meet" className="absolute inset-0 w-full h-full">
         <defs>
@@ -438,7 +474,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => (
           <path key={"c-" + f.id} d={arcPath(f.from, f.to, 0.32)} stroke="#94a3b8" strokeOpacity="0.3" strokeWidth="1" fill="none" strokeDasharray="2 3"/>
         ))}
-        {layers.forecast && RETAILER_POS.map((rr, i) => (
+        {layers.forecast && retailerPos.map((rr, i) => (
           <path key={"fc-" + rr.id} d={arcPath(rr, PLANT_POS[i % PLANT_POS.length], -0.14)} stroke="#a855f7" strokeOpacity="0.18" strokeWidth="3" fill="none"/>
         ))}
         {layers.procure && FLOWS.filter(f => f.kind === "inbound").map((f, idx) => <TruckSprite key={"t-" + f.id} flow={f} dur={12 + idx * 2}/>)}
@@ -452,7 +488,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           <PlantNode key={p.id} p={p} onClick={() => setActivePlant(p)}
             scheduleOn={layers.schedule} esgOn={layers.esg} yieldOn={layers.yield} shelfOn={layers.shelf}/>
         ))}
-        {RETAILER_POS.map(rr => (
+        {retailerPos.map(rr => (
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
         <g transform="translate(20, 670)">

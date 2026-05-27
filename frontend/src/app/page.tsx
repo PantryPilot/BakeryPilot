@@ -2,12 +2,28 @@
 import Link from "next/link";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/atoms";
+import { useDashboardLoops } from "../lib/hooks";
 
-const LOOPS = [
-  { id: "inbound",    label: "Inbound",    desc: "Supplier reliability, PO landed cost, MOQ-tax",       icon: "truck",    color: "blue",    href: "/scorecard", stats: [{ k: "5", v: "active suppliers" }, { k: "2", v: "watch" }] },
-  { id: "production", label: "Production", desc: "Live yield, line schedule, changeover cost",            icon: "calendar", color: "amber",   href: "/schedule",  stats: [{ k: "9", v: "runs today" }, { k: "−3.7pp", v: "yield Δ L2" }] },
-  { id: "outbound",   label: "Outbound",   desc: "Retailer fulfilment, forecast vs PO, shelf-life",      icon: "bars",     color: "purple",  href: "/scorecard", stats: [{ k: "+34%", v: "Costco spike" }, { k: "12", v: "red pallets" }] },
-  { id: "network",    label: "Network",    desc: "Cross-plant balancing, transfer arcs, FlowSight",      icon: "grid",     color: "emerald", href: "/facilities", stats: [{ k: "4", v: "plants live" }, { k: "2", v: "transfers" }] },
+interface LoopMeta {
+  desc: string;
+  icon: string;
+  color: string;
+  href: string;
+}
+
+// Visual layout / copy stays UI-owned; metrics come from the backend.
+const LOOP_META: Record<string, LoopMeta> = {
+  inbound:    { desc: "Supplier reliability, PO landed cost, MOQ-tax",       icon: "truck",    color: "blue",    href: "/scorecard" },
+  production: { desc: "Live yield, line schedule, changeover cost",          icon: "calendar", color: "amber",   href: "/schedule" },
+  outbound:   { desc: "Retailer fulfilment, forecast vs PO, shelf-life",     icon: "bars",     color: "purple",  href: "/scorecard" },
+  network:    { desc: "Cross-plant balancing, transfer arcs, FlowSight",     icon: "grid",     color: "emerald", href: "/facilities" },
+};
+
+const FALLBACK_LOOPS = [
+  { id: "inbound", label: "Inbound", stats: [{ k: "–", v: "active suppliers" }, { k: "–", v: "watch" }] },
+  { id: "production", label: "Production", stats: [{ k: "–", v: "runs today" }, { k: "–", v: "yield Δ L2" }] },
+  { id: "outbound", label: "Outbound", stats: [{ k: "–", v: "demand spike" }, { k: "–", v: "red pallets" }] },
+  { id: "network", label: "Network", stats: [{ k: "–", v: "plants live" }, { k: "–", v: "transfers" }] },
 ];
 
 const ACCENT: Record<string, string> = {
@@ -24,6 +40,9 @@ const TEXT: Record<string, string> = {
 };
 
 export default function HomePage() {
+  const loops = useDashboardLoops();
+  const cards = loops.data.length > 0 ? loops.data : FALLBACK_LOOPS;
+
   return (
     <div className="h-full overflow-y-auto bg-[#070a11]">
       <div className="max-w-[1200px] mx-auto p-5 sm:p-8 lg:p-10">
@@ -37,27 +56,30 @@ export default function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-          {LOOPS.map(l => (
-            <Link key={l.id} href={l.href} className={`text-left rounded-xl border ${ACCENT[l.color]} bg-slate-900/40 p-5 transition group block`}>
-              <div className="flex items-start justify-between mb-3">
-                <div className={`w-10 h-10 rounded-lg bg-slate-800/60 flex items-center justify-center ${TEXT[l.color]}`}>
-                  <Icon name={l.icon} size={18}/>
-                </div>
-                <Icon name="chevron" size={14} className="text-slate-600 -rotate-90 group-hover:text-slate-300"/>
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Loop</div>
-              <div className="text-[20px] font-semibold text-slate-100 mt-0.5">{l.label}</div>
-              <div className="text-[12px] text-slate-400 mt-1">{l.desc}</div>
-              <div className="mt-4 flex items-center gap-4 pt-3 border-t border-slate-800">
-                {l.stats.map((s, i) => (
-                  <div key={i}>
-                    <div className={`text-[16px] font-mono tabular-nums ${TEXT[l.color]}`}>{s.k}</div>
-                    <div className="text-[10px] text-slate-500">{s.v}</div>
+          {cards.map(l => {
+            const meta = LOOP_META[l.id] ?? { desc: "", icon: "grid", color: "blue", href: "/" };
+            return (
+              <Link key={l.id} href={meta.href} className={`text-left rounded-xl border ${ACCENT[meta.color]} bg-slate-900/40 p-5 transition group block`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className={`w-10 h-10 rounded-lg bg-slate-800/60 flex items-center justify-center ${TEXT[meta.color]}`}>
+                    <Icon name={meta.icon} size={18}/>
                   </div>
-                ))}
-              </div>
-            </Link>
-          ))}
+                  <Icon name="chevron" size={14} className="text-slate-600 -rotate-90 group-hover:text-slate-300"/>
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Loop</div>
+                <div className="text-[20px] font-semibold text-slate-100 mt-0.5">{l.label}</div>
+                <div className="text-[12px] text-slate-400 mt-1">{meta.desc}</div>
+                <div className="mt-4 flex items-center gap-4 pt-3 border-t border-slate-800">
+                  {l.stats.map((s, i) => (
+                    <div key={i}>
+                      <div className={`text-[16px] font-mono tabular-nums ${TEXT[meta.color]}`}>{s.k}</div>
+                      <div className="text-[10px] text-slate-500">{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+              </Link>
+            );
+          })}
         </div>
 
         <Link href="/facilities" className="w-full rounded-xl border border-slate-700 bg-gradient-to-r from-blue-500/10 to-transparent p-5 text-left hover:border-blue-500 transition flex items-center gap-4 block">

@@ -22,3 +22,6 @@ class SubstitutionCandidate(BaseModel):
     achievable_quantity: int
     margin_score: float
     reason: str
+    facility_id: str | None = None
+    facility_name: str | None = None
+    allergens: list[str] = []

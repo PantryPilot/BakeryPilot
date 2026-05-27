@@ -12,8 +12,14 @@ const KIND_ICON: Record<string, string> = {
 const MAX_VISIBLE = 3;
 const AUTO_HIDE_MS = 5000;
 
+const KIND_PREF_KEY: Record<string, "expiringLots" | "supplierRisk" | "yieldAnomaly" | null> = {
+  expiring_lot: "expiringLots",
+  supplier_risk: "supplierRisk",
+  yield_spike: "yieldAnomaly",
+};
+
 export function AlertBanner() {
-  const { notifications, dismissNotification, hideToast, openChatContext } = useApp();
+  const { notifications, dismissNotification, hideToast, openChatContext, notificationPrefs } = useApp();
   const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
 
   // Use a ref so timer callbacks always call the latest version of startExit
@@ -37,22 +43,38 @@ export function AlertBanner() {
     }, 280);
   };
 
-  const toastList = notifications.filter(n => !n.toastHidden);
+  const toastList = notificationPrefs.toast
+    ? notifications.filter(n => {
+        if (n.toastHidden) return false;
+        const prefKey = KIND_PREF_KEY[n.kind];
+        if (prefKey && !notificationPrefs[prefKey]) return false;
+        return true;
+      })
+    : [];
   const visible = toastList.slice(0, MAX_VISIBLE);
   const extraCount = toastList.length - visible.length;
 
   // Set auto-hide timers whenever the visible list changes
   const visibleKey = visible.map(n => n.ref_id).join(",");
+  const autoDismiss = notificationPrefs.autoDismiss;
   useEffect(() => {
     const ids = new Set(visible.map(v => v.ref_id));
 
-    visible.forEach(n => {
-      if (!timersRef.current.has(n.ref_id)) {
-        const id = n.ref_id;
-        const t = setTimeout(() => startExitRef.current(id, false), AUTO_HIDE_MS);
-        timersRef.current.set(n.ref_id, t);
+    if (autoDismiss) {
+      visible.forEach(n => {
+        if (!timersRef.current.has(n.ref_id)) {
+          const id = n.ref_id;
+          const t = setTimeout(() => startExitRef.current(id, false), AUTO_HIDE_MS);
+          timersRef.current.set(n.ref_id, t);
+        }
+      });
+    } else {
+      // Clear any pending auto-dismiss timers
+      for (const [id, t] of timersRef.current) {
+        clearTimeout(t);
+        timersRef.current.delete(id);
       }
-    });
+    }
 
     // Clear timers for notifications no longer in the visible list
     for (const [id, t] of timersRef.current) {
@@ -60,7 +82,7 @@ export function AlertBanner() {
     }
   // visibleKey captures all identity changes without triggering on unrelated renders
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKey]);
+  }, [visibleKey, autoDismiss]);
 
   if (visible.length === 0 && extraCount === 0) return null;
 

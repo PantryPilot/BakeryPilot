@@ -7,22 +7,38 @@
 import { useEffect, useState } from "react";
 
 import {
+  fetchActiveRuns,
+  fetchDashboardLoops,
+  fetchDashboardNetwork,
   fetchDisruptions,
   fetchEsgCounter,
   fetchEsgPatterns,
+  fetchFacilities,
+  fetchFacilityUtilization,
   fetchLotSubstitutions,
   fetchLots,
   fetchOrders,
+  fetchRetailers,
   fetchSchedules,
+  fetchScorecardSummary,
+  fetchSupplierPerformance,
   fetchSuppliers,
   fetchWasteEvents,
   fetchYieldTelemetry,
   fetchDemandForecasts,
   openEventStream,
+  type BackendActiveRun,
   type BackendEsgPattern,
+  type BackendFacility,
+  type BackendFacilityUtilization,
+  type BackendLoopCard,
+  type BackendNetworkSummary,
   type BackendOrder,
+  type BackendRetailer,
   type BackendSchedule,
+  type BackendScorecardSummary,
   type BackendSubstitutionCandidate,
+  type BackendSupplierPerformance,
   type BackendWasteEvent,
   type BackendYieldTelemetryPoint,
   type LiveEvent,
@@ -160,6 +176,98 @@ export function useYieldTelemetry(lineId?: string): Result<BackendYieldTelemetry
 
 export function useDemandForecasts(skuId?: string, days = 14): Result<DemandForecast[]> {
   return useBackend(() => fetchDemandForecasts(skuId, days), []);
+}
+
+export function useFacilities(): Result<BackendFacility[]> {
+  return useBackend(fetchFacilities, []);
+}
+
+export function useFacilityUtilization(
+  facilityId: string | null,
+): { data: BackendFacilityUtilization | null; status: BackendStatus } {
+  const [data, setData] = useState<BackendFacilityUtilization | null>(null);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  useEffect(() => {
+    if (!facilityId) return;
+    setStatus("loading");
+    setData(null);
+    let alive = true;
+    fetchFacilityUtilization(facilityId).then((res) => {
+      if (!alive) return;
+      if (res) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [facilityId]);
+  return { data, status };
+}
+
+export function useActiveRuns(
+  facilityId: string | null,
+): { data: BackendActiveRun[]; status: BackendStatus } {
+  const [data, setData] = useState<BackendActiveRun[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  useEffect(() => {
+    if (!facilityId) return;
+    setStatus("loading");
+    setData([]);
+    let alive = true;
+    fetchActiveRuns(facilityId).then((res) => {
+      if (!alive) return;
+      if (res) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [facilityId]);
+  return { data, status };
+}
+
+export function useRetailers(): Result<BackendRetailer[]> {
+  return useBackend(fetchRetailers, []);
+}
+
+export function useDashboardLoops(): Result<BackendLoopCard[]> {
+  return useBackend(fetchDashboardLoops, []);
+}
+
+export function useDashboardNetwork(): Result<BackendNetworkSummary | null> {
+  return useBackend(fetchDashboardNetwork, null);
+}
+
+export function useScorecardSummary(): Result<BackendScorecardSummary | null> {
+  return useBackend(fetchScorecardSummary, null);
+}
+
+export function useSupplierPerformance(
+  supplierId: string | null,
+): { data: BackendSupplierPerformance | null; status: BackendStatus } {
+  const [data, setData] = useState<BackendSupplierPerformance | null>(null);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  useEffect(() => {
+    if (!supplierId) return;
+    setStatus("loading");
+    setData(null);
+    let alive = true;
+    fetchSupplierPerformance(supplierId).then((res) => {
+      if (!alive) return;
+      if (res) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [supplierId]);
+  return { data, status };
 }
 
 /** Subscribe to the FlowSight live event stream. Callback fires per event. */

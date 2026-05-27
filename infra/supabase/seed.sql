@@ -302,3 +302,22 @@ BEGIN
     CROSS JOIN generate_series(0, 13) AS gs(day_offset);
   END IF;
 END $$;
+
+-- ============================================================================
+-- app_users + user_settings — single-user demo (no auth in hackathon build)
+-- Tables defined in schema.sql; safe to skip if they don't yet exist.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'app_users') THEN
+    INSERT INTO app_users (user_id, display_name, role, email, default_facility_id)
+    VALUES ('demo_user', 'Alex Chen', 'Ops Manager', 'alex.chen@fgfbrands.com', 'plant-toronto')
+    ON CONFLICT (user_id) DO NOTHING;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_settings') THEN
+    INSERT INTO user_settings (user_id) VALUES ('demo_user')
+    ON CONFLICT (user_id) DO NOTHING;
+  END IF;
+END $$;

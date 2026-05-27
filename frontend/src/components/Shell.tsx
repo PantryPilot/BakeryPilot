@@ -203,7 +203,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
 // ─── User Menu ────────────────────────────────────────────────────────────────
 
 function UserMenu({ onClose }: { onClose: () => void }) {
-  const { facility } = useApp();
+  const { facility, user } = useApp();
   const menuRef = useRef<HTMLDivElement>(null);
   const facilityLabel = FACILITIES.find(f => f.id === facility)?.name ?? "All Plants";
 
@@ -223,21 +223,22 @@ function UserMenu({ onClose }: { onClose: () => void }) {
       className="absolute top-full right-0 mt-1 w-[220px] rounded-lg border border-slate-700 bg-slate-900 shadow-2xl z-50 overflow-hidden"
     >
       <div className="px-4 py-3 border-b border-slate-800">
-        <div className="text-[13px] font-semibold text-slate-100">Alex Chen</div>
-        <div className="text-[11px] text-slate-400 mt-0.5">Ops Manager</div>
+        <div className="text-[13px] font-semibold text-slate-100">{user.displayName}</div>
+        <div className="text-[11px] text-slate-400 mt-0.5">{user.role}</div>
         <div className="text-[10px] text-slate-500 font-mono mt-1 flex items-center gap-1">
           <Icon name="grid" size={10} className="text-slate-500"/>
           {facilityLabel}
         </div>
       </div>
       <div className="py-1">
-        <button
+        <Link
+          href="/settings"
           className="w-full text-left px-4 py-2 text-[13px] text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors flex items-center gap-2"
           onClick={onClose}
         >
-          <Icon name="database" size={14} className="text-slate-500"/>
+          <Icon name="settings" size={14} className="text-slate-500"/>
           Settings
-        </button>
+        </Link>
         <button
           className="w-full text-left px-4 py-2 text-[13px] text-red-400 hover:bg-slate-800 hover:text-red-300 transition-colors flex items-center gap-2"
           onClick={onClose}
@@ -252,8 +253,17 @@ function UserMenu({ onClose }: { onClose: () => void }) {
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
+function userInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(p => p[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "?";
+}
+
 export function TopBar() {
-  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
+  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user } = useApp();
   const [facilityOpen, setFacilityOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -363,7 +373,7 @@ export function TopBar() {
           aria-label="User menu"
           aria-expanded={userOpen}
         >
-          AC
+          {userInitials(user.displayName)}
         </button>
         {userOpen && <UserMenu onClose={() => setUserOpen(false)}/>}
       </div>
@@ -384,12 +394,14 @@ export function BottomStrip() {
 
   const wasteValue = esgStatus === "live" && esg.wasteAvoided !== undefined ? `$${esg.wasteAvoided.toLocaleString()}` : "--";
   const co2Value   = esgStatus === "live" && esg.co2eSaved    !== undefined ? `${esg.co2eSaved.toFixed(1)} t`         : "--";
+  const disruptionsValue = esgStatus === "live" && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught) : "--";
+  const moqTaxValue = esgStatus === "live" && esg.moqTaxYtd !== undefined ? `$${esg.moqTaxYtd.toLocaleString()}` : "--";
 
   const stats = [
     { label: "Waste avoided",      value: wasteValue, tone: "green", icon: "leaf", priority: true  },
     { label: "CO2e saved",         value: co2Value,   tone: "green", icon: "drop", priority: false },
-    { label: "Active disruptions", value: "--",        tone: "slate", icon: "warn", priority: true  },
-    { label: "MOQ-tax YTD",        value: "--",        tone: "amber", icon: "diff", priority: false },
+    { label: "Active disruptions", value: disruptionsValue, tone: "slate", icon: "warn", priority: true  },
+    { label: "MOQ-tax YTD",        value: moqTaxValue,      tone: "amber", icon: "diff", priority: false },
   ];
 
   return (
