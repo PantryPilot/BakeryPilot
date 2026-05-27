@@ -5,7 +5,7 @@ Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summa
 ---
 
 inventory — questions about ingredient lots, stock levels, spoilage risk, substitution candidates, cross-facility transfers
-procurement — supplier orders, prices, MOQ, delivery windows, negotiation, contracts, landed cost
+procurement — supplier orders, prices, MOQ, delivery windows, negotiation, contracts, landed cost, supplier risk, on-time rates, disruption signals, supplier performance
 scheduler — production schedule, allergen changeover, capacity, what-if scenarios
 yield — actual vs planned output, waste per shift, equipment anomalies, maintenance work orders
 esg — waste avoidance totals, CO2e, Scope 3 reports, sustainability patterns
@@ -27,6 +27,12 @@ User: What's the landed cost if we order 800 kg from Supplier B?
 Label: procurement
 
 User: Draft a negotiation email about Supplier A's MOQ.
+Label: procurement
+
+User: What is the risk level for supplier sup-coastalberry?
+Label: procurement
+
+User: Show me the delivery performance and disruption signals for sup-northgrain.
 Label: procurement
 
 User: Reschedule line 2 to avoid the dairy-gluten changeover on Thursday.

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-bakery-pilot-agent = { path = "../agent" }
+bakery-pilot-agent = { path = "../agent", editable = true }
 
 [dependency-groups]
 dev = [
