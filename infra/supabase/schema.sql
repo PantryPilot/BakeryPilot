@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS facilities (
   dry_capacity_kg    numeric
 );
 
+-- Additive (post-Day-1): geographic coordinates + street address for FlowSight (F5.2).
+-- Per CLAUDE.md schema-freeze policy: optional columns only, no edits to existing
+-- columns. Populated by infra/seed_toronto_facilities.py.
+ALTER TABLE facilities
+  ADD COLUMN IF NOT EXISTS street_address text,
+  ADD COLUMN IF NOT EXISTS postal_code    text,
+  ADD COLUMN IF NOT EXISTS latitude       numeric,
+  ADD COLUMN IF NOT EXISTS longitude      numeric;
+
 -- Ingredient master (seeded from infra/data/ingredients.csv, USDA-informed)
 CREATE TABLE IF NOT EXISTS ingredients (
   ingredient_id              text PRIMARY KEY,

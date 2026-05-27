@@ -1,0 +1,23 @@
+{
+  "data": {
+    "address": {
+      "ISO3166-2-lvl4": "CA-ON",
+      "city": "Toronto",
+      "city_district": "North York",
+      "country": "Canada",
+      "country_code": "ca",
+      "house_number": "1295",
+      "neighbourhood": "Humber Summit",
+      "postcode": "M9L 1N4",
+      "quarter": "Humber River—Black Creek",
+      "road": "Ormont Drive",
+      "state": "Ontario",
+      "state_district": "Golden Horseshoe"
+    },
+    "display_name": "1295, Ormont Drive, Humber Summit, Humber River—Black Creek, North York, Toronto, Golden Horseshoe, Ontario, M9L 1N4, Canada",
+    "lat": 43.7641672,
+    "lng": -79.5530406
+  },
+  "fetched_at": "2026-05-27T00:08:23Z",
+  "source_url": "https://nominatim.openstreetmap.org/search?q=1295+Ormont+Drive%2C+Toronto%2C+ON%2C+Canada&format=json&limit=1&addressdetails=1"
+}

@@ -399,7 +399,7 @@ SELECT s.name AS sku, i.name AS ingredient, f.kg_per_unit
 FROM production_formulas f
 JOIN skus s USING (sku_id)
 JOIN ingredients i USING (ingredient_id)
-WHERE s.sku_id = 'sku-blueberry-muffin-4pk'
+WHERE s.sku_id = 'sku-ace-baguette-classic'
 ORDER BY f.kg_per_unit DESC;
 ```
 

@@ -35,8 +35,8 @@ sequenceDiagram
     DB-->>API: rows
     API-->>AG: [{lot_id, ingredient_id, quantity_kg, expiry_date, ...}]
 
-    AG->>API: GET /api/substitution_candidates?sku=sku-blueberry-muffin-4pk
-    API-->>AG: [{sku_id: lemon-poppy, achievable: 5000}, ...]
+    AG->>API: GET /api/substitution_candidates?sku=sku-ace-baguette-classic
+    API-->>AG: [{sku_id: sku-wonder-classic-white-loaf, achievable: 5000}, ...]
 
     Note over AG: route to ProcurementAgent
 

@@ -1,5 +1,6 @@
 .PHONY: up up.full down reset \
-        schema.migrate schema.seed seed.lots seed.events seed.demo seed.toronto seed.toronto.retailers \
+        schema.migrate schema.seed seed.lots seed.events seed.demo seed.synthetic \
+        seed.toronto seed.toronto.retailers seed.toronto.facilities seed.toronto.skus \
         db.psql db.status \
         backend.install backend.run backend.test \
         agent.install agent.run agent.test \
@@ -36,9 +37,20 @@ schema.migrate:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/schema.sql
 
+# Full bootstrap order (post live-fetcher refactor):
+#   1. seed.sql                     -- ingredients, suppliers, retailers, skus,
+#                                       retailer_orders
+#   2. seed_toronto_facilities.py   -- facilities (live FGF + Nominatim;
+#                                       caches under infra/data/cache/)
+#   3. seed_synthetic.py            -- production_lines, warehouse_costs,
+#                                       allergen_changeovers, production_formulas
+#                                       (engineering_judgment_demo_only)
+#   4. seed_lots.py                 -- ingredient_lots (FK -> facilities)
 schema.seed:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
+	$(UV) run infra/seed_toronto_facilities.py
+	$(UV) run infra/seed_synthetic.py
 	$(UV) run infra/seed_lots.py
 
 seed.lots:
@@ -50,11 +62,26 @@ seed.events:
 seed.demo:
 	$(UV) run infra/seed_demo.py
 
+# seed.synthetic loads the four labelled-synthetic tables from
+# infra/data/synthetic/*.yaml. Run AFTER seed.toronto.facilities so the FK
+# from production_lines -> facilities resolves.
+seed.synthetic:
+	$(UV) run infra/seed_synthetic.py
+
 seed.toronto:
 	$(UV) run infra/seed_toronto_suppliers.py
 
 seed.toronto.retailers:
 	$(UV) run infra/seed_toronto_retailers.py
+
+# Live-fetches FGF Brands' Toronto address from fgfbrands.com/contact and
+# geocodes all four plant locations via OpenStreetMap Nominatim.
+# On network failure falls back to cached snapshots in infra/data/cache/.
+seed.toronto.facilities:
+	$(UV) run infra/seed_toronto_facilities.py
+
+seed.toronto.skus:
+	$(UV) run infra/seed_toronto_skus.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:

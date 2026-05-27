@@ -1,0 +1,24 @@
+{
+  "data": {
+    "address": {
+      "ISO3166-2-lvl4": "CA-QC",
+      "amenity": "Hôtel de Ville de Montréal",
+      "city": "Montréal",
+      "country": "Canada",
+      "country_code": "ca",
+      "county": "Agglomération de Montréal",
+      "house_number": "275",
+      "neighbourhood": "Quartier Chinois",
+      "postcode": "H2Y 1G8",
+      "road": "Rue Notre-Dame Est",
+      "state": "Québec",
+      "state_district": "Montréal (région administrative)",
+      "suburb": "Ville-Marie"
+    },
+    "display_name": "Hôtel de Ville de Montréal, 275, Rue Notre-Dame Est, Quartier Chinois, Ville-Marie, Montréal, Agglomération de Montréal, Montréal (région administrative), Québec, H2Y 1G8, Canada",
+    "lat": 45.5088382,
+    "lng": -73.554142
+  },
+  "fetched_at": "2026-05-27T00:08:26Z",
+  "source_url": "https://nominatim.openstreetmap.org/search?q=275+Rue+Notre-Dame+Est%2C+Montreal%2C+QC%2C+Canada&format=json&limit=1&addressdetails=1"
+}

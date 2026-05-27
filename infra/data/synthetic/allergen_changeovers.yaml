@@ -1,0 +1,44 @@
+# Allergen-changeover time matrix (minutes lost per transition).
+#
+# This data has no public machine-readable source. Sanitation timings
+# between allergen classes are derived from internal engineering
+# practice and food-safety compliance heuristics; no API or scraped
+# page publishes them. Values are calibrated qualitatively:
+#   - Self-transitions are 0 (same allergen class, no clean required).
+#   - Light transitions (none<->gluten/dairy/egg) take 15-45 minutes.
+#   - Major-allergen transitions (involving peanut / tree-nut / sesame)
+#     incur a deep clean of 60-180 minutes.
+# Every row carries `source: engineering_judgment_demo_only` so observers
+# can audit-trail it as non-real.
+#
+# Schema target: allergen_changeovers (from_allergen, to_allergen,
+# changeover_minutes). No FK -- pure lookup table.
+
+allergen_changeovers:
+  - { from_allergen: none,     to_allergen: none,     changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: gluten,   to_allergen: gluten,   changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: dairy,    to_allergen: dairy,    changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: egg,      to_allergen: egg,      changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: tree_nut, to_allergen: tree_nut, changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: peanut,   to_allergen: peanut,   changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: sesame,   to_allergen: sesame,   changeover_minutes: 0,   source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: gluten,   changeover_minutes: 15,  source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: dairy,    changeover_minutes: 15,  source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: egg,      changeover_minutes: 15,  source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: tree_nut, changeover_minutes: 60,  source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: peanut,   changeover_minutes: 90,  source: engineering_judgment_demo_only }
+  - { from_allergen: none,     to_allergen: sesame,   changeover_minutes: 45,  source: engineering_judgment_demo_only }
+  - { from_allergen: gluten,   to_allergen: none,     changeover_minutes: 45,  source: engineering_judgment_demo_only }
+  - { from_allergen: dairy,    to_allergen: none,     changeover_minutes: 30,  source: engineering_judgment_demo_only }
+  - { from_allergen: egg,      to_allergen: none,     changeover_minutes: 30,  source: engineering_judgment_demo_only }
+  - { from_allergen: tree_nut, to_allergen: none,     changeover_minutes: 120, source: engineering_judgment_demo_only }
+  - { from_allergen: peanut,   to_allergen: none,     changeover_minutes: 180, source: engineering_judgment_demo_only }
+  - { from_allergen: sesame,   to_allergen: none,     changeover_minutes: 60,  source: engineering_judgment_demo_only }
+  - { from_allergen: gluten,   to_allergen: dairy,    changeover_minutes: 30,  source: engineering_judgment_demo_only }
+  - { from_allergen: dairy,    to_allergen: gluten,   changeover_minutes: 30,  source: engineering_judgment_demo_only }
+  - { from_allergen: tree_nut, to_allergen: peanut,   changeover_minutes: 60,  source: engineering_judgment_demo_only }
+  - { from_allergen: peanut,   to_allergen: tree_nut, changeover_minutes: 60,  source: engineering_judgment_demo_only }
+  - { from_allergen: gluten,   to_allergen: tree_nut, changeover_minutes: 90,  source: engineering_judgment_demo_only }
+  - { from_allergen: tree_nut, to_allergen: gluten,   changeover_minutes: 120, source: engineering_judgment_demo_only }
+  - { from_allergen: peanut,   to_allergen: gluten,   changeover_minutes: 180, source: engineering_judgment_demo_only }
+  - { from_allergen: gluten,   to_allergen: peanut,   changeover_minutes: 90,  source: engineering_judgment_demo_only }
