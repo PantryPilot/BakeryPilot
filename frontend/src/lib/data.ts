@@ -101,11 +101,11 @@ export interface DemandForecast {
 
 // UI config — plant labels and map positions (not backend data)
 export const FACILITIES: Facility[] = [
-  { id: "all", name: "All Plants", city: "" },
-  { id: "p1", name: "Plant 1", city: "Brampton, ON", x: 0.52, y: 0.55, lines: 6 },
-  { id: "p2", name: "Plant 2", city: "Surrey, BC",   x: 0.10, y: 0.42, lines: 4 },
-  { id: "p3", name: "Plant 3", city: "Calgary, AB",  x: 0.28, y: 0.45, lines: 5 },
-  { id: "p4", name: "Plant 4", city: "Laval, QC",    x: 0.68, y: 0.50, lines: 5 },
+  { id: "all", name: "All Plants",  city: "" },
+  { id: "p1", name: "Toronto",      city: "Toronto, ON",     x: 0.55, y: 0.52, lines: 3 },
+  { id: "p2", name: "Mississauga",  city: "Mississauga, ON", x: 0.52, y: 0.55, lines: 2 },
+  { id: "p3", name: "Hamilton",     city: "Hamilton, ON",    x: 0.50, y: 0.57, lines: 2 },
+  { id: "p4", name: "Montreal",     city: "Montreal, QC",    x: 0.68, y: 0.50, lines: 2 },
 ];
 
 // UI config — SKU display names for Gantt label lookup (IDs match backend DB)

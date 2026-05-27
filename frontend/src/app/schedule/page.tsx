@@ -332,8 +332,7 @@ export default function SchedulePage() {
               <div className="h-8 border-b border-slate-800 px-3 flex items-center text-[10px] uppercase tracking-wider text-slate-500">Line</div>
               {lanes.map(ln => (
                 <div key={ln.key} className="flex items-center px-3 border-b border-slate-800/60" style={{ height: LANE_H }}>
-                  <span className="text-[11px] font-mono text-slate-400 w-10">{ln.plant.toUpperCase()}</span>
-                  <span className="text-[13px] text-slate-200">Line {ln.line}</span>
+                  <span className="text-[11px] text-slate-300 truncate">{FACILITIES.find(f => f.id === ln.plant)?.name || ln.plant} <span className="font-mono text-slate-500">L{ln.line}</span></span>
                 </div>
               ))}
             </div>

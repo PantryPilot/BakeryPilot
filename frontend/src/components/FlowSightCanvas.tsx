@@ -12,10 +12,10 @@ const PLANT_CX = 690;
 const RETAILER_X = 1200;
 
 const PLANT_POS = [
-  { id: "p1", name: "Plant 1", city: "Brampton, ON", x: PLANT_CX + 60,  y: 410, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
-  { id: "p2", name: "Plant 2", city: "Surrey, BC",   x: PLANT_CX - 270, y: 280, status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
-  { id: "p3", name: "Plant 3", city: "Calgary, AB",  x: PLANT_CX - 140, y: 320, status: "warn", util: { frozen: 0.91, ref: 0.78, dry: 0.55 } },
-  { id: "p4", name: "Plant 4", city: "Laval, QC",    x: PLANT_CX + 220, y: 360, status: "ok",   util: { frozen: 0.60, ref: 0.71, dry: 0.45 } },
+  { id: "p1", name: "Toronto",     city: "Toronto, ON",     x: PLANT_CX + 30,  y: 390, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
+  { id: "p2", name: "Mississauga", city: "Mississauga, ON", x: PLANT_CX - 30,  y: 440, status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
+  { id: "p3", name: "Hamilton",    city: "Hamilton, ON",    x: PLANT_CX - 80,  y: 480, status: "warn", util: { frozen: 0.91, ref: 0.78, dry: 0.55 } },
+  { id: "p4", name: "Montreal",    city: "Montreal, QC",    x: PLANT_CX + 220, y: 350, status: "ok",   util: { frozen: 0.60, ref: 0.71, dry: 0.45 } },
 ] as const;
 
 type PlantData = { id: string; name: string; city: string; x: number; y: number; status: string; util: { frozen: number; ref: number; dry: number } };
@@ -36,9 +36,9 @@ const FLOWS = [
   { id: "f1", from: { x: SUPPLIER_X, y: 130 }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "inbound",  cargo: "wheat T55 · 4,200 kg" },
   { id: "f2", from: { x: SUPPLIER_X, y: 330 }, to: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, kind: "inbound",  cargo: "blueberries · 1,800 kg" },
   { id: "f3", from: { x: SUPPLIER_X, y: 530 }, to: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, kind: "inbound",  cargo: "butter · 920 kg" },
-  { id: "f4", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 386 }, kind: "outbound", cargo: "muffins · 8.4k u" },
-  { id: "f5", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 482 }, kind: "outbound", cargo: "croissants · 12k u" },
-  { id: "f6", from: { x: PLANT_POS[3].x, y: PLANT_POS[3].y }, to: { x: RETAILER_X, y: 578 }, kind: "outbound", cargo: "cookies · 14.2k u" },
+  { id: "f4", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 386 }, kind: "outbound", cargo: "white bread · 8.4k u" },
+  { id: "f5", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 482 }, kind: "outbound", cargo: "naan · 12k u" },
+  { id: "f6", from: { x: PLANT_POS[3].x, y: PLANT_POS[3].y }, to: { x: RETAILER_X, y: 578 }, kind: "outbound", cargo: "focaccia · 14.2k u" },
   { id: "f7", from: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "transfer", cargo: "interplant balance · 400 kg" },
 ];
 
