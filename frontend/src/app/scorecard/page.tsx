@@ -35,8 +35,7 @@ import {
 type QuickPOContext = {
   source: "production_shortfall";
   facilityId: string;
-  ingredientId: string;
-  quantityKg: number;
+  items: { ingredientId: string; quantityKg: number }[];
 };
 
 function Toast({ msg, tone, onDone }: { msg: string; tone: "green" | "red"; onDone: () => void }) {
@@ -54,6 +53,8 @@ function Toast({ msg, tone, onDone }: { msg: string; tone: "green" | "red"; onDo
   );
 }
 
+type POLineItem = { ingredientId: string; quantityKg: string; unitPrice: string };
+
 function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
   supplier: Supplier;
   initialContext?: QuickPOContext | null;
@@ -61,17 +62,35 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
   onSuccess: (msg: string) => void;
 }) {
   const { data: ingredients, status: ingStatus } = useIngredients();
-  const [ingredientId, setIngredientId] = useState(initialContext?.ingredientId ?? "");
-  const [quantityKg, setQuantityKg] = useState(
-    initialContext?.quantityKg ? String(initialContext.quantityKg) : ""
-  );
-  const [unitPrice, setUnitPrice] = useState("");
+  const [items, setItems] = useState<POLineItem[]>(() => {
+    if (initialContext?.items && initialContext.items.length > 0) {
+      return initialContext.items.map(it => ({ ingredientId: it.ingredientId, quantityKg: String(it.quantityKg), unitPrice: "" }));
+    }
+    return [{ ingredientId: "", quantityKg: "", unitPrice: "" }];
+  });
   const [deliveryDate, setDeliveryDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OrderDraftResponse | null>(null);
 
-  const canSubmit = !!(ingredientId && quantityKg && unitPrice && deliveryDate && !loading);
+  const canSubmit = !!(
+    deliveryDate &&
+    !loading &&
+    items.length > 0 &&
+    items.every(it => it.ingredientId && it.quantityKg && it.unitPrice)
+  );
+
+  function updateItem(idx: number, patch: Partial<POLineItem>) {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
+  }
+
+  function addItem() {
+    setItems(prev => [...prev, { ingredientId: "", quantityKg: "", unitPrice: "" }]);
+  }
+
+  function removeItem(idx: number) {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -79,7 +98,11 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
     setError(null);
     const res = await createOrderDraft({
       supplier_id: supplier.id.replace(/^s-/, "sup_"),
-      items: [{ ingredient_id: ingredientId, quantity_kg: parseFloat(quantityKg), unit_price: parseFloat(unitPrice) }],
+      items: items.map(it => ({
+        ingredient_id: it.ingredientId,
+        quantity_kg: parseFloat(it.quantityKg),
+        unit_price: parseFloat(it.unitPrice),
+      })),
       delivery_date: deliveryDate,
       facility_id: initialContext?.facilityId,
     });
@@ -90,6 +113,8 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
       setError("Failed to create PO draft. Please try again.");
     }
   }
+
+  const inputCls = "w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none";
 
   if (result) {
     const lc = result.landed_cost_breakdown;
@@ -104,7 +129,7 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
               </div>
               <div>
                 <div className="text-[15px] font-semibold text-slate-100">PO Draft Created</div>
-                <div className="text-[11px] text-slate-500 font-mono">Action card pending approval</div>
+                <div className="text-[11px] text-slate-500 font-mono">Visible in supplier orders · pending approval</div>
               </div>
             </div>
             <button onClick={handleDone} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -138,81 +163,75 @@ function PlacePOModal({ supplier, initialContext, onClose, onSuccess }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-md bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#0c111c] rounded-xl border border-slate-700 shadow-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
           <div>
             <div className="text-[15px] font-semibold text-slate-100">Place Purchase Order</div>
             <div className="text-[11px] text-slate-500 font-mono">{supplier.name}</div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
         </div>
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {initialContext && (
             <div className="rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-[11px] text-violet-200">
-              Requested from Production shortfall · facility <span className="font-mono">{initialContext.facilityId}</span>
+              Production shortfall · facility <span className="font-mono">{initialContext.facilityId}</span>
+              {initialContext.items.length > 1 && <span className="ml-2 text-violet-300 font-semibold">{initialContext.items.length} ingredients</span>}
             </div>
           )}
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Ingredient</label>
-            <select
-              value={ingredientId}
-              onChange={e => setIngredientId(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">Select ingredient…</option>
-              {ingStatus === "loading" ? (
-                <option disabled>Loading…</option>
-              ) : (
-                ingredients.map(ing => (
-                  <option key={ing.ingredient_id} value={ing.ingredient_id}>{ing.name}</option>
-                ))
-              )}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Quantity (kg)</label>
-              <input
-                type="number"
-                min="0"
-                value={quantityKg}
-                onChange={e => setQuantityKg(e.target.value)}
-                placeholder="0"
-                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
-              />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] uppercase tracking-wider text-slate-500">Line items</label>
+              <button onClick={addItem} className="text-[11px] text-blue-400 hover:text-blue-300">+ Add item</button>
             </div>
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Unit price ($/kg)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.001"
-                value={unitPrice}
-                onChange={e => setUnitPrice(e.target.value)}
-                placeholder="0.00"
-                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
-              />
+            <div className="space-y-2">
+              {items.map((it, idx) => (
+                <div key={idx} className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <select
+                      value={it.ingredientId}
+                      onChange={e => updateItem(idx, { ingredientId: e.target.value })}
+                      className={inputCls}
+                    >
+                      <option value="">Select ingredient…</option>
+                      {ingStatus === "loading" ? (
+                        <option disabled>Loading…</option>
+                      ) : (
+                        ingredients.map(ing => (
+                          <option key={ing.ingredient_id} value={ing.ingredient_id}>{ing.name}</option>
+                        ))
+                      )}
+                    </select>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(idx)} className="shrink-0 p-1 rounded text-slate-500 hover:text-red-400">
+                        <Icon name="x" size={14}/>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Qty (kg)</label>
+                      <input type="number" min="0" value={it.quantityKg} onChange={e => updateItem(idx, { quantityKg: e.target.value })} placeholder="0" className={inputCls}/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Unit price ($/kg)</label>
+                      <input type="number" min="0" step="0.001" value={it.unitPrice} onChange={e => updateItem(idx, { unitPrice: e.target.value })} placeholder="0.00" className={inputCls}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
           <div>
             <label className="text-[11px] uppercase tracking-wider text-slate-500 block mb-1.5">Delivery date</label>
-            <input
-              type="date"
-              value={deliveryDate}
-              onChange={e => setDeliveryDate(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"
-            />
+            <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className={inputCls}/>
           </div>
           {error && (
             <div className="text-[12px] text-red-400 bg-red-500/10 rounded-md px-3 py-2">{error}</div>
           )}
         </div>
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-md border border-slate-700 hover:border-slate-500 text-[13px] text-slate-300"
-          >Cancel</button>
+        <div className="flex gap-2 px-6 py-4 border-t border-slate-800 shrink-0">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-md border border-slate-700 hover:border-slate-500 text-[13px] text-slate-300">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}
@@ -1067,7 +1086,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [orderRefreshTick, setOrderRefreshTick] = useState(0);
   const poAutoOpenedRef = useRef(false);
   const { data: backendSuppliers } = useSuppliers();
-  const { data: scorecardSummary } = useScorecardSummary();
+  const { data: scorecardSummary, refetch: refetchSummary } = useScorecardSummary();
 
   const suppliers = useMemo(() => {
     const base = backendSuppliers
@@ -1079,16 +1098,24 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const quickPoContext = useMemo<QuickPOContext | null>(() => {
     if (searchParams.get("source") !== "production_shortfall") return null;
     const facilityId = searchParams.get("po_facility_id") ?? "";
+    if (!facilityId) return null;
+
+    // New multi-item format: po_items=[{"id":"...","qty":...},...]
+    const poItemsRaw = searchParams.get("po_items");
+    if (poItemsRaw) {
+      try {
+        const parsed = JSON.parse(poItemsRaw) as { id: string; qty: number }[];
+        const items = parsed.filter(it => it.id && Number.isFinite(it.qty) && it.qty > 0)
+          .map(it => ({ ingredientId: it.id, quantityKg: it.qty }));
+        if (items.length > 0) return { source: "production_shortfall", facilityId, items };
+      } catch { /* ignore parse errors */ }
+    }
+
+    // Legacy single-item format: po_ingredient_id + po_quantity_kg
     const ingredientId = searchParams.get("po_ingredient_id") ?? "";
-    const quantityRaw = searchParams.get("po_quantity_kg") ?? "";
-    const quantityKg = Number(quantityRaw);
-    if (!facilityId || !ingredientId || !Number.isFinite(quantityKg) || quantityKg <= 0) return null;
-    return {
-      source: "production_shortfall",
-      facilityId,
-      ingredientId,
-      quantityKg,
-    };
+    const quantityKg = Number(searchParams.get("po_quantity_kg") ?? "");
+    if (!ingredientId || !Number.isFinite(quantityKg) || quantityKg <= 0) return null;
+    return { source: "production_shortfall", facilityId, items: [{ ingredientId, quantityKg }] };
   }, [searchParams]);
 
   const closeSupplier = useCallback(() => {
@@ -1109,7 +1136,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       .sort((a, b) => b.onTime - a.onTime)[0] ?? suppliers[0];
     setPoContext(quickPoContext);
     setPlacePOTarget(suggested);
-  }, [quickPoContext, suppliers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [quickPoContext, suppliers]);
 
   const summary = [
     { label: "Active suppliers", value: scorecardSummary?.supplier_count ?? suppliers.length, tone: "slate" },
@@ -1130,10 +1157,11 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       {quickPoContext && (
         <div className="mb-4 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-[12px] text-violet-200 flex items-center justify-between gap-3">
           <div>
-            Shortfall procurement request from Production ·
-            ingredient <span className="font-mono"> {quickPoContext.ingredientId}</span> ·
-            qty <span className="font-mono"> {quickPoContext.quantityKg.toFixed(1)} kg</span> ·
-            facility <span className="font-mono"> {quickPoContext.facilityId}</span>
+            Production shortfall ·
+            {quickPoContext.items.length === 1
+              ? <><span className="font-mono"> {quickPoContext.items[0].ingredientId}</span> · <span className="font-mono">{quickPoContext.items[0].quantityKg.toFixed(1)} kg</span></>
+              : <span className="font-semibold"> {quickPoContext.items.length} ingredients</span>
+            } · facility <span className="font-mono"> {quickPoContext.facilityId}</span>
           </div>
           {!placePOTarget && (
             <button
@@ -1309,7 +1337,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           supplier={placePOTarget}
           initialContext={poContext}
           onClose={() => { setPlacePOTarget(null); setPoContext(null); }}
-          onSuccess={msg => { setPlacePOTarget(null); setPoContext(null); showToast(msg); setOrderRefreshTick(t => t + 1); }}
+          onSuccess={msg => { setPlacePOTarget(null); setPoContext(null); showToast(msg); setOrderRefreshTick(t => t + 1); refetchSummary(); }}
         />
       )}
       {(addSupplierOpen || editTarget) && (

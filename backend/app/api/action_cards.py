@@ -71,23 +71,34 @@ async def confirm_action_card(
 
         if card.kind == "supplier_order":
             p = card.payload
-            order = SupplierOrder(
-                supplier_id=p["supplier_id"],
-                facility_id=p.get("facility_id", "plant-toronto"),
-                status="confirmed",
-                confirmed_at=card.decided_at,
-                action_card_id=card.card_id,
-                delivery_date=p.get("delivery_date"),
-            )
-            db.add(order)
-            await db.flush()
-            for item in p.get("items", []):
-                db.add(SupplierOrderItem(
-                    order_id=order.order_id,
-                    ingredient_id=item["ingredient_id"],
-                    quantity_kg=item["quantity_kg"],
-                    unit_price=item.get("unit_price", 0),
-                ))
+            # If a draft SupplierOrder was created by /orders/draft, promote it
+            # to confirmed instead of creating a duplicate.
+            existing = (
+                await db.execute(
+                    select(SupplierOrder).where(SupplierOrder.action_card_id == card.card_id)
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.status = "confirmed"
+                existing.confirmed_at = card.decided_at
+            else:
+                order = SupplierOrder(
+                    supplier_id=p["supplier_id"],
+                    facility_id=p.get("facility_id", "plant-toronto"),
+                    status="confirmed",
+                    confirmed_at=card.decided_at,
+                    action_card_id=card.card_id,
+                    delivery_date=p.get("delivery_date"),
+                )
+                db.add(order)
+                await db.flush()
+                for item in p.get("items", []):
+                    db.add(SupplierOrderItem(
+                        order_id=order.order_id,
+                        ingredient_id=item["ingredient_id"],
+                        quantity_kg=item["quantity_kg"],
+                        unit_price=item.get("unit_price", 0),
+                    ))
 
         elif card.kind == "transfer":
             await _execute_transfer_card(card.payload, str(card.card_id), db)

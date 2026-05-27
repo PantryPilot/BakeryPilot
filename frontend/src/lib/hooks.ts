@@ -248,8 +248,22 @@ export function useDashboardNetwork(): Result<BackendNetworkSummary | null> {
   return useBackend(fetchDashboardNetwork, null);
 }
 
-export function useScorecardSummary(): Result<BackendScorecardSummary | null> {
-  return useBackend(fetchScorecardSummary, null);
+export function useScorecardSummary(): Result<BackendScorecardSummary | null> & { refetch: () => void } {
+  const [data, setData] = useState<BackendScorecardSummary | null>(null);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    fetchScorecardSummary().then((res) => {
+      if (!alive) return;
+      if (res !== null) { setData(res); setStatus("live"); }
+      else { setStatus("fallback"); }
+    });
+    return () => { alive = false; };
+  }, [tick]);
+
+  return { data, status, refetch: () => setTick((t) => t + 1) };
 }
 
 export function useSupplierPerformance(

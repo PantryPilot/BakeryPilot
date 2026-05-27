@@ -104,8 +104,17 @@ function AssignModal({
       tab: "suppliers",
       source: "production_shortfall",
       po_facility_id: facilityId,
-      po_ingredient_id: ingredientId,
-      po_quantity_kg: quantityKg.toFixed(3),
+      po_items: JSON.stringify([{ id: ingredientId, qty: quantityKg }]),
+    });
+    router.push(`/scorecard?${qs.toString()}`);
+  };
+
+  const openSupplierOrderingAll = (items: { id: string; qty: number }[]) => {
+    const qs = new URLSearchParams({
+      tab: "suppliers",
+      source: "production_shortfall",
+      po_facility_id: facilityId,
+      po_items: JSON.stringify(items),
     });
     router.push(`/scorecard?${qs.toString()}`);
   };
@@ -396,12 +405,14 @@ function AssignModal({
                       {!transferPlan.fully_covers && (
                         <button
                           onClick={() => {
-                            const firstUncovered = transferPlan.items.find(it => it.uncovered_kg > 0);
-                            if (firstUncovered) openSupplierOrdering(firstUncovered.ingredient_id, firstUncovered.uncovered_kg);
+                            const uncovered = transferPlan.items
+                              .filter(it => it.uncovered_kg > 0)
+                              .map(it => ({ id: it.ingredient_id, qty: it.uncovered_kg }));
+                            if (uncovered.length > 0) openSupplierOrderingAll(uncovered);
                           }}
                           className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
                         >
-                          Order missing
+                          {transferPlan.items.filter(it => it.uncovered_kg > 0).length > 1 ? "Order all missing" : "Order missing"}
                         </button>
                       )}
                       <button
@@ -455,8 +466,34 @@ function AssignModal({
               )}
 
               {!transferPlan && substituteSkus.length === 0 && (
-                <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2.5 text-[12px] text-slate-400">
-                  No transfer or substitution options found across facilities.
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-[12px] text-slate-400">No transfer or substitution options — order from supplier</span>
+                    {shortfallIngredients.length > 1 && (
+                      <button
+                        onClick={() => openSupplierOrderingAll(shortfallIngredients.map(i => ({ id: i.ingredient_id, qty: i.shortfall_kg })))}
+                        className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                      >
+                        Order all ({shortfallIngredients.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="divide-y divide-slate-800/60">
+                    {shortfallIngredients.map(i => (
+                      <div key={i.ingredient_id} className="px-3 py-2 flex items-center justify-between gap-2 text-[12px]">
+                        <span className="text-slate-200 truncate">{i.name ?? i.ingredient_id}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="font-mono text-red-400 text-[11px]">short {i.shortfall_kg.toFixed(1)} kg</span>
+                          <button
+                            onClick={() => openSupplierOrdering(i.ingredient_id, i.shortfall_kg)}
+                            className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                          >
+                            Order
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

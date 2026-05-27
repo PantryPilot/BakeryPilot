@@ -77,6 +77,35 @@ async def draft_supplier_order(
         },
     )
     db.add(card)
+    await db.flush()
+
+    # Create a SupplierOrder with status='draft' immediately so it appears
+    # in the active orders panel and increments pending_drafts counter.
+    # Confirming the action card will promote it to 'confirmed'.
+    delivery_date_parsed: date | None = None
+    if req.delivery_date:
+        try:
+            delivery_date_parsed = date.fromisoformat(req.delivery_date)
+        except ValueError:
+            pass
+
+    draft_order = SupplierOrder(
+        supplier_id=req.supplier_id,
+        facility_id=facility_id,
+        status="draft",
+        action_card_id=card.card_id,
+        delivery_date=delivery_date_parsed,
+    )
+    db.add(draft_order)
+    await db.flush()
+    for item in req.items:
+        db.add(SupplierOrderItem(
+            order_id=draft_order.order_id,
+            ingredient_id=item.ingredient_id,
+            quantity_kg=item.quantity_kg,
+            unit_price=item.unit_price,
+        ))
+
     await db.commit()
     await db.refresh(card)
 
