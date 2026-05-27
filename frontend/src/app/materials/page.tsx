@@ -46,22 +46,6 @@ const FILTER_FACILITY = [
 const FILTER_STORAGE = ["All", "Frozen", "Refrigerated", "Dry"];
 const FILTER_RISK = ["All", "OK", "At Risk", "Critical", "Expired"];
 
-function ChipGroup({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void; options: { id: string; label: string }[];
-}) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-slate-500 mr-1">{label}</span>
-      {options.map(o => (
-        <button key={o.id} onClick={() => onChange(o.id)}
-          className={`px-2 h-7 rounded-md text-[12px] border transition ${value === o.id ? "bg-blue-500/15 text-blue-200 border-blue-500/40" : "bg-transparent text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-200"}`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ── Write-off modal ───────────────────────────────────────────────────────────
 function WriteOffModal({ lot, onClose, onSuccess }: {
   lot: Lot; onClose: () => void; onSuccess: (updated: Lot) => void;
@@ -251,8 +235,8 @@ function AddLotModal({ onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ animation: "popup-in 180ms ease-out both" }}>
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6" style={{ animation: "popup-in 220ms ease-out both" }}>
         <div className="flex items-center justify-between mb-5">
           <div className="text-[15px] font-semibold text-slate-100">Add Inventory Lot</div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -390,8 +374,8 @@ function IngredientsManagerModal({ onClose }: { onClose: () => void }) {
   const inputCls = "bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-[12px] text-slate-200 focus:border-blue-500 focus:outline-none w-full";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" style={{ animation: "popup-in 180ms ease-out both" }}>
+      <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl flex flex-col max-h-[85vh]" style={{ animation: "popup-in 220ms ease-out both" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div className="text-[15px] font-semibold text-slate-100">Manage Ingredients</div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
@@ -684,47 +668,49 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block rounded-lg border border-slate-800 overflow-hidden">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-slate-800 bg-slate-900/60">
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Product</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">SKU</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Facility</th>
-              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Qty</th>
-              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Shelf life</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Produced</th>
-              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p, i) => (
-              <tr key={p.pallet_id} className={`border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition ${i % 2 === 0 ? "" : "bg-slate-900/20"}`}>
-                <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
-                <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
-                <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
-                <td className="px-4 py-2.5 text-right font-mono">
-                  <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
-                    {p.days_remaining}d
-                  </span>
-                  <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
-                </td>
-                <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                <td className="px-4 py-2.5">
-                  <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
-                    {p.status.replace(/_/g, " ")}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+      <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
+        <div className="overflow-x-auto overflow-y-auto max-h-[400px]">
+          <table className="bp-data-table w-full min-w-[860px] text-[13px]">
+            <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+                <th className="text-left px-4 py-2.5 font-semibold">Product</th>
+                <th className="text-left px-4 py-2.5 font-semibold">SKU</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Facility</th>
+                <th className="text-right px-4 py-2.5 font-semibold">Qty</th>
+                <th className="text-right px-4 py-2.5 font-semibold">Shelf life</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Produced</th>
+                <th className="text-left px-4 py-2.5 font-semibold">Status</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((p) => (
+                <tr key={p.pallet_id} className="border-t border-slate-800/80 hover:bg-slate-800/40 transition">
+                  <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
+                  <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
+                  <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono">
+                    <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
+                      {p.days_remaining}d
+                    </span>
+                    <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                      {p.status.replace(/_/g, " ")}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -739,6 +725,7 @@ export default function MaterialsPage() {
   const [risk, setRisk] = useState("All");
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
   const [lotClosing, setLotClosing] = useState(false);
   const [writeOffLotTarget, setWriteOffLotTarget] = useState<Lot | null>(null);
@@ -829,20 +816,22 @@ export default function MaterialsPage() {
             : "Finished product inventory from production runs"
           }
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-2 w-full sm:w-auto">
               {activeTab === "ingredients" && (
                 <>
-                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2">
+                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2 whitespace-nowrap">
                     <Icon name="settings" size={13}/> Ingredients
-                  </button>
-                  <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2">
-                    + Add Lot
                   </button>
                 </>
               )}
-              <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
+              <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2 whitespace-nowrap">
                 <Icon name="chat" size={13}/> Ask copilot
               </button>
+              {activeTab === "ingredients" && (
+                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-white font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
+                  + Add Lot
+                </button>
+              )}
             </div>
           }
         />
@@ -864,6 +853,7 @@ export default function MaterialsPage() {
           ))}
         </div>
 
+        <div key={activeTab} className="page-transition">
         {activeTab === "finished" && (
           <FinishedProductsTab facilityFilter={facility} />
         )}
@@ -871,26 +861,82 @@ export default function MaterialsPage() {
         {activeTab === "ingredients" && (<>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
-          <div className="flex flex-wrap items-start gap-3">
-            <ChipGroup label="Facility" value={facility} onChange={setFacility} options={FILTER_FACILITY}/>
-            <span className="w-px h-5 bg-slate-800"/>
-            <ChipGroup label="Storage" value={storage} onChange={setStorage} options={FILTER_STORAGE.map(x => ({ id: x, label: x }))}/>
-            <span className="w-px h-5 bg-slate-800"/>
-            <ChipGroup label="Risk" value={risk} onChange={setRisk} options={FILTER_RISK.map(x => ({ id: x, label: x }))}/>
-            <div className="flex-1"/>
-            <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-9 flex-1 min-w-[220px]">
               <Icon name="search" size={13} className="text-slate-500"/>
-              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search ingredient or lot ID"
-                     className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-48"/>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search ingredient or lot ID"
+                className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
+              />
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500">
-              <span>Sort</span>
-              <select value={sort} onChange={e => setSort(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-[12px] text-slate-200">
-                <option value="risk">Spoilage Risk</option>
-                <option value="expiry">Expiry Date</option>
-                <option value="qty">Quantity</option>
-                <option value="facility">Facility</option>
-              </select>
+            <button
+              onClick={() => setFiltersOpen(v => !v)}
+              className="sm:hidden h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] flex items-center gap-1.5"
+            >
+              <Icon name="bars" size={12} />
+              Filters
+            </button>
+            <button
+              onClick={() => {
+                setFacility("all");
+                setStorage("All");
+                setRisk("All");
+                setSort("risk");
+                setQuery("");
+              }}
+              className="h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] hover:border-slate-500 transition"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className={`${filtersOpen ? "max-h-96 opacity-100 mt-3" : "max-h-0 opacity-0 mt-0"} sm:max-h-none sm:opacity-100 sm:mt-3 overflow-hidden transition-all duration-300 ease-out`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <label className="text-[11px] text-slate-500">
+                Facility
+                <select
+                  value={facility}
+                  onChange={e => setFacility(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_FACILITY.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Storage
+                <select
+                  value={storage}
+                  onChange={e => setStorage(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_STORAGE.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Risk
+                <select
+                  value={risk}
+                  onChange={e => setRisk(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  {FILTER_RISK.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                Sort
+                <select
+                  value={sort}
+                  onChange={e => setSort(e.target.value)}
+                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                >
+                  <option value="risk">Spoilage Risk</option>
+                  <option value="expiry">Expiry Date</option>
+                  <option value="qty">Quantity</option>
+                  <option value="facility">Facility</option>
+                </select>
+              </label>
             </div>
           </div>
         </div>
@@ -985,6 +1031,7 @@ export default function MaterialsPage() {
           </div>
         </div>
         </>)}
+        </div>
       </div>
 
       {activeLot && (
