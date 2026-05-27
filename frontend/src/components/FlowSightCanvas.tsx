@@ -403,7 +403,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const supplierPos = suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
 
   return (
-    <div className="relative w-full h-full bg-[#070a11] overflow-hidden">
+    <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">
       <div className="absolute inset-0 opacity-[0.18]" style={{
         backgroundImage: "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px)",
         backgroundSize: "32px 32px",
