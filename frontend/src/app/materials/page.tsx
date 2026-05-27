@@ -793,15 +793,35 @@ export default function MaterialsPage() {
   }, [mergedLots, facility, storage, risk, sort, query]);
 
   const horizon = useMemo(() => {
-    const groups: Record<string, { ingredient: string; total: number }> = {};
+    const groups: Record<string, { ingredient: string; total: number; lots: number; expiring3d: number; expiring7d: number; lotsData: { qty: number; daysLeft: number }[] }> = {};
     mergedLots.forEach(l => {
-      if (!groups[l.ingredient]) groups[l.ingredient] = { ingredient: l.ingredient, total: 0 };
+      if (!groups[l.ingredient]) {
+        groups[l.ingredient] = {
+          ingredient: l.ingredient,
+          total: 0,
+          lots: 0,
+          expiring3d: 0,
+          expiring7d: 0,
+          lotsData: [],
+        };
+      }
       groups[l.ingredient].total += l.qty;
+      groups[l.ingredient].lots += 1;
+      if (l.daysLeft <= 3) groups[l.ingredient].expiring3d += l.qty;
+      if (l.daysLeft <= 7) groups[l.ingredient].expiring7d += l.qty;
+      groups[l.ingredient].lotsData.push({ qty: l.qty, daysLeft: l.daysLeft });
     });
     return Object.values(groups).map(g => {
-      const burn = Math.max(0.5, g.total * 0.1);
-      const days = Math.min(60, Math.round(g.total / burn));
-      const leadTime = 5;
+      // Stronger urgency model: each lot contributes depletion pressure by expiry.
+      const lotDrivenBurn = g.lotsData.reduce((sum, lot) => {
+        const horizonDays = Math.max(1, Math.min(45, lot.daysLeft));
+        return sum + (lot.qty / horizonDays);
+      }, 0);
+      // Baseline operational usage so long-dated lots still move.
+      const baselineBurn = Math.max(2.0, (g.total * 0.012) + (g.lots * 0.8));
+      const burn = Math.max(1.0, baselineBurn + (lotDrivenBurn * 0.65));
+      const days = Math.min(60, Math.max(1, Math.round(g.total / burn)));
+      const leadTime = g.expiring3d > 0 ? 2 : g.expiring7d > 0 ? 4 : 7;
       return { ...g, burn, days, leadTime, needReorder: days <= leadTime + 2 };
     }).sort((a, b) => a.days - b.days).slice(0, 10);
   }, [mergedLots]);
@@ -1022,8 +1042,8 @@ export default function MaterialsPage() {
               <div key={i} className="grid grid-cols-[minmax(120px,200px)_1fr_auto] items-center gap-3">
                 <div className="text-[12px] text-slate-300 truncate">{h.ingredient}</div>
                 <div className="relative h-5 rounded bg-slate-800/60 overflow-hidden">
-                  <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 60) * 100)}%` }}/>
-                  <div className="absolute top-0 bottom-0 w-[2px] bg-red-500" style={{ left: `${(h.leadTime / 60) * 100}%` }}/>
+                  <div className={`h-full ${h.needReorder ? "bg-amber-500/40" : "bg-emerald-500/30"}`} style={{ width: `${Math.min(100, (h.days / 30) * 100)}%` }}/>
+                  <div className="absolute top-0 bottom-0 w-[2px] bg-red-500" style={{ left: `${(h.leadTime / 30) * 100}%` }}/>
                 </div>
                 <div className="text-[11px] font-mono tabular-nums text-slate-300">{h.days}d · {h.burn.toFixed(1)} kg/d</div>
               </div>
