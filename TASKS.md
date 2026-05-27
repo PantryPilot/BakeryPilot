@@ -1679,3 +1679,15 @@ Every task in one row. Use Ctrl+F by ID to jump to the full description above.
 | S.9 | M3 | SKUs via FGF brand HTML scrapers | ~1.5d |
 | S.10 | M3 | Retailers via parent-company directory scrapers | ~1d |
 | S.11 | M3 | Per-supplier HTML scrapers | ~3d |
+
+## Data sources -- next adds (post `feat/data-update`)
+
+Pattern is established (`infra/fetchers/*.py` + `infra/seed_*.py` + admin-panel
+entry in `data_refresh.DATA_SOURCES`). Next candidates by effort:
+
+| ID | Owner | Title | Sizing | Notes |
+| :--- | :---: | :--- | :---: | :--- |
+| DS.1 | M3 | Frankfurter expanded -- monthly / weekly aggregates | ~0.5h | Same fetcher, additional cache keys. Useful for 30/90-day rolling-average baselines the procurement agent can cite without re-aggregating client-side. |
+| DS.2 | M3 | USDA FoodData Central -- enrich `ingredients` master with sourced nutrition + shelf life | ~1h | Free API key (instant signup). New fetcher + seeder + additive columns on `ingredients`. Overlaps with S.8. |
+| DS.3 | M3 | ElectricityMap free tier -- grid carbon intensity per province | ~1h | Free key (~50 req/day). Powers ESG Scope 2; new `grid_emissions` table indexed by province + timestamp. |
+| DS.4 | M3 | StatsCan Open Data -- Canadian CPI / retail sales / wage indicators | ~1.5h | No auth, JSON cube format (heavier parsing). New `economic_indicators` table. Overlaps with S.7. |

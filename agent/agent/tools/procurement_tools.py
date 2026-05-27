@@ -39,7 +39,19 @@ def _post_draft(supplier_id: str, items: list[dict], delivery_date: str) -> dict
 def get_supplier_risk(
     supplier_id: Annotated[str, "Supplier ID (e.g. sup-coastalberry)"],
 ) -> dict:
-    """Return risk profile for a supplier: on-time rate, lead time, disruption signals, MOQ exposure."""
+    """Return risk profile for a supplier plus relevant regional context.
+
+    Two layers of disruption signal:
+      - `disruption_signals`: rows directly tagged to this supplier_id
+        (historical ERP-side events, supplier-specific risk flags).
+      - `regional_signals`: broad weather + macro-news signals from the
+        last 7 days (severity >= 0.2). These have no supplier_id by
+        design — they're per-facility weather forecasts (Open-Meteo) and
+        commodity-domain news (GDELT). Use them to reason about indirect
+        risk: a heavy_rain signal near a supplier's region or a negative
+        wheat-shortage news cluster is worth citing in a negotiation
+        even when the supplier itself hasn't missed deliveries.
+    """
     sup_resp = httpx.get(f"{BACKEND_URL}/api/suppliers/{supplier_id}", timeout=10)
     if sup_resp.status_code == 404:
         raise ToolException(f"Supplier '{supplier_id}' not found.")
@@ -47,8 +59,32 @@ def get_supplier_risk(
         raise ToolException(f"GET /api/suppliers/{supplier_id} returned {sup_resp.status_code}: {sup_resp.text}")
     supplier = sup_resp.json()
 
-    dis_resp = httpx.get(f"{BACKEND_URL}/api/disruptions", params={"supplier_id": supplier_id}, timeout=10)
+    # Supplier-specific events (historical, ERP-sourced).
+    dis_resp = httpx.get(
+        f"{BACKEND_URL}/api/disruptions",
+        params={"supplier_id": supplier_id},
+        timeout=10,
+    )
     disruptions = dis_resp.json() if dis_resp.status_code == 200 else []
+
+    # Broad regional context (Open-Meteo + GDELT — recent, unscoped).
+    # No min_severity threshold here: weather signals in temperate regions
+    # are typically severity < 0.15 even when worth citing in negotiation;
+    # leave the LLM to weigh severity rather than filtering at the source.
+    # Filter by `sources` (not `kinds`) — open_meteo writes one row per
+    # condition kind (heavy_rain/wind/heat/frost) and a sources filter
+    # picks them all up with one param.
+    regional_resp = httpx.get(
+        f"{BACKEND_URL}/api/disruptions",
+        params={
+            "include_unscoped": "true",
+            "since_days": 7,
+            "sources": "open_meteo,gdelt",
+            "limit": 30,
+        },
+        timeout=10,
+    )
+    regional = regional_resp.json() if regional_resp.status_code == 200 else []
 
     return {
         "supplier_id": supplier_id,
@@ -58,7 +94,60 @@ def get_supplier_risk(
         "moq_kg": supplier.get("moq_kg"),
         "moq_tax_usd_qtd": supplier.get("moq_tax_usd_qtd"),
         "disruption_signals": disruptions,
+        "regional_signals": regional,
     }
+
+
+@tool
+@opik.track(name="get_commodity_benchmark")
+def get_commodity_benchmark(
+    commodity_id: Annotated[
+        str,
+        "Commodity series ID, e.g. 'wheat-cbot-zw', 'sugar-ice-sb', "
+        "'crude-fred-wti', 'fx-cad-usd'. Use 'all' to list every available series.",
+    ],
+    days: Annotated[int, "Rolling-window size in days for avg/min/max stats. 7-365."] = 30,
+) -> dict:
+    """Fetch latest close + rolling-window stats for a commodity or FX series.
+
+    Backed by the `commodity_prices` table (populated by Yahoo Finance, Bank
+    of Canada, Frankfurter, FRED). Use this whenever you need to ground a
+    negotiation argument in real market data — e.g. cite the 30-day average
+    CBOT wheat close when arguing a supplier's contracted price is N% above
+    benchmark.
+
+    Returns a stats dict with: latest_close, latest_date, avg_close, min/max,
+    pct_change_vs_window_avg, and sample_count. When `commodity_id='all'`
+    returns the list of available series with their stats.
+    """
+    if commodity_id.strip().lower() == "all":
+        resp = httpx.get(
+            f"{BACKEND_URL}/api/commodity_prices",
+            params={"days": days},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            raise ToolException(
+                f"GET /api/commodity_prices returned {resp.status_code}: {resp.text}"
+            )
+        return {"series": resp.json(), "window_days": days}
+
+    resp = httpx.get(
+        f"{BACKEND_URL}/api/commodity_prices/{commodity_id}",
+        params={"days": days},
+        timeout=10,
+    )
+    if resp.status_code == 404:
+        raise ToolException(
+            f"No price data for commodity_id '{commodity_id}'. "
+            f"Call with commodity_id='all' to see available series, or refresh "
+            f"the matching data source in the admin panel."
+        )
+    if resp.status_code != 200:
+        raise ToolException(
+            f"GET /api/commodity_prices/{commodity_id} returned {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
 
 
 @tool
