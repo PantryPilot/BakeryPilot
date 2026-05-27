@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ProductionSchedule as ScheduleORM
+from app.db.models import (
+    ActionCard as ActionCardORM,
+    ProductionSchedule as ScheduleORM,
+)
 from app.db.session import get_db
 from app.models.schedules import (
     ProductionSchedule,
@@ -52,13 +56,27 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
     return [_to_model(s) for s in schedules]
 
 
+async def _resolve_schedule(schedule_id: str, db: AsyncSession) -> ScheduleORM:
+    """Look up a schedule by UUID, or return the most recent one when the
+    caller passes the alias 'current' / 'latest'."""
+    if schedule_id in ("current", "latest"):
+        s = (
+            await db.execute(
+                select(ScheduleORM).order_by(ScheduleORM.start_at.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+    else:
+        s = await db.get(ScheduleORM, schedule_id)
+    if not s:
+        raise HTTPException(404, f"schedule {schedule_id} not found")
+    return s
+
+
 @router.get("/{schedule_id}", response_model=ProductionSchedule)
 async def get_schedule(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ProductionSchedule:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     return _to_model(s)
 
 
@@ -66,9 +84,7 @@ async def get_schedule(
 async def schedule_diff(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ScheduleDiff:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     before_run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
@@ -114,13 +130,50 @@ async def what_if(
 async def post_to_mes(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    s = await db.get(ScheduleORM, schedule_id)
-    if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+    s = await _resolve_schedule(schedule_id, db)
     s.status = "approved"
     await db.commit()
+    sid = str(s.schedule_id)
     return {
-        "schedule_id": schedule_id,
-        "mes_ack_id": f"mes-{schedule_id[:8]}",
+        "schedule_id": sid,
+        "mes_ack_id": f"mes-{sid[:8]}",
         "accepted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+class ScheduleChangeDraftRequest(BaseModel):
+    facility_id: str
+    substitute_sku_id: str
+    requested_by_sku_id: str
+    requested_units: int
+    rationale: str | None = None
+
+
+@router.post("/draft_change", response_model=dict)
+async def draft_schedule_change(
+    req: ScheduleChangeDraftRequest, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Create a pending action_card the operator can confirm to swap one SKU
+    for another on the production line. The actual cancel-old-order + create-
+    new-order work runs inside _execute_schedule_change_card when the user
+    confirms the card."""
+    card = ActionCardORM(
+        kind="schedule_change",
+        payload={
+            "facility_id": req.facility_id,
+            "substitute_sku_id": req.substitute_sku_id,
+            "requested_by_sku_id": req.requested_by_sku_id,
+            "requested_units": req.requested_units,
+            "rationale": req.rationale or "",
+            "title": f"Swap {req.requested_by_sku_id} → {req.substitute_sku_id}",
+            "agent": "SchedulerAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {
+        "action_card_id": str(card.card_id),
+        "kind": "schedule_change",
+        "title": card.payload["title"],
     }
