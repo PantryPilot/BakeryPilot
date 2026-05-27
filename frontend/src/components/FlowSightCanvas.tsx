@@ -7,9 +7,9 @@ import type { BackendYieldTelemetryPoint } from "../lib/api";
 import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter } from "../lib/hooks";
 
 const CANVAS_W = 1280, CANVAS_H = 720;
-const SUPPLIER_X = 130;
-const PLANT_CX = 640;
-const RETAILER_X = 1150;
+const SUPPLIER_X = 180;
+const PLANT_CX = 690;
+const RETAILER_X = 1200;
 
 const PLANT_POS = [
   { id: "p1", name: "Plant 1", city: "Brampton, ON", x: PLANT_CX + 60,  y: 410, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
@@ -243,7 +243,7 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
 function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
   if (disruptions.length === 0) return null;
   return (
-    <div className="absolute left-0 right-0 bottom-[116px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
+    <div className="absolute left-0 right-0 bottom-[75px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
       <div className="shrink-0 px-3 h-full flex items-center gap-1.5 bg-red-900/60 border-r border-red-800/60">
         <Dot tone="red" pulse/>
         <span className="text-[10px] uppercase tracking-wider text-red-200 font-mono">Disruption feed</span>
@@ -262,15 +262,30 @@ function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
   );
 }
 
-function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) => void }) {
+const DEMO_EVENTS = [
+  { at: 0.05, t: "red" }, { at: 0.18, t: "orange" }, { at: 0.34, t: "blue" }, { at: 0.42, t: "green" },
+  { at: 0.51, t: "red" }, { at: 0.66, t: "blue" },   { at: 0.78, t: "orange" }, { at: 0.88, t: "green" },
+];
+const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function disruptionToEvent(d: Disruption): { at: number; t: string } | null {
+  const tsMs = new Date(d.ts.replace(" ", "T")).getTime();
+  if (isNaN(tsMs)) return null;
+  const at = (tsMs - (Date.now() - WINDOW_MS)) / WINDOW_MS;
+  if (at < 0 || at > 1) return null;
+  // severity is already "red" | "amber" | "info" from the api adapter
+  const t = d.severity === "red" ? "red" : d.severity === "amber" ? "orange" : "blue";
+  return { at, t };
+}
+
+function TimeScrubber({ live, setLive, disruptions }: { live: boolean; setLive: (v: boolean) => void; disruptions: Disruption[] }) {
   const [pos, setPos] = useState(0.92);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const { data: esg, status: esgStatus } = useEsgCounter();
-  const events = [
-    { at: 0.05, t: "red" }, { at: 0.18, t: "orange" }, { at: 0.34, t: "blue" }, { at: 0.42, t: "green" },
-    { at: 0.51, t: "red" }, { at: 0.66, t: "blue" }, { at: 0.78, t: "orange" }, { at: 0.88, t: "green" },
-  ];
+
+  const liveEvents = disruptions.map(disruptionToEvent).filter((e): e is { at: number; t: string } => e !== null);
+  const events = liveEvents.length > 0 ? liveEvents : DEMO_EVENTS;
+
   const colorOf = (c: string) => ({ red: "#ef4444", orange: "#f97316", blue: "#3b82f6", green: "#22c55e" }[c] ?? "#94a3b8");
 
   useEffect(() => {
@@ -290,35 +305,8 @@ function TimeScrubber({ live, setLive }: { live: boolean; setLive: (v: boolean) 
     setPlaying(p => !p);
   };
 
-  const liveEsg = esgStatus === "live";
-  const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()          : "--";
-  const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`            : "--";
-  const moqVal     = liveEsg && esg.moqTaxYtd       !== undefined ? `$${(esg.moqTaxYtd / 1000).toFixed(1)}k`  : "--";
-  const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)            : "--";
-
   return (
-    <div className="absolute left-0 right-0 bottom-0 h-[116px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur z-10">
-      {/* ESG stats row */}
-      <div className="px-4 h-10 border-b border-slate-800/60 flex items-center">
-        {[
-          { icon: "leaf", value: wasteVal,   label: "waste saved",  color: "text-emerald-400" },
-          { icon: "drop", value: co2Val,     label: "CO₂e",         color: "text-emerald-400" },
-          { icon: "warn", value: disruptVal, label: "disruptions",  color: "text-amber-400"   },
-          { icon: "diff", value: moqVal,     label: "MOQ-tax",      color: "text-amber-400"   },
-        ].map((s, i) => (
-          <div key={i} className="flex items-center gap-1 pr-4">
-            <Icon name={s.icon} size={10} className={s.color}/>
-            <span className="text-[11px] font-mono tabular-nums text-slate-200">{s.value}</span>
-            <span className="text-[9px] text-slate-500 ml-0.5">{s.label}</span>
-          </div>
-        ))}
-        {liveEsg && (
-          <span className="relative flex w-1.5 h-1.5 ml-auto shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"/>
-          </span>
-        )}
-      </div>
+    <div className="absolute left-0 right-0 bottom-0 h-[75px] border-t border-slate-800 bg-[#0a0d14]/95 backdrop-blur z-10">
       {/* Controls row */}
       <div className="flex items-center pl-8 pr-4 gap-3 h-[75px]">
         {/* Play + speed buttons */}
@@ -403,7 +391,7 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
   return (
     <div
       style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
-      className="absolute top-0 right-0 bottom-[116px] w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl"
+      className="absolute top-0 right-0 bottom-[75px] w-full sm:w-[600px] bg-[#0c111c] border-l border-slate-800 z-20 flex flex-col shadow-2xl"
     >
       <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800">
         <div className="flex items-center gap-3">
@@ -518,7 +506,7 @@ function FlowLegend() {
   const disruptVal = liveEsg && esg.disruptionsCaught !== undefined ? String(esg.disruptionsCaught)           : "--";
 
   return (
-    <div className="absolute top-14 left-4 z-10 rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur px-3 py-2.5 flex flex-col gap-1.5 shadow-xl">
+    <div className="absolute top-20 left-4 z-10 rounded-lg border border-slate-800 bg-[#0c111c]/95 backdrop-blur px-3 py-2.5 flex flex-col gap-1.5 shadow-xl">
       <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
       {[
         { color: "#3b82f6", label: "inbound" },
@@ -607,7 +595,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         </defs>
         <path d="M 250 200 Q 350 170, 480 200 T 700 180 T 920 200 L 980 320 Q 940 360, 850 360 L 700 380 Q 600 380, 480 360 L 320 340 Q 240 320, 220 280 Z"
               fill="url(#canadaTint)" stroke="#334155" strokeOpacity="0.4" strokeWidth="1" strokeDasharray="3 4"/>
-        <text x="640" y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
+        <text x={PLANT_CX} y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
         <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">SUPPLIERS ›</text>
         <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">‹ RETAILERS</text>
 
@@ -642,7 +630,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       <FlowLegend />
       <LayerToggles layers={layers} setLayer={setLayer}/>
       {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
-      <TimeScrubber live={live} setLive={setLive}/>
+      <TimeScrubber live={live} setLive={setLive} disruptions={disruptions}/>
       {activePlant && (
         <>
           <div className="absolute inset-0 z-[15] bg-black/20" onClick={closePlant}/>

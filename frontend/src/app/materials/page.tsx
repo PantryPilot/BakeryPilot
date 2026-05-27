@@ -1,11 +1,44 @@
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
 import { FACILITIES, Lot } from "../../lib/data";
-import { useLots, useLotSubstitutions } from "../../lib/hooks";
+import { useLots, useLotSubstitutions, useIngredients } from "../../lib/hooks";
+import {
+  writeOffLot,
+  transferLot,
+  applySubstitution,
+  createLot,
+  deleteLot,
+  createIngredient,
+  updateIngredient,
+  deleteIngredient,
+  fetchIngredients,
+  fetchFinishedGoods,
+  type BackendSubstitutionCandidate,
+  type BackendIngredient,
+  type BackendFinishedPallet,
+} from "../../lib/api";
 
+// ── Toast helper ──────────────────────────────────────────────────────────────
+function Toast({ msg, kind, onClose }: { msg: string; kind: "success" | "error"; onClose: () => void }) {
+  return (
+    <div
+      className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-xl border text-[13px] font-medium ${
+        kind === "success"
+          ? "bg-emerald-950 border-emerald-500/40 text-emerald-200"
+          : "bg-red-950 border-red-500/40 text-red-200"
+      }`}
+    >
+      <Icon name={kind === "success" ? "check" : "warn"} size={15} />
+      <span>{msg}</span>
+      <button onClick={onClose} className="ml-2 text-slate-400 hover:text-slate-200"><Icon name="x" size={13}/></button>
+    </div>
+  );
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
 const FILTER_FACILITY = [
   { id: "all", label: "All" },
   ...FACILITIES.filter(f => f.id !== "all").map(f => ({ id: f.id, label: f.name })),
@@ -29,17 +62,453 @@ function ChipGroup({ label, value, onChange, options }: {
   );
 }
 
-function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void; isClosing?: boolean }) {
+// ── Write-off modal ───────────────────────────────────────────────────────────
+function WriteOffModal({ lot, onClose, onSuccess }: {
+  lot: Lot; onClose: () => void; onSuccess: (updated: Lot) => void;
+}) {
+  const [reason, setReason] = useState("Manual write-off");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const updated = await writeOffLot(lot.id.toLowerCase(), { reason });
+      if (!updated) { setError("Backend request failed. Please try again."); setLoading(false); return; }
+      onSuccess(updated);
+    } catch {
+      setError("Unexpected error. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="text-[15px] font-semibold text-slate-100">Write off lot</div>
+            <div className="text-[12px] font-mono text-slate-500 mt-0.5">{lot.id} · {lot.ingredient}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Quantity</div>
+                <div className="text-[16px] font-mono tabular-nums text-red-300 mt-0.5">{lot.qty.toLocaleString()} kg</div>
+              </div>
+              <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Expiry</div>
+                <div className={`text-[16px] font-mono tabular-nums mt-0.5 ${lot.daysLeft <= 2 ? "text-red-300" : "text-slate-100"}`}>{lot.expiry}</div>
+              </div>
+            </div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Reason</label>
+            <input
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Spoilage — expiry passed"
+              className="w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-red-500/70 transition"
+            />
+          </div>
+          {error && <div className="text-[12px] text-red-400 flex items-center gap-1.5"><Icon name="warn" size={12}/>{error}</div>}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !reason.trim()}
+              className="flex-1 py-2 rounded-md bg-red-500 hover:bg-red-400 disabled:opacity-50 disabled:cursor-not-allowed text-red-950 font-semibold text-[13px] flex items-center justify-center gap-2 transition"
+            >
+              {loading && <span className="w-3.5 h-3.5 border-2 border-red-950/40 border-t-red-950 rounded-full animate-spin"/>}
+              Write off {lot.qty.toLocaleString()} kg
+            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500 transition">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Transfer modal ────────────────────────────────────────────────────────────
+const DEST_FACILITIES = FACILITIES.filter(f => f.id !== "all");
+
+const FACILITY_ID_MAP: Record<string, string> = {
+  p1: "plant-toronto", p2: "plant-mississauga", p3: "plant-hamilton", p4: "plant-montreal",
+};
+
+const STORAGE_ZONES = ["dry", "refrigerated", "frozen"] as const;
+
+function TransferModal({ lot, onClose, onSuccess }: {
+  lot: Lot; onClose: () => void; onSuccess: (updated: Lot) => void;
+}) {
+  const facilityIdMap = FACILITY_ID_MAP;
+  const destOptions = DEST_FACILITIES.filter(f => facilityIdMap[f.id] !== lot.facility && f.id !== lot.facility);
+  const [destId, setDestId] = useState<string>(destOptions[0]?.id ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!destId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const backendDestId = facilityIdMap[destId] ?? destId;
+      const updated = await transferLot(lot.id.toLowerCase(), { destination_facility_id: backendDestId });
+      if (!updated) { setError("Backend request failed. Please try again."); setLoading(false); return; }
+      onSuccess(updated);
+    } catch {
+      setError("Unexpected error. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="text-[15px] font-semibold text-slate-100">Transfer lot</div>
+            <div className="text-[12px] font-mono text-slate-500 mt-0.5">{lot.id} · {lot.ingredient}</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500">Quantity</div>
+              <div className="text-[16px] font-mono tabular-nums text-slate-100 mt-0.5">{lot.qty.toLocaleString()} kg</div>
+            </div>
+            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500">From</div>
+              <div className="text-[16px] font-mono tabular-nums text-slate-100 mt-0.5">{lot.facility.toUpperCase()}</div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Destination facility</label>
+            <select
+              value={destId}
+              onChange={e => setDestId(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-blue-500/70 transition"
+            >
+              {destOptions.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          {error && <div className="text-[12px] text-red-400 flex items-center gap-1.5"><Icon name="warn" size={12}/>{error}</div>}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !destId}
+              className="flex-1 py-2 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-blue-950 font-semibold text-[13px] flex items-center justify-center gap-2 transition"
+            >
+              {loading && <span className="w-3.5 h-3.5 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
+              Transfer lot
+            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500 transition">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add lot modal ────────────────────────────────────────────────────────────
+function AddLotModal({ onClose, onSuccess }: {
+  onClose: () => void;
+  onSuccess: (lot: Lot) => void;
+}) {
+  const { data: ingredients, status: ingStatus } = useIngredients();
+  const [ingredientId, setIngredientId] = useState("");
+  const [facilityId, setFacilityId] = useState("p1");
+  const [quantityKg, setQuantityKg] = useState("");
+  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expiryDate, setExpiryDate] = useState("");
+  const [storageZone, setStorageZone] = useState<typeof STORAGE_ZONES[number]>("dry");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = !!(ingredientId && facilityId && quantityKg && expiryDate && !loading);
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setLoading(true);
+    setError(null);
+    const lot = await createLot({
+      facility_id: FACILITY_ID_MAP[facilityId] ?? facilityId,
+      ingredient_id: ingredientId,
+      quantity_kg: parseFloat(quantityKg),
+      received_date: receivedDate,
+      expiry_date: expiryDate,
+      storage_zone: storageZone,
+    });
+    setLoading(false);
+    if (lot) {
+      onSuccess(lot);
+    } else {
+      setError("Failed to create lot. Check that the ingredient and facility exist.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="text-[15px] font-semibold text-slate-100">Add Inventory Lot</div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Ingredient</label>
+            <select value={ingredientId} onChange={e => setIngredientId(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none">
+              <option value="">Select ingredient…</option>
+              {ingStatus === "loading" ? <option disabled>Loading…</option> : ingredients.map(ing => (
+                <option key={ing.ingredient_id} value={ing.ingredient_id}>{ing.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Facility</label>
+              <select value={facilityId} onChange={e => setFacilityId(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none">
+                {DEST_FACILITIES.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Storage zone</label>
+              <select value={storageZone} onChange={e => setStorageZone(e.target.value as typeof STORAGE_ZONES[number])}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none">
+                {STORAGE_ZONES.map(z => <option key={z} value={z}>{z}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Quantity (kg)</label>
+            <input type="number" min="0" value={quantityKg} onChange={e => setQuantityKg(e.target.value)} placeholder="0"
+              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Received date</label>
+              <input type="date" value={receivedDate} onChange={e => setReceivedDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"/>
+            </div>
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Expiry date</label>
+              <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[13px] text-slate-200 focus:border-blue-500 focus:outline-none"/>
+            </div>
+          </div>
+          {error && <div className="text-[12px] text-red-400 flex items-center gap-1.5"><Icon name="warn" size={12}/>{error}</div>}
+          <div className="flex items-center gap-2 pt-1">
+            <button onClick={handleSubmit} disabled={!canSubmit}
+              className="flex-1 py-2 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed text-blue-950 font-semibold text-[13px] flex items-center justify-center gap-2 transition">
+              {loading && <span className="w-3.5 h-3.5 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
+              Add lot
+            </button>
+            <button onClick={onClose} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500 transition">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ingredients manager modal ─────────────────────────────────────────────────
+function IngredientsManagerModal({ onClose }: { onClose: () => void }) {
+  const [ingredients, setIngredients] = useState<BackendIngredient[]>([]);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editZone, setEditZone] = useState("");
+  const [addForm, setAddForm] = useState({ ingredient_id: "", name: "", category: "", default_storage_zone: "dry", shelf_life_days_default: "365" });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoadStatus("loading");
+    const data = await fetchIngredients();
+    if (data) { setIngredients(data); setLoadStatus("ready"); }
+    else setLoadStatus("error");
+  }, []);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  const startEdit = (ing: BackendIngredient) => {
+    setEditId(ing.ingredient_id);
+    setEditName(ing.name);
+    setEditCategory(ing.category ?? "");
+    setEditZone(ing.default_storage_zone);
+  };
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSavingId(editId);
+    const updated = await updateIngredient(editId, {
+      name: editName, category: editCategory || undefined, default_storage_zone: editZone,
+    });
+    setSavingId(null);
+    if (updated) {
+      setIngredients(prev => prev.map(i => i.ingredient_id === editId ? updated : i));
+      setEditId(null);
+    }
+  };
+
+  const handleDelete = async (ingredientId: string) => {
+    setDeletingId(ingredientId);
+    const ok = await deleteIngredient(ingredientId);
+    setDeletingId(null);
+    if (ok) setIngredients(prev => prev.filter(i => i.ingredient_id !== ingredientId));
+    else await reload();
+  };
+
+  const handleAdd = async () => {
+    if (!addForm.ingredient_id || !addForm.name) return;
+    setAddLoading(true);
+    setAddError(null);
+    const created = await createIngredient({
+      ingredient_id: addForm.ingredient_id,
+      name: addForm.name,
+      category: addForm.category || undefined,
+      default_storage_zone: addForm.default_storage_zone,
+      shelf_life_days_default: parseInt(addForm.shelf_life_days_default) || 365,
+    });
+    setAddLoading(false);
+    if (created) {
+      setIngredients(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setAddForm({ ingredient_id: "", name: "", category: "", default_storage_zone: "dry", shelf_life_days_default: "365" });
+    } else {
+      setAddError("Failed. ID may already exist.");
+    }
+  };
+
+  const inputCls = "bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-[12px] text-slate-200 focus:border-blue-500 focus:outline-none w-full";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-2xl rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div className="text-[15px] font-semibold text-slate-100">Manage Ingredients</div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400"><Icon name="x" size={16}/></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {loadStatus === "loading" && <div className="text-[12px] text-slate-500 py-4 text-center">Loading…</div>}
+          {loadStatus === "error" && <div className="text-[12px] text-red-400 py-4 text-center">Failed to load ingredients.</div>}
+          {loadStatus === "ready" && ingredients.map(ing => (
+            <div key={ing.ingredient_id} className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
+              {editId === ing.ingredient_id ? (
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name"
+                      className={`col-span-2 ${inputCls}`}/>
+                    <select value={editZone} onChange={e => setEditZone(e.target.value)}
+                      className={inputCls}>
+                      {STORAGE_ZONES.map(z => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                  </div>
+                  <input value={editCategory} onChange={e => setEditCategory(e.target.value)} placeholder="Category (optional)"
+                    className={inputCls}/>
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} disabled={savingId === ing.ingredient_id}
+                      className="px-3 py-1 rounded bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5">
+                      {savingId === ing.ingredient_id && <span className="w-3 h-3 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
+                      Save
+                    </button>
+                    <button onClick={() => setEditId(null)} className="px-3 py-1 rounded border border-slate-700 text-slate-300 text-[12px]">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] text-slate-100">{ing.name}</div>
+                    <div className="text-[11px] font-mono text-slate-500">{ing.ingredient_id} · {ing.category ?? "—"} · {ing.default_storage_zone}</div>
+                  </div>
+                  <button onClick={() => startEdit(ing)} className="px-2 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Edit</button>
+                  <button onClick={() => handleDelete(ing.ingredient_id)} disabled={deletingId === ing.ingredient_id}
+                    className="px-2 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300 disabled:opacity-50">
+                    {deletingId === ing.ingredient_id ? "…" : "Delete"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-slate-800 p-4">
+          <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-3">Add new ingredient</div>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <input value={addForm.ingredient_id} onChange={e => setAddForm(f => ({...f, ingredient_id: e.target.value}))}
+              placeholder="ID (e.g. flour_bread)" className={inputCls}/>
+            <input value={addForm.name} onChange={e => setAddForm(f => ({...f, name: e.target.value}))}
+              placeholder="Display name" className={inputCls}/>
+            <input value={addForm.category} onChange={e => setAddForm(f => ({...f, category: e.target.value}))}
+              placeholder="Category (optional)" className={inputCls}/>
+            <select value={addForm.default_storage_zone} onChange={e => setAddForm(f => ({...f, default_storage_zone: e.target.value}))}
+              className={inputCls}>
+              {STORAGE_ZONES.map(z => <option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+          {addError && <div className="text-[12px] text-red-400 mb-2">{addError}</div>}
+          <button onClick={handleAdd} disabled={!addForm.ingredient_id || !addForm.name || addLoading}
+            className="px-4 py-1.5 rounded bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-950 font-semibold text-[12px] flex items-center gap-1.5">
+            {addLoading && <span className="w-3 h-3 border-2 border-emerald-950/40 border-t-emerald-950 rounded-full animate-spin"/>}
+            Add ingredient
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Lot slide-in ──────────────────────────────────────────────────────────────
+function LotSlideIn({
+  lot, onClose, isClosing, onToast,
+}: {
+  lot: Lot;
+  onClose: () => void;
+  isClosing?: boolean;
+  onLotUpdate?: (updated: Lot) => void;
+  onToast: (msg: string, kind: "success" | "error") => void;
+}) {
   const backendLotId = lot.id.toLowerCase();
   const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
-  const substitutes = rawSubs.map((s, i) => ({
+  const [usingIdx, setUsingIdx] = useState<number | null>(null);
+  const [usedIdx, setUsedIdx] = useState<number | null>(null);
+
+  const substitutes = rawSubs.map((s: BackendSubstitutionCandidate, i: number) => ({
     name: s.sku_name,
     facility: s.facility_name ?? s.facility_id ?? "—",
     qty: s.achievable_quantity,
     compat: s.margin_score,
     allergen: s.allergens && s.allergens.length > 0 ? s.allergens.join(", ") : "none",
     rank: i + 1,
+    sku_id: s.sku_id,
   }));
+
+  const handleUse = async (idx: number, sub: typeof substitutes[0]) => {
+    setUsingIdx(idx);
+    try {
+      const result = await applySubstitution(backendLotId, {
+        substitute_sku_id: sub.sku_id,
+        quantity_kg: lot.qty,
+      });
+      if (!result) {
+        onToast("Failed to apply substitution. Please try again.", "error");
+      } else {
+        setUsedIdx(idx);
+        onToast(`Substitution action card created (${result.action_card_id.slice(0, 8)}…)`, "success");
+      }
+    } catch {
+      onToast("Unexpected error applying substitution.", "error");
+    } finally {
+      setUsingIdx(null);
+    }
+  };
+
   return (
     <div
       style={{ animation: isClosing ? "slide-out-right 280ms ease forwards" : "slide-in-right 280ms ease forwards" }}
@@ -90,7 +559,14 @@ function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void
                   <div className="text-[14px] font-mono tabular-nums text-emerald-300">{Math.round(s.compat * 100)}%</div>
                   <div className="text-[10px] text-slate-500">compat</div>
                 </div>
-                <button className="px-2.5 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px]">Use</button>
+                <button
+                  onClick={() => handleUse(i, s)}
+                  disabled={usingIdx === i || usedIdx === i}
+                  className="px-2.5 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-60 disabled:cursor-not-allowed text-blue-950 font-semibold text-[12px] flex items-center gap-1.5 transition"
+                >
+                  {usingIdx === i && <span className="w-3 h-3 border-2 border-blue-950/40 border-t-blue-950 rounded-full animate-spin"/>}
+                  {usedIdx === i ? "Applied" : "Use"}
+                </button>
               </div>
             ))}
           </div>
@@ -107,8 +583,157 @@ function LotSlideIn({ lot, onClose, isClosing }: { lot: Lot; onClose: () => void
   );
 }
 
+// ── Finished Products Tab ─────────────────────────────────────────────────────
+
+const FACILITY_ID_TO_SHORT: Record<string, string> = {
+  "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
+};
+const FACILITY_SHORT_TO_ID: Record<string, string> = {
+  p1: "plant-toronto", p2: "plant-mississauga", p3: "plant-hamilton", p4: "plant-montreal",
+};
+
+function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
+  const [pallets, setPallets] = useState<BackendFinishedPallet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const facilityId = facilityFilter !== "all" ? (FACILITY_SHORT_TO_ID[facilityFilter] ?? undefined) : undefined;
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchFinishedGoods(facilityId).then(data => {
+      setLoading(false);
+      if (!data) { setError("Failed to load finished product inventory."); return; }
+      setPallets(data);
+    });
+  }, [facilityId]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return pallets;
+    const q = query.toLowerCase();
+    return pallets.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
+  }, [pallets, query]);
+
+  const STATUS_COLOR: Record<string, string> = {
+    in_warehouse: "text-emerald-300 bg-emerald-900/30 border-emerald-700/50",
+    shipped: "text-blue-300 bg-blue-900/30 border-blue-700/50",
+    donated: "text-purple-300 bg-purple-900/30 border-purple-700/50",
+    written_off: "text-slate-400 bg-slate-800/40 border-slate-700",
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <span className="w-7 h-7 border-2 border-slate-700 border-t-blue-400 rounded-full animate-spin" />
+          <span className="text-[13px] text-slate-500">Loading finished products…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <Icon name="warn" size={28} className="text-red-400" />
+        <div className="text-[13px] text-slate-400">{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-8">
+          <Icon name="search" size={13} className="text-slate-500" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search product name or SKU…"
+            className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-48"
+          />
+        </div>
+        <span className="text-[12px] text-slate-500">{filtered.length} pallets</span>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden space-y-2 mb-4">
+        {filtered.map(p => (
+          <div key={p.pallet_id} className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold text-slate-100 truncate">{p.sku_name}</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{p.sku_id} · {FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</div>
+              </div>
+              <span className={`shrink-0 px-2 py-0.5 rounded-md border text-[10px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                {p.status.replace(/_/g, " ")}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+              <div><span className="text-slate-500">Qty </span><span className="text-slate-300 font-mono">{p.quantity.toLocaleString()}</span></div>
+              <div><span className="text-slate-500">Shelf </span><span className={`font-mono ${p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}`}>{p.days_remaining}d left</span></div>
+              <div><span className="text-slate-500">Produced </span><span className="text-slate-400">{new Date(p.produced_at).toLocaleDateString()}</span></div>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="py-10 text-center text-[13px] text-slate-500">No finished products found.</div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden sm:block rounded-lg border border-slate-800 overflow-hidden">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-slate-800 bg-slate-900/60">
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Product</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">SKU</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Facility</th>
+              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Qty</th>
+              <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Shelf life</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Produced</th>
+              <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((p, i) => (
+              <tr key={p.pallet_id} className={`border-b border-slate-800/50 last:border-b-0 hover:bg-slate-800/30 transition ${i % 2 === 0 ? "" : "bg-slate-900/20"}`}>
+                <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
+                <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
+                <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono">
+                  <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
+                    {p.days_remaining}d
+                  </span>
+                  <span className="text-slate-600 text-[11px] ml-1">/ {p.shelf_life_days}d</span>
+                </td>
+                <td className="px-4 py-2.5 text-slate-400 text-[12px]">{new Date(p.produced_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                <td className="px-4 py-2.5">
+                  <span className={`px-2 py-0.5 rounded-md border text-[11px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
+                    {p.status.replace(/_/g, " ")}
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-[13px] text-slate-500">No finished products found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function MaterialsPage() {
   const { openChatContext } = useApp();
+  const [activeTab, setActiveTab] = useState<"ingredients" | "finished">("ingredients");
   const [facility, setFacility] = useState("all");
   const [storage, setStorage] = useState("All");
   const [risk, setRisk] = useState("All");
@@ -116,15 +741,53 @@ export default function MaterialsPage() {
   const [query, setQuery] = useState("");
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
   const [lotClosing, setLotClosing] = useState(false);
+  const [writeOffLotTarget, setWriteOffLotTarget] = useState<Lot | null>(null);
+  const [transferLotTarget, setTransferLotTarget] = useState<Lot | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
+
   const { data: lots, status: backendStatus } = useLots();
+  const [lotOverrides, setLotOverrides] = useState<Map<string, Lot>>(new Map());
+  const [addedLots, setAddedLots] = useState<Lot[]>([]);
+  const [deletedLotIds, setDeletedLotIds] = useState<Set<string>>(new Set());
+  const [addLotOpen, setAddLotOpen] = useState(false);
+  const [ingredientsManagerOpen, setIngredientsManagerOpen] = useState(false);
+  const [deleteConfirmLot, setDeleteConfirmLot] = useState<Lot | null>(null);
+  const [deletingLot, setDeletingLot] = useState(false);
+
+  const mergedLots = useMemo(() => {
+    const base = lots
+      .map(l => lotOverrides.get(l.id) ?? l)
+      .filter(l => !deletedLotIds.has(l.id));
+    return [...addedLots, ...base];
+  }, [lots, lotOverrides, addedLots, deletedLotIds]);
 
   const closeLot = useCallback(() => {
     setLotClosing(true);
     setTimeout(() => { setActiveLot(null); setLotClosing(false); }, 280);
   }, []);
 
+  const showToast = useCallback((msg: string, kind: "success" | "error") => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const handleWriteOffSuccess = useCallback((updated: Lot) => {
+    setLotOverrides(m => new Map(m).set(updated.id, updated));
+    setWriteOffLotTarget(null);
+    // Also update activeLot if it's the same lot
+    setActiveLot(prev => prev?.id === updated.id ? updated : prev);
+    showToast(`Lot ${updated.id.slice(0, 12)}… written off successfully.`, "success");
+  }, [showToast]);
+
+  const handleTransferSuccess = useCallback((updated: Lot) => {
+    setLotOverrides(m => new Map(m).set(updated.id, updated));
+    setTransferLotTarget(null);
+    setActiveLot(prev => prev?.id === updated.id ? updated : prev);
+    showToast(`Lot transferred to ${updated.facility.toUpperCase()}.`, "success");
+  }, [showToast]);
+
   const filtered = useMemo(() => {
-    let l = lots.slice();
+    let l = mergedLots.slice();
     if (facility !== "all") l = l.filter(x => x.facility === facility);
     if (storage !== "All") l = l.filter(x => x.storage === storage.toLowerCase());
     if (risk !== "All") {
@@ -140,11 +803,11 @@ export default function MaterialsPage() {
     if (sort === "qty")      l.sort((a, b) => b.qty - a.qty);
     if (sort === "facility") l.sort((a, b) => a.facility.localeCompare(b.facility));
     return l;
-  }, [lots, facility, storage, risk, sort, query]);
+  }, [mergedLots, facility, storage, risk, sort, query]);
 
   const horizon = useMemo(() => {
     const groups: Record<string, { ingredient: string; total: number }> = {};
-    lots.forEach(l => {
+    mergedLots.forEach(l => {
       if (!groups[l.ingredient]) groups[l.ingredient] = { ingredient: l.ingredient, total: 0 };
       groups[l.ingredient].total += l.qty;
     });
@@ -154,20 +817,58 @@ export default function MaterialsPage() {
       const leadTime = 5;
       return { ...g, burn, days, leadTime, needReorder: days <= leadTime + 2 };
     }).sort((a, b) => a.days - b.days).slice(0, 10);
-  }, [lots]);
+  }, [mergedLots]);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Inventory"
-          sub={`${lots.length} active lots · ${lots.filter(l => l.status === "critical").length} critical · ${lots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`}
+          sub={activeTab === "ingredients"
+            ? `${mergedLots.length} active lots · ${mergedLots.filter(l => l.status === "critical").length} critical · ${mergedLots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`
+            : "Finished product inventory from production runs"
+          }
           right={
-            <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
-              <Icon name="chat" size={13}/> Ask copilot about inventory
-            </button>
+            <div className="flex items-center gap-2">
+              {activeTab === "ingredients" && (
+                <>
+                  <button onClick={() => setIngredientsManagerOpen(true)} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-200 flex items-center gap-2">
+                    <Icon name="settings" size={13}/> Ingredients
+                  </button>
+                  <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2">
+                    + Add Lot
+                  </button>
+                </>
+              )}
+              <button onClick={() => openChatContext("Inventory · all plants")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
+                <Icon name="chat" size={13}/> Ask copilot
+              </button>
+            </div>
           }
         />
+
+        {/* Tab strip */}
+        <div className="flex items-center gap-1 mb-5 border-b border-slate-800">
+          {([["ingredients", "Ingredients"], ["finished", "Finished Products"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`px-4 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === id
+                  ? "border-blue-500 text-blue-300"
+                  : "border-transparent text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "finished" && (
+          <FinishedProductsTab facilityFilter={facility} />
+        )}
+
+        {activeTab === "ingredients" && (<>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
           <div className="flex flex-wrap items-start gap-3">
@@ -218,9 +919,15 @@ export default function MaterialsPage() {
                   </div>
                 </div>
               </div>
+              <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
+                <button onClick={() => setTransferLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
+                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+              </div>
             </div>
           ))}
         </div>
+
         <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
           <div className="overflow-x-auto overflow-y-auto max-h-[400px]">
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
@@ -250,8 +957,9 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
                       <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Substitute</button>
-                      <button onClick={e => e.stopPropagation()} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
-                      <button onClick={e => e.stopPropagation()} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                      <button onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Transfer</button>
+                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write off</button>
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-500 hover:text-red-400 border border-red-500/30 hover:border-red-500/60">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -276,13 +984,87 @@ export default function MaterialsPage() {
             ))}
           </div>
         </div>
+        </>)}
       </div>
 
       {activeLot && (
         <>
           <div className="fixed inset-0 z-20 bg-black/20" onClick={closeLot}/>
-          <LotSlideIn lot={activeLot} onClose={closeLot} isClosing={lotClosing}/>
+          <LotSlideIn
+            lot={activeLot}
+            onClose={closeLot}
+            isClosing={lotClosing}
+            onToast={showToast}
+          />
         </>
+      )}
+
+      {writeOffLotTarget && (
+        <WriteOffModal
+          lot={writeOffLotTarget}
+          onClose={() => setWriteOffLotTarget(null)}
+          onSuccess={handleWriteOffSuccess}
+        />
+      )}
+
+      {transferLotTarget && (
+        <TransferModal
+          lot={transferLotTarget}
+          onClose={() => setTransferLotTarget(null)}
+          onSuccess={handleTransferSuccess}
+        />
+      )}
+
+      {addLotOpen && (
+        <AddLotModal
+          onClose={() => setAddLotOpen(false)}
+          onSuccess={(lot) => {
+            setAddedLots(prev => [lot, ...prev]);
+            setAddLotOpen(false);
+            showToast(`Lot ${lot.id.slice(0, 12)}… added.`, "success");
+          }}
+        />
+      )}
+
+      {ingredientsManagerOpen && (
+        <IngredientsManagerModal onClose={() => setIngredientsManagerOpen(false)}/>
+      )}
+
+      {deleteConfirmLot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-sm rounded-xl border border-red-500/30 bg-[#0c111c] shadow-2xl p-6">
+            <div className="text-[15px] font-semibold text-slate-100 mb-1">Delete lot?</div>
+            <div className="text-[12px] font-mono text-slate-500 mb-4">{deleteConfirmLot.id} · {deleteConfirmLot.ingredient}</div>
+            <div className="text-[12px] text-slate-400 mb-5">This permanently removes the lot record. This cannot be undone.</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setDeletingLot(true);
+                  const ok = await deleteLot(deleteConfirmLot.id.toLowerCase());
+                  setDeletingLot(false);
+                  if (ok) {
+                    setDeletedLotIds(prev => new Set(prev).add(deleteConfirmLot.id));
+                    setDeleteConfirmLot(null);
+                    showToast(`Lot deleted.`, "success");
+                  } else {
+                    showToast("Delete failed.", "error");
+                    setDeleteConfirmLot(null);
+                  }
+                }}
+                disabled={deletingLot}
+                className="flex-1 py-2 rounded-md bg-red-500 hover:bg-red-400 disabled:opacity-50 text-red-950 font-semibold text-[13px] flex items-center justify-center gap-2"
+              >
+                {deletingLot && <span className="w-3.5 h-3.5 border-2 border-red-950/40 border-t-red-950 rounded-full animate-spin"/>}
+                Delete
+              </button>
+              <button onClick={() => setDeleteConfirmLot(null)} className="px-4 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast msg={toast.msg} kind={toast.kind} onClose={() => setToast(null)} />
       )}
     </div>
   );

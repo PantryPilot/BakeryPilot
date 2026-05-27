@@ -304,6 +304,80 @@ BEGIN
 END $$;
 
 -- ============================================================================
+-- Production module seed data — finished_goods_pallets + production_orders
+-- Guards: only inserts when tables exist and rows = 0 (idempotent).
+-- ============================================================================
+
+DO $$
+BEGIN
+  -- finished_goods_pallets: starting inventory for common SKUs across 2 plants
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_pallets')
+     AND (SELECT count(*) FROM finished_goods_pallets) = 0 THEN
+
+    INSERT INTO finished_goods_pallets (sku_id, facility_id, produced_at, shelf_life_days, quantity, status)
+    VALUES
+      ('sku-ace-baguette-classic',          'plant-toronto',     NOW() - INTERVAL '1 day',  4,  480, 'in_warehouse'),
+      ('sku-ace-sourdough-bistro',          'plant-toronto',     NOW() - INTERVAL '2 days', 6,  320, 'in_warehouse'),
+      ('sku-wonder-classic-white-loaf',     'plant-toronto',     NOW() - INTERVAL '1 day',  7,  800, 'in_warehouse'),
+      ('sku-d-italiano-hot-dog-buns-8pk',   'plant-toronto',     NOW() - INTERVAL '3 days', 7,  560, 'in_warehouse'),
+      ('sku-ace-ciabatta-piccolo-6pk',      'plant-mississauga', NOW() - INTERVAL '1 day',  5,  400, 'in_warehouse'),
+      ('sku-country-harvest-12-grain-loaf', 'plant-mississauga', NOW() - INTERVAL '2 days', 7,  600, 'in_warehouse'),
+      ('sku-stonefire-original-naan-2pk',   'plant-mississauga', NOW() - INTERVAL '4 days', 7,  240, 'in_warehouse'),
+      ('sku-ace-rosemary-focaccia',         'plant-hamilton',    NOW() - INTERVAL '1 day',  4,  190, 'in_warehouse'),
+      ('sku-stonefire-mini-naan-8pk',       'plant-montreal',    NOW() - INTERVAL '2 days', 7,  300, 'in_warehouse');
+  END IF;
+
+  -- production_orders: sample orders in different statuses for demo realism
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'production_orders')
+     AND (SELECT count(*) FROM production_orders) = 0 THEN
+
+    -- A completed order (produced) on Toronto Line 3 — historical
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, completed_at, notes)
+    VALUES
+      ('plant-toronto', 'line-toronto-3', 'sku-wonder-classic-white-loaf', 500,
+       'produced',
+       NOW() - INTERVAL '5 hours',
+       NOW() - INTERVAL '2 hours',
+       'Morning run — Wonder White batch');
+
+    -- An order in-progress on Toronto Line 1
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, actual_start_at, notes)
+    VALUES
+      ('plant-toronto', 'line-toronto-1', 'sku-ace-baguette-classic', 800,
+       'producing',
+       NOW() - INTERVAL '90 minutes',
+       'Afternoon baguette run');
+
+    -- A planned order on Mississauga Line 2 — queued, not started
+    INSERT INTO production_orders
+      (facility_id, line_id, sku_id, quantity_units, status, planned_start_at, notes)
+    VALUES
+      ('plant-mississauga', 'line-mississauga-2', 'sku-country-harvest-12-grain-loaf', 600,
+       'planned',
+       NOW() + INTERVAL '2 hours',
+       'Evening run — 12-grain loaf');
+
+    -- Update line statuses to match the seeded orders above
+    UPDATE production_lines
+      SET status = 'producing'
+      WHERE line_id = 'line-toronto-1';
+
+    UPDATE production_lines
+      SET status = 'setup'
+      WHERE line_id = 'line-mississauga-2';
+
+    -- Point current_order_id at the active and planned orders
+    UPDATE production_lines pl
+      SET current_order_id = po.order_id
+      FROM production_orders po
+      WHERE po.line_id = pl.line_id
+        AND po.status IN ('producing','planned');
+  END IF;
+END $$;
+
+-- ============================================================================
 -- app_users + user_settings — single-user demo (no auth in hackathon build)
 -- Tables defined in schema.sql; safe to skip if they don't yet exist.
 -- ============================================================================

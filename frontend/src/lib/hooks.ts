@@ -15,8 +15,10 @@ import {
   fetchEsgPatterns,
   fetchFacilities,
   fetchFacilityUtilization,
+  fetchIngredients,
   fetchLotSubstitutions,
   fetchLots,
+  fetchNegotiations,
   fetchOrders,
   fetchRetailers,
   fetchSchedules,
@@ -31,8 +33,10 @@ import {
   type BackendEsgPattern,
   type BackendFacility,
   type BackendFacilityUtilization,
+  type BackendIngredient,
   type BackendLoopCard,
   type BackendNetworkSummary,
+  type BackendNegotiationDraft,
   type BackendOrder,
   type BackendRetailer,
   type BackendSchedule,
@@ -268,6 +272,41 @@ export function useSupplierPerformance(
     return () => { alive = false; };
   }, [supplierId]);
   return { data, status };
+}
+
+export function useIngredients(): Result<BackendIngredient[]> {
+  return useBackend(fetchIngredients, []);
+}
+
+/** Fetch negotiation drafts, optionally filtered by frontend supplier id. */
+export function useNegotiationsBySupplier(supplierId: string | null): {
+  data: BackendNegotiationDraft[];
+  status: BackendStatus;
+  refetch: () => void;
+} {
+  const [data, setData] = useState<BackendNegotiationDraft[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!supplierId) return;
+    setStatus("loading");
+    setData([]);
+    let alive = true;
+    fetchNegotiations(supplierId, "pending").then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [supplierId, tick]);
+
+  const refetch = () => setTick((t) => t + 1);
+  return { data, status, refetch };
 }
 
 /** Subscribe to the FlowSight live event stream. Callback fires per event. */

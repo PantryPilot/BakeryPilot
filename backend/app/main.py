@@ -17,6 +17,7 @@ from app.api import (
     notifications,
     orders,
     pallets,
+    production,
     retailers,
     schedules,
     stakeholders,
@@ -50,6 +51,7 @@ async def healthz() -> dict:
 
 for _router in [
     inventory.router,
+    inventory.ingredients_router,
     suppliers.router,
     orders.router,
     action_cards.router,
@@ -58,6 +60,7 @@ for _router in [
     yield_intel.router,
     esg.router,
     pallets.router,
+    production.router,
     chat.router,
     voice.router,
     notifications.router,

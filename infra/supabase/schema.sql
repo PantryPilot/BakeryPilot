@@ -481,3 +481,39 @@ CREATE TABLE IF NOT EXISTS user_settings (
   notif_yield_anomaly  bool NOT NULL DEFAULT false,
   updated_at           timestamptz NOT NULL DEFAULT now()
 );
+
+-- ============================================================================
+-- Production module (additive, post-hackathon)
+-- Adds manual production order tracking with inventory integration.
+-- Schema-freeze policy: only ALTER ADD COLUMN IF NOT EXISTS + new tables.
+-- ============================================================================
+
+-- Add line status and active-order pointer to production_lines.
+-- DEFAULT 'idle' applies cleanly to all existing rows.
+ALTER TABLE production_lines
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'idle'
+    CHECK (status IN ('idle','setup','producing','paused','maintenance')),
+  ADD COLUMN IF NOT EXISTS current_order_id uuid;
+
+-- Production orders: one order per active line assignment.
+CREATE TABLE IF NOT EXISTS production_orders (
+  order_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  facility_id      text NOT NULL REFERENCES facilities(facility_id),
+  line_id          text NOT NULL REFERENCES production_lines(line_id),
+  sku_id           text NOT NULL REFERENCES skus(sku_id),
+  quantity_units   int  NOT NULL CHECK (quantity_units > 0),
+  status           text NOT NULL DEFAULT 'planned'
+                   CHECK (status IN ('planned','producing','paused','produced','cancelled')),
+  planned_start_at timestamptz,
+  actual_start_at  timestamptz,
+  completed_at     timestamptz,
+  notes            text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS production_orders_facility_status_idx
+  ON production_orders (facility_id, status);
+
+CREATE INDEX IF NOT EXISTS production_orders_line_idx
+  ON production_orders (line_id);

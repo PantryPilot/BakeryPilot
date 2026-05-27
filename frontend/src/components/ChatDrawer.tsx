@@ -29,7 +29,7 @@ export function CopilotButton() {
   const { chatOpen, setChatOpen } = useApp();
   const [popupClosing, setPopupClosing] = useState(false);
   const pathname = usePathname();
-  const bottomClass = pathname === '/facilities' ? 'bottom-[132px]' : 'bottom-6';
+  const bottomClass = pathname === '/facilities' ? 'bottom-[91px]' : 'bottom-6';
 
   const handleClose = useCallback(() => {
     setPopupClosing(true);
