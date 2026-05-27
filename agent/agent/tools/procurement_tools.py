@@ -35,6 +35,33 @@ def _post_draft(supplier_id: str, items: list[dict], delivery_date: str) -> dict
 
 
 @tool
+@opik.track(name="get_supplier_risk")
+def get_supplier_risk(
+    supplier_id: Annotated[str, "Supplier ID (e.g. sup-coastalberry)"],
+) -> dict:
+    """Return risk profile for a supplier: on-time rate, lead time, disruption signals, MOQ exposure."""
+    sup_resp = httpx.get(f"{BACKEND_URL}/api/suppliers/{supplier_id}", timeout=10)
+    if sup_resp.status_code == 404:
+        raise ToolException(f"Supplier '{supplier_id}' not found.")
+    if sup_resp.status_code != 200:
+        raise ToolException(f"GET /api/suppliers/{supplier_id} returned {sup_resp.status_code}: {sup_resp.text}")
+    supplier = sup_resp.json()
+
+    dis_resp = httpx.get(f"{BACKEND_URL}/api/disruptions", params={"supplier_id": supplier_id}, timeout=10)
+    disruptions = dis_resp.json() if dis_resp.status_code == 200 else []
+
+    return {
+        "supplier_id": supplier_id,
+        "name": supplier.get("name"),
+        "on_time_rate": supplier.get("on_time_rate"),
+        "lead_time_days": supplier.get("lead_time_days"),
+        "moq_kg": supplier.get("moq_kg"),
+        "moq_tax_usd_qtd": supplier.get("moq_tax_usd_qtd"),
+        "disruption_signals": disruptions,
+    }
+
+
+@tool
 @opik.track(name="preview_landed_cost")
 def preview_landed_cost(
     supplier_id: Annotated[str, "Supplier ID"],

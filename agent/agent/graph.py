@@ -49,7 +49,7 @@ def _route_intent(state: AgentState) -> str:
         "weekly_plan": "weekly_plan_agent",
         "weekly_summary": "summary_agent",
     }
-    return routes.get(intent, "respond")
+    return routes.get(intent, "weekly_plan_agent")
 
 
 @opik.track(name="inventory_agent_node")
@@ -98,7 +98,7 @@ def _respond_node(state: AgentState) -> AgentState:
     last = messages[-1] if messages else None
 
     if isinstance(last, AIMessage):
-        return state
+        return {}
 
     store = get_prompt_store()
     system_prompt = store.get("orchestrator")
