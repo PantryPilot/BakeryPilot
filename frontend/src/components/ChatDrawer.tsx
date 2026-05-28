@@ -573,11 +573,12 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           onPointerMove={onResizePointerMove}
           onPointerUp={onResizePointerUp}
           onPointerCancel={onResizePointerUp}
-          className="absolute top-0 left-0 w-5 h-5 cursor-nw-resize z-10 flex items-start justify-start p-1"
+          className="absolute top-0 left-0 w-7 h-7 cursor-nw-resize z-10 flex items-center justify-center"
           title="Drag to resize"
         >
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-slate-600">
-            <path d="M7 7L1 1M4 7L1 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-slate-400">
+            <path d="M8 3H3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M3 3L11 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
           </svg>
         </div>
       )}
