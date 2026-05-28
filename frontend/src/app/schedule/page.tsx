@@ -1,9 +1,11 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, SectionHeader } from "../../components/atoms";
 import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
+import type { BackendSchedule } from "../../lib/api";
 import { useSchedules } from "../../lib/hooks";
 
 const FACILITY_MAP: Record<string, string> = {
@@ -27,9 +29,92 @@ const STATIC_RUNS: ProductionRun[] = [
   { id: "s-p4-l1-b", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 9.5,  end: 11,   allergen: "none", risk: "ok",  lots: [] },
 ];
 
-const HOUR_W = 56;
 const LANE_H = 44;
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
+const GANTT_GRID_COLS = `repeat(${HOURS.length}, minmax(0, 1fr))`;
+
+function hourLeftPct(hour: number, timelineStart: number, slotCount: number): number {
+  return ((hour - timelineStart) / slotCount) * 100;
+}
+
+function hourWidthPct(start: number, end: number, slotCount: number): number {
+  return ((end - start) / slotCount) * 100;
+}
+
+type ScheduledRun = ProductionRun & { dateKey: string };
+
+function toDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toDateKey(d);
+}
+
+function quickDatesAround(anchorDate: string): string[] {
+  return [shiftDateKey(anchorDate, -1), anchorDate, shiftDateKey(anchorDate, 1)];
+}
+
+function laneRowBg(index: number): string {
+  return index % 2 === 0 ? "bg-[var(--bp-surface-soft)]" : "bg-[var(--bp-surface-muted)]/35";
+}
+
+function runTileStyle(risk: ProductionRun["risk"]): string {
+  if (risk === "red") {
+    return "border-l-red-400/80 bg-red-500/[0.08] border-red-500/20 hover:bg-red-500/[0.12]";
+  }
+  if (risk === "amber") {
+    return "border-l-amber-400/80 bg-amber-500/[0.08] border-amber-500/20 hover:bg-amber-500/[0.12]";
+  }
+  return "border-l-blue-400/55 bg-[var(--bp-surface-muted)]/70 border-[var(--bp-border-soft)] hover:border-[var(--bp-border)] hover:bg-[var(--bp-surface-muted)]";
+}
+
+const GANTT_HEADER_H = 32;
+const GANTT_HEADER =
+  "sticky top-0 z-30 shrink-0 bg-[var(--bp-surface-muted)]/55 border-b border-[var(--bp-border-soft)] text-[11px] font-medium leading-none text-[var(--bp-text-secondary)]";
+const GANTT_ROW_LABEL = "text-[11px] font-medium leading-snug text-[var(--bp-text-secondary)] truncate";
+const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
+const GANTT_RUN_TILE =
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] shadow-sm ring-1 ring-white/[0.04] flex items-center gap-2 px-2.5 cursor-pointer transition-colors duration-150 hover:z-20 hover:shadow-md hover:ring-white/[0.08]";
+
+function formatDateLabel(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00Z`);
+  return d.toLocaleDateString("en-CA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
+  const runs: ScheduledRun[] = [];
+  for (const s of schedules) {
+    if (s.status === "complete") continue;
+    const plantId = FACILITY_MAP[s.facility_id] ?? s.facility_id;
+    const lineNum = parseInt(s.line_id.replace(/\D/g, "")) || 1;
+    for (const r of s.runs) {
+      const start = new Date(r.start_at);
+      const end = new Date(r.end_at);
+      runs.push({
+        id: r.run_id,
+        plant: plantId,
+        line: lineNum,
+        sku: r.sku_id,
+        qty: r.quantity,
+        start: start.getUTCHours() + start.getUTCMinutes() / 60,
+        end: end.getUTCHours() + end.getUTCMinutes() / 60,
+        allergen: "none",
+        risk: "ok",
+        lots: r.lot_assignments,
+        dateKey: toDateKey(start),
+      });
+    }
+  }
+  return runs;
+}
 
 // Default lanes to always show, even when a line has no runs today
 const ALL_LANES: Array<{ plant: string; line: number }> = [
@@ -39,48 +124,126 @@ const ALL_LANES: Array<{ plant: string; line: number }> = [
   { plant: "p4", line: 1 }, { plant: "p4", line: 2 },
 ];
 
-function GanttLane({ lane, hours, nowHour, isFirst }: { lane: { key: string; plant: string; line: number; runs: ProductionRun[] }; hours: number[]; nowHour: number; isFirst: boolean }) {
+function RunHoverCard({
+  run,
+  anchorEl,
+}: {
+  run: ProductionRun;
+  anchorEl: HTMLElement | null;
+}) {
+  const sku = SKUS.find(s => s.id === run.sku);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    if (!anchorEl) return;
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      setPos({
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - 264),
+        top: rect.top - 8,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorEl]);
+
+  if (!anchorEl || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed z-[9999] w-64 -translate-y-full rounded-xl border border-[var(--bp-border)] bg-[var(--bp-surface)] p-3 shadow-2xl text-[12px] pointer-events-none ring-1 ring-white/[0.04]"
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <div className="font-mono text-[10px] text-[var(--bp-text-subtle)] mb-1">{run.id}</div>
+      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1.5">{sku?.name || run.sku}</div>
+      <div className="text-[var(--bp-text-muted)]">Lots consumed</div>
+      {run.lots.length > 0
+        ? run.lots.map(l => <div key={l} className="font-mono text-[11px] text-[var(--bp-text-secondary)]">· {l}</div>)
+        : <div className="font-mono text-[11px] text-[var(--bp-text-subtle)]">· none assigned</div>}
+      <div className="mt-1.5 pt-1.5 border-t border-[var(--bp-border-soft)] flex justify-between">
+        <span className="text-[var(--bp-text-muted)]">yield est</span>
+        <span className="text-[var(--bp-text-secondary)] font-mono tabular-nums">96.4%</span>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function GanttLane({
+  lane,
+  hours,
+  nowHour,
+  isFirst,
+  showNowLine,
+  rowIndex,
+}: {
+  lane: { key: string; plant: string; line: number; runs: ProductionRun[] };
+  hours: number[];
+  nowHour: number;
+  isFirst: boolean;
+  showNowLine: boolean;
+  rowIndex: number;
+}) {
   const sku = (id: string) => SKUS.find(s => s.id === id);
-  const showNow = nowHour >= hours[0] && nowHour <= hours[hours.length - 1];
+  const [hoveredRun, setHoveredRun] = useState<{ run: ProductionRun; el: HTMLElement } | null>(null);
+  const showNow = showNowLine && nowHour >= hours[0] && nowHour <= hours[hours.length - 1];
   const nowLabel = `${String(Math.floor(nowHour)).padStart(2, "0")}:${String(Math.round((nowHour % 1) * 60)).padStart(2, "0")}`;
   return (
-    <div className="relative border-b border-slate-800/60" style={{ height: LANE_H, minWidth: hours.length * HOUR_W, width: "100%" }}>
-      {hours.map((h, i) => (
-        <div key={h} className="absolute top-0 bottom-0" style={{ left: (i + 1) * HOUR_W, width: 1, backgroundColor: "var(--bp-border)" }}/>
+    <div
+      className={`relative w-full border-b border-[var(--bp-border-soft)] ${laneRowBg(rowIndex)}`}
+      style={{ height: LANE_H }}
+    >
+      {Array.from({ length: hours.length + 1 }, (_, i) => (
+        <div
+          key={i}
+          className="absolute top-0 bottom-0 w-px opacity-70"
+          style={{ left: `${(i / hours.length) * 100}%`, backgroundColor: "var(--bp-border-soft)" }}
+        />
       ))}
       {showNow && (
-        <div className="absolute top-0 bottom-0 w-[2px] bg-blue-400/70 z-10" style={{ left: (nowHour - hours[0]) * HOUR_W }}>
-          {isFirst && <div className="absolute -top-2 -translate-x-1/2 text-[9px] font-mono text-blue-300 whitespace-nowrap">now · {nowLabel}</div>}
+        <div
+          className="absolute top-0 bottom-0 w-px bg-blue-400/80 z-10 shadow-[0_0_8px_rgba(96,165,250,0.45)]"
+          style={{ left: `${hourLeftPct(nowHour, hours[0], hours.length)}%` }}
+        >
+          {isFirst && (
+            <div className="absolute -top-2.5 -translate-x-1/2 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-mono text-blue-200 whitespace-nowrap ring-1 ring-blue-400/30">
+              now · {nowLabel}
+            </div>
+          )}
         </div>
       )}
       {lane.runs.map(r => {
-        const left = (r.start - hours[0]) * HOUR_W;
-        const width = (r.end - r.start) * HOUR_W;
-        const tileColor = r.risk === "red" ? "border-l-red-500" : r.risk === "amber" ? "border-l-amber-500" : "border-l-emerald-500/70";
-        const bg = r.risk === "red" ? "bg-red-500/[0.06]" : r.risk === "amber" ? "bg-amber-500/[0.06]" : "bg-slate-800/40";
+        const leftPct = hourLeftPct(r.start, hours[0], hours.length);
+        const widthPct = hourWidthPct(r.start, r.end, hours.length);
         const allergenTone = r.allergen === "nuts" ? "red" : r.allergen === "milk" ? "amber" : "slate";
         return (
-          <div key={r.id} className={`absolute top-1 bottom-1 rounded-md border border-slate-700 border-l-2 ${tileColor} ${bg} flex items-center px-2 gap-2 hover:border-slate-500 cursor-pointer group`}
-               style={{ left: left + 2, width: width - 4 }}>
-            <span className="text-[11px] text-slate-100 truncate">{sku(r.sku)?.name || r.sku}</span>
-            <span className="text-[10px] font-mono text-slate-500 tabular-nums shrink-0">{(r.qty / 1000).toFixed(1)}k</span>
+          <div
+            key={r.id}
+            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)}`}
+            style={{ left: `calc(${leftPct}% + 3px)`, width: `calc(${widthPct}% - 6px)` }}
+            onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
+            onMouseLeave={() => setHoveredRun(null)}
+          >
+            <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{sku(r.sku)?.name || r.sku}</span>
+            <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
+              {(r.qty / 1000).toFixed(1)}k
+            </span>
             {r.allergen !== "none" && <Pill tone={allergenTone === "red" ? "red" : allergenTone === "amber" ? "amber" : "ghost"} className="shrink-0">{r.allergen}</Pill>}
-            <div className="absolute top-full mt-1 left-0 z-20 hidden group-hover:block w-64 rounded-md border border-slate-700 bg-slate-900 p-2.5 shadow-xl text-[11px]">
-              <div className="font-mono text-slate-400 mb-1">{r.id}</div>
-              <div className="text-slate-100 mb-1.5">{sku(r.sku)?.name}</div>
-              <div className="text-slate-500">Lots consumed:</div>
-              {r.lots.map(l => <div key={l} className="font-mono text-slate-300">· {l}</div>)}
-              <div className="mt-1.5 pt-1.5 border-t border-slate-800 flex justify-between"><span className="text-slate-500">yield est</span><span className="text-emerald-300 font-mono">96.4%</span></div>
-            </div>
           </div>
         );
       })}
+      {hoveredRun && <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} />}
       {lane.runs.length > 1 && lane.runs.slice(0, -1).map((r, i) => {
         const next = lane.runs[i + 1];
-        const x = (next.start - HOURS[0]) * HOUR_W;
+        const xPct = hourLeftPct(next.start, hours[0], hours.length);
         if (r.allergen !== next.allergen && r.allergen !== "none" && next.allergen !== "none") {
           return (
-            <div key={i} className="absolute top-0 bottom-0 border-l-2 border-dashed border-amber-500/60" style={{ left: x - 1 }}>
+            <div key={i} className="absolute top-0 bottom-0 border-l-2 border-dashed border-amber-500/60" style={{ left: `calc(${xPct}% - 1px)` }}>
               <div className="absolute -top-2 left-1 text-[9px] font-mono text-amber-300 whitespace-nowrap bg-[#0a0d14] px-1">{r.allergen}→{next.allergen} · 90m</div>
             </div>
           );
@@ -238,47 +401,55 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
 export default function SchedulePage() {
   const { openChatContext } = useApp();
   const [plant, setPlant] = useState("all");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const { data: backendSchedules, status: scheduleStatus } = useSchedules();
+
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
 
   const nowHour = useMemo(() => {
     const n = new Date();
     return n.getUTCHours() + n.getUTCMinutes() / 60;
   }, []);
 
-  const allRuns = useMemo<ProductionRun[]>(() => {
-    if (scheduleStatus === "loading") return STATIC_RUNS;
-    if (scheduleStatus === "fallback" || backendSchedules.length === 0) return STATIC_RUNS;
-    const todayUTC = new Date().toISOString().slice(0, 10);
-    const runs: ProductionRun[] = [];
-    for (const s of backendSchedules) {
-      if (s.status === "complete") continue; // skip historical runs
-      const plantId = FACILITY_MAP[s.facility_id] ?? s.facility_id;
-      const lineNum = parseInt(s.line_id.replace(/\D/g, "")) || 1;
-      for (const r of s.runs) {
-        const start = new Date(r.start_at);
-        const end = new Date(r.end_at);
-        const runDate = start.toISOString().slice(0, 10);
-        if (runDate > todayUTC) continue; // skip future-day runs (suggested for tomorrow+)
-        runs.push({
-          id: r.run_id,
-          plant: plantId,
-          line: lineNum,
-          sku: r.sku_id,
-          qty: r.quantity,
-          start: start.getUTCHours() + start.getUTCMinutes() / 60,
-          end: end.getUTCHours() + end.getUTCMinutes() / 60,
-          allergen: "none",
-          risk: "ok",
-          lots: r.lot_assignments,
-        });
-      }
+  const allRuns = useMemo<ScheduledRun[]>(() => {
+    if (scheduleStatus === "loading") {
+      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
     }
-    return runs.length > 0 ? runs : STATIC_RUNS;
-  }, [backendSchedules, scheduleStatus]);
+    if (scheduleStatus === "fallback" || backendSchedules.length === 0) {
+      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
+    }
+    const runs = backendSchedulesToRuns(backendSchedules);
+    return runs.length > 0 ? runs : STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
+  }, [backendSchedules, scheduleStatus, todayKey]);
 
-  const runs = useMemo(() => plant === "all" ? allRuns : allRuns.filter(r => r.plant === plant), [allRuns, plant]);
+  const activeDate = selectedDate ?? todayKey;
+
+  const quickDates = useMemo(
+    () => quickDatesAround(activeDate),
+    [activeDate],
+  );
+
+  const scheduledDates = useMemo(
+    () => Array.from(new Set(allRuns.map(r => r.dateKey))).sort(),
+    [allRuns],
+  );
+
+  const runCountByDate = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of allRuns) counts[r.dateKey] = (counts[r.dateKey] ?? 0) + 1;
+    return counts;
+  }, [allRuns]);
+
+  const isEmptyDate = (runCountByDate[activeDate] ?? 0) === 0;
+
+  const runs = useMemo(() => {
+    const forDate = allRuns.filter(r => r.dateKey === activeDate);
+    return plant === "all" ? forDate : forDate.filter(r => r.plant === plant);
+  }, [allRuns, activeDate, plant]);
+
   const lanes = useMemo(() => {
     const visiblePlants = new Set(plant === "all" ? ALL_LANES.map(l => l.plant) : [plant]);
     const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
@@ -319,34 +490,138 @@ export default function SchedulePage() {
               <button key={t.id} onClick={() => setPlant(t.id)} className={`px-2.5 py-1 rounded-md text-[12px] whitespace-nowrap ${plant === t.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
             ))}
           </div>
-          <div className="text-[11px] font-mono text-slate-500 hidden sm:block">Mon 25 May · Tue 26 May · Wed 27 May</div>
+          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40 overflow-x-auto">
+            <button
+              type="button"
+              aria-label="Previous day"
+              onClick={() => setSelectedDate(shiftDateKey(activeDate, -1))}
+              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200"
+            >
+              ‹
+            </button>
+            {quickDates.map(d => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setSelectedDate(d)}
+                className={`px-2.5 py-1 rounded-md text-[12px] whitespace-nowrap flex items-center gap-1.5 ${
+                  activeDate === d ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>{formatDateLabel(d)}</span>
+                {d === todayKey && <span className="text-[9px] uppercase tracking-wide text-blue-300">today</span>}
+                <span className="text-[10px] font-mono text-slate-500 tabular-nums">{runCountByDate[d] ?? 0}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-label="Next day"
+              onClick={() => setSelectedDate(shiftDateKey(activeDate, 1))}
+              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200"
+            >
+              ›
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedDate(todayKey)}
+            className={`px-2.5 py-1 rounded-md border text-[12px] whitespace-nowrap ${
+              activeDate === todayKey
+                ? "border-blue-500/40 bg-blue-500/15 text-blue-200"
+                : "border-slate-800 bg-slate-900/40 text-slate-300 hover:border-slate-600 hover:text-slate-100"
+            }`}
+          >
+            Today
+          </button>
+          <div
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md border ${
+              isEmptyDate ? "border-blue-500/40 bg-blue-500/[0.06]" : "border-slate-800 bg-slate-900/40"
+            }`}
+          >
+            <button
+              type="button"
+              aria-label="Open calendar"
+              onClick={() => dateInputRef.current?.showPicker?.()}
+              className="text-slate-400 hover:text-slate-200"
+            >
+              <Icon name="calendar" size={13}/>
+            </button>
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={activeDate}
+              onChange={e => e.target.value && setSelectedDate(e.target.value)}
+              className="bg-transparent text-[12px] font-mono text-slate-200 focus:outline-none [color-scheme:dark] w-[7.5rem] cursor-pointer"
+              aria-label="Pick schedule date"
+            />
+          </div>
+          <div className="text-[11px] font-mono text-slate-500 hidden md:block">
+            {runs.length} run{runs.length === 1 ? "" : "s"} on {formatDateLabel(activeDate)}
+            {isEmptyDate ? " · no runs" : ""}
+            {plant !== "all" ? ` · ${FACILITIES.find(f => f.id === plant)?.name ?? plant}` : ""}
+          </div>
           <div className="flex-1"/>
           <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 whitespace-nowrap ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
             <Icon name="diff" size={12}/> {showDiff ? "Hide" : "Show"} agent proposal
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
-          <div className="flex">
-            <div className="w-40 shrink-0 border-r border-slate-800 bg-slate-900/60">
-              <div className="h-8 border-b border-slate-800 px-3 flex items-center text-[10px] uppercase tracking-wider text-slate-500">Line</div>
-              {lanes.map(ln => (
-                <div key={ln.key} className="flex items-center px-3 border-b border-slate-800/60" style={{ height: LANE_H }}>
-                  <span className="text-[11px] text-slate-300 truncate">{FACILITIES.find(f => f.id === ln.plant)?.name || ln.plant} <span className="font-mono text-slate-500">L{ln.line}</span></span>
+        {runs.length === 0 && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
+            No production runs scheduled for {formatDateLabel(activeDate)}.
+            {scheduledDates.length > 0 && (
+              <> Days with runs: {scheduledDates.map(d => formatDateLabel(d)).join(", ")}.</>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-xl border border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)] shadow-sm overflow-hidden ring-1 ring-white/[0.03]">
+          <div className="flex min-w-0">
+            <div className="w-44 shrink-0 border-r border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)]">
+              <div
+                className={`flex items-center justify-center text-center px-3 uppercase tracking-wide ${GANTT_HEADER}`}
+                style={{ height: GANTT_HEADER_H }}
+              >
+                Line
+              </div>
+              {lanes.map((ln, i) => (
+                <div
+                  key={ln.key}
+                  className={`flex items-center px-3 border-b border-[var(--bp-border-soft)] ${laneRowBg(i)}`}
+                  style={{ height: LANE_H }}
+                >
+                  <span className={GANTT_ROW_LABEL}>
+                    {FACILITIES.find(f => f.id === ln.plant)?.name || ln.plant}{" "}
+                    <span className="font-mono text-[var(--bp-text-muted)]">L{ln.line}</span>
+                  </span>
                 </div>
               ))}
             </div>
-            <div className="flex-1 overflow-x-auto">
-              <div style={{ width: HOURS.length * HOUR_W, minWidth: "100%" }}>
-                <div className="h-8 flex border-b border-slate-800 bg-slate-900/60 sticky top-0">
-                  {HOURS.map(h => (
-                    <div key={h} className="border-r border-slate-800/60 text-[10px] font-mono text-slate-500 px-2 flex items-center" style={{ width: HOUR_W }}>
-                      {String(h).padStart(2, "0")}:00
-                    </div>
-                  ))}
-                </div>
-                {lanes.map((ln, i) => <GanttLane key={ln.key} lane={ln} hours={HOURS} nowHour={nowHour} isFirst={i === 0}/>)}
+            <div className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
+              <div
+                className={`grid w-full ${GANTT_HEADER}`}
+                style={{ gridTemplateColumns: GANTT_GRID_COLS, height: GANTT_HEADER_H }}
+              >
+                {HOURS.map(h => (
+                  <div
+                    key={h}
+                    className={`min-w-0 border-r border-[var(--bp-border-soft)] flex items-center justify-center text-center ${GANTT_HOUR_LABEL}`}
+                  >
+                    {String(h).padStart(2, "0")}:00
+                  </div>
+                ))}
               </div>
+              {lanes.map((ln, i) => (
+                  <GanttLane
+                    key={ln.key}
+                    lane={ln}
+                    hours={HOURS}
+                    nowHour={nowHour}
+                    isFirst={i === 0}
+                    showNowLine={activeDate === todayKey}
+                    rowIndex={i}
+                  />
+              ))}
             </div>
           </div>
         </div>
