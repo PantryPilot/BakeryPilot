@@ -740,7 +740,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
 
   return (
     <div className="bp-flow-canvas relative w-full h-full overflow-hidden" style={{
-      background: "radial-gradient(ellipse at 50% 35%, #0d1424 0%, #080b14 70%)",
+      background: "radial-gradient(ellipse at 50% 35%, var(--bp-map-bg-center) 0%, var(--bp-map-bg-edge) 70%)",
     }}>
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>

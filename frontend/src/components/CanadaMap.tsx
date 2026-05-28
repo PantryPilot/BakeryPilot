@@ -11,25 +11,18 @@ import {
 const CANADA_PATH = buildCanadaPath();
 
 /**
- * Stylized Canada basemap.
+ * Stylized Canada basemap, theme-aware via CSS custom properties.
  *
- * Designed as a backdrop, not a focal element: the country reads as a soft
- * silhouette, with city labels as quiet context. Plant / supplier / retailer
- * nodes carry the visual weight on top.
+ * Colours come from --bp-map-* variables defined in globals.css, so the same
+ * SVG works in both light and dark themes without any JS conditional.
  */
 export function CanadaMap() {
   return (
     <g aria-hidden>
       <defs>
         <linearGradient id="canadaLand" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#1c2540" />
-          <stop offset="55%" stopColor="#1a2238" />
-          <stop offset="100%" stopColor="#161d2e" />
-        </linearGradient>
-        <linearGradient id="canadaGlow" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0" />
-          <stop offset="50%" stopColor="#3b82f6" stopOpacity="0.04" />
-          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+          <stop offset="0%" style={{ stopColor: "var(--bp-map-land)" }} />
+          <stop offset="100%" style={{ stopColor: "var(--bp-map-land-deep)" }} />
         </linearGradient>
         <filter id="landShadow" x="-2%" y="-2%" width="104%" height="104%">
           <feGaussianBlur stdDeviation="6" />
@@ -37,30 +30,24 @@ export function CanadaMap() {
       </defs>
 
       {/* Soft shadow behind the land for subtle depth */}
-      <path d={CANADA_PATH} fill="#0e1422" filter="url(#landShadow)" opacity="0.9" />
+      <path
+        d={CANADA_PATH}
+        style={{ fill: "var(--bp-map-shadow)" }}
+        filter="url(#landShadow)"
+        opacity="0.6"
+      />
 
       {/* Main land shape */}
       <path
         d={CANADA_PATH}
         fill="url(#canadaLand)"
-        stroke="#3a4868"
+        style={{ stroke: "var(--bp-map-stroke)" }}
         strokeOpacity="0.55"
         strokeWidth="1.2"
         strokeLinejoin="round"
       />
 
-      {/* Faint horizontal glow band across the populated south — gives the
-          map a focal area without committing to specific borders */}
-      <rect
-        x="0"
-        y={project(-95, 47).y - 60}
-        width="1280"
-        height="120"
-        fill="url(#canadaGlow)"
-        pointerEvents="none"
-      />
-
-      {/* Great Lakes — kept because they're the most recognizable landmark */}
+      {/* Great Lakes — the most recognizable landmark on the map */}
       {GREAT_LAKES.map((lake) => {
         const e = projectEllipse(lake.lng, lake.lat, lake.rxDeg, lake.ryDeg);
         return (
@@ -70,9 +57,8 @@ export function CanadaMap() {
             cy={e.cy}
             rx={e.rx}
             ry={e.ry}
-            fill="#0c121f"
-            stroke="#3a4868"
-            strokeOpacity="0.5"
+            style={{ fill: "var(--bp-map-water)", stroke: "var(--bp-map-water-stroke)" }}
+            strokeOpacity="0.55"
             strokeWidth="0.6"
           />
         );
@@ -82,13 +68,13 @@ export function CanadaMap() {
       {CONTEXT_CITIES.map((c) => {
         const { x, y } = project(c.lng, c.lat);
         return (
-          <g key={c.name} opacity="0.55">
-            <circle cx={x} cy={y} r="1.6" fill="#94a3b8" />
+          <g key={c.name} opacity="0.7">
+            <circle cx={x} cy={y} r="1.6" style={{ fill: "var(--bp-map-city)" }} />
             <text
               x={x + 5}
               y={y + 3}
               fontSize="9"
-              fill="#94a3b8"
+              style={{ fill: "var(--bp-map-city)" }}
               fontFamily="ui-monospace, monospace"
               letterSpacing="0.04em"
             >
@@ -105,7 +91,7 @@ export function CanadaMap() {
         textAnchor="middle"
         fontSize="22"
         fontWeight="500"
-        fill="#475569"
+        style={{ fill: "var(--bp-map-label)" }}
         fontFamily="ui-monospace, monospace"
         letterSpacing="0.5em"
         opacity="0.35"
