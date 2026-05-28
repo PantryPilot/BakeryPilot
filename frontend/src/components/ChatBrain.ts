@@ -107,7 +107,7 @@ export const SAMPLE_CARDS: Record<string, ActionCardData> = {
     ],
     flags: [{ text: "Within 24h or lose 2 more shifts", tone: "red" }],
     details: [
-      { label: "Asset ID", value: "DD-P1-L2-001" },
+      { label: "Asset ID", value: "DD-TOR-L2-001" },
       { label: "Diagnosis", value: "Divider mass drift +3.8 g/portion" },
       { label: "Action", value: "Calibrate + replace blade set" },
       { label: "Est. duration", value: "1.5 h" },
@@ -128,7 +128,7 @@ export const SAMPLE_CARDS: Record<string, ActionCardData> = {
       { label: "Original ask", value: "12,400 u" },
       { label: "Proposed fulfil", value: "8,060 u (65%)" },
       { label: "Negotiation needed", value: "Bal. 4,340 u next window" },
-      { label: "Lines affected", value: "P1-L1, P1-L2, P2-L2" },
+      { label: "Lines affected", value: "Toronto L1, Toronto L2, Mississauga L2" },
     ],
   },
 };

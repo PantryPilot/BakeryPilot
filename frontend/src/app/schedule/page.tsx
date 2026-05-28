@@ -1091,7 +1091,7 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
             <input placeholder="LOT-ID or ingredient" className="w-full bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100"/>
           )},
           { title: "Block production line", content: (
-            <div className="flex gap-2"><select className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] text-slate-200"><option>P1-L2 · Plant 1 Line 2</option></select><input defaultValue="2h" className="w-16 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100 text-right"/></div>
+            <div className="flex gap-2"><select className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] text-slate-200"><option>Toronto L2 · Toronto Line 2</option></select><input defaultValue="2h" className="w-16 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100 text-right"/></div>
           )},
         ].map((b, i) => (
           <div key={i} className="rounded-md border border-slate-800 bg-slate-900/40 p-3">
@@ -1107,7 +1107,7 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
           <div className="space-y-1.5">
             <SimRun label="Baseline" y="96.2%" waste="$0" cost="$1.42M" active/>
             <SimRun label="+35% Costco" y="95.1%" waste="$420" cost="$1.46M" delta="+$36k"/>
-            <SimRun label="+35% Costco · P1-L2 block 4h" y="93.4%" waste="$2,140" cost="$1.49M" delta="+$72k" risk/>
+            <SimRun label="+35% Costco · Toronto L2 block 4h" y="93.4%" waste="$2,140" cost="$1.49M" delta="+$72k" risk/>
           </div>
         </div>
       </div>
