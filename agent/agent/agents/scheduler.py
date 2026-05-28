@@ -8,6 +8,12 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from agent.llm import cached_react_agent
 from agent.prompts.store import get_prompt_store
 from agent.tools.notify_tools import identify_stakeholders, send_confirmation_email
+from agent.tools.production_tools import (
+    list_facilities,
+    list_production_lines,
+    list_products,
+    resolve_product_sku,
+)
 from agent.tools.scheduler_tools import (
     draft_new_production_order,
     draft_outbound_shipment,
@@ -21,6 +27,10 @@ from agent.tools.scheduler_tools import (
 )
 
 _TOOLS = [
+    list_products,
+    resolve_product_sku,
+    list_facilities,
+    list_production_lines,
     suggest_production_schedule,
     suggest_outbound_shipments,
     list_warehouse_stock,
@@ -56,23 +66,29 @@ If the user says "schedule", "optimise", or "plan" without specifying production
 
 ## Production workflow — SWAP SKU on active line
 For "optimise the schedule" / "swap X for Y on line Z":
-1. suggest_production_schedule — read current schedules. Each schedule_id is a UUID string from the API.
-2. run_changeover_optimizer — pass schedule_id "current" OR the exact UUID from step 1. Never invent human-readable IDs.
-3. draft_schedule_change — MUST be called last with schedule_id (UUID or omit to match by facility/line/SKU), line_id,
+1. resolve_product_sku for both the current and substitute product names — exact sku_id only.
+2. suggest_production_schedule — read current schedules. Each schedule_id is a UUID string from the API.
+3. run_changeover_optimizer — pass schedule_id "current" OR the exact UUID from step 2. Never invent human-readable IDs.
+4. draft_schedule_change — MUST be called last with schedule_id (UUID or omit to match by facility/line/SKU), line_id,
    substitute_sku_id, requested_by_sku_id, requested_units, start_at/end_at from the proposed after run, and rationale.
    Creates a schedule_change action card (NOT applied until confirm).
 
 ## Production workflow — ADD-NEW run on idle line
-For "start a new run of X on line Z" / "add 500 units of sourdough to line-hamilton-1":
-1. suggest_production_schedule — confirm the target line is currently idle/maintenance.
-2. draft_new_production_order(facility_id, line_id, sku_id, quantity_units, planned_start_at?, notes?).
+For "start a new run of X on line Z" / "add 500 units of sourdough to line-hamilton-1" / "Add Product X quantity N":
+0. resolve_product_sku(query=<product name>) — get the exact sku_id from the catalog. NEVER invent sku_id strings
+   (e.g. sku-country-harvest-cinnamon-raisin is correct; sku-country-harvest-cinnamon-raisin-bread is wrong).
+   If resolve returns ambiguous candidates, ask the operator to pick one.
+1. list_facilities / list_production_lines — pick facility_id and an idle line_id when not specified.
+2. suggest_production_schedule — confirm the target line is currently idle/maintenance.
+3. draft_new_production_order(facility_id, line_id, sku_id, quantity_units, planned_start_at?, notes?).
    The target line MUST be idle — if it isn't, use draft_schedule_change to swap instead.
 
 ## Outbound workflow
-1. suggest_outbound_shipments — current dock schedule.
-2. list_warehouse_stock(facility_id) — verify available_units.
-3. list_open_retailer_orders(sku_id) — pick matching open PO.
-4. draft_outbound_shipment — creates outbound_shipment action card (pallets reserved on confirm only).
+1. resolve_product_sku or list_products — exact sku_id before any outbound draft.
+2. suggest_outbound_shipments — current dock schedule.
+3. list_warehouse_stock(facility_id) — verify available_units.
+4. list_open_retailer_orders(sku_id) — pick matching open PO.
+5. draft_outbound_shipment — creates outbound_shipment action card (pallets reserved on confirm only).
 
 Always write a clear 2–4 sentence explanation BEFORE the ```action_card fence.
 Include the action_card_id from the draft tool:

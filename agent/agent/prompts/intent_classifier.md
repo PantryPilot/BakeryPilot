@@ -45,6 +45,9 @@ Label: procurement
 User: Show me the delivery performance and disruption signals for sup-northgrain.
 Label: procurement
 
+User: Add 100 units of Country Harvest Cinnamon Raisin Bread to the schedule.
+Label: scheduler
+
 User: Reschedule line 2 to avoid the dairy-gluten changeover on Thursday.
 Label: scheduler
 

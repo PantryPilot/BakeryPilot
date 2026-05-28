@@ -22,6 +22,10 @@ def test_demo_tools_importable():
     from agent.tools import demo_tools  # noqa: F401
 
 
+def test_production_tools_importable():
+    from agent.tools import production_tools  # noqa: F401
+
+
 def test_agent_state_instantiable():
     from agent.state import AgentState
     state = AgentState(messages=[])

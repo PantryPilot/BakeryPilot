@@ -119,7 +119,10 @@ def get_product_recipe(
     """
     resp = httpx.get(f"{BACKEND_URL}/api/production/products/{sku_id}", timeout=10)
     if resp.status_code == 404:
-        raise ToolException(f"product {sku_id} not found")
+        raise ToolException(
+            f"product {sku_id} not found. Call list_products or resolve_product_sku first — "
+            "never invent sku_id strings from the product name."
+        )
     if resp.status_code != 200:
         raise ToolException(
             f"GET /api/production/products/{sku_id} returned {resp.status_code}: {resp.text}"

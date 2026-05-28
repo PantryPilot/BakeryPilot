@@ -12,9 +12,17 @@ from agent.tools.inventory_tools import (
     query_lots,
     substitution_candidates,
 )
+from agent.tools.production_tools import list_products, resolve_product_sku
 from agent.tools.yield_tools import get_product_recipe
 
-_TOOLS = [query_lots, substitution_candidates, draft_lot_transfer, get_product_recipe]
+_TOOLS = [
+    list_products,
+    resolve_product_sku,
+    query_lots,
+    substitution_candidates,
+    draft_lot_transfer,
+    get_product_recipe,
+]
 
 _SYSTEM_SUFFIX = """
 You are the InventoryAgent. Your scope is ingredient lots, spoilage risk, substitution candidates, cross-facility transfers, and recipe-feasibility ("can we make N units of X with current stock?").
@@ -32,12 +40,13 @@ Tool usage:
   ```
 
 Feasibility flow (when the operator asks "can I make N units of X?"):
-1. get_product_recipe(sku_id) → recipe items.
-2. query_lots() → available kg per ingredient (sum quantity_kg across non-expired lots).
-3. For each recipe item: required_kg = kg_per_unit * N. Compare required vs available.
-4. Answer YES / NO with the bottleneck ingredient(s) and the shortfall amount. If short, offer substitution_candidates.
+1. resolve_product_sku(query=<product name>) OR list_products — get the exact sku_id. Never invent sku_id strings.
+2. get_product_recipe(sku_id) → recipe items.
+3. query_lots() → available kg per ingredient (sum quantity_kg across non-expired lots).
+4. For each recipe item: required_kg = kg_per_unit * N. Compare required vs available.
+5. Answer YES / NO with the bottleneck ingredient(s) and the shortfall amount. If short, offer substitution_candidates.
 
-If the user mentions a product by name (e.g. "croissants", "sourdough"), search for the matching sku_id in the products catalog by calling get_product_recipe with the most likely id — if it 404s, ask the user for a specific sku_id rather than guessing further.
+If resolve_product_sku returns ambiguous candidates, ask the operator to pick one. Do not guess further sku_id variants.
 
 If no lots exist for a facility, return an empty list with a brief explanation — do not raise an error.
 Never place orders — that belongs to the ProcurementAgent.

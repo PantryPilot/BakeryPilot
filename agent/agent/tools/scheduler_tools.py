@@ -93,7 +93,10 @@ def what_if_simulation(
 def draft_new_production_order(
     facility_id: Annotated[str, "Facility id, e.g. plant-toronto / plant-mississauga / plant-hamilton / plant-montreal"],
     line_id: Annotated[str, "Target line id, e.g. line-hamilton-1. Must belong to facility_id and be idle."],
-    sku_id: Annotated[str, "SKU id to produce, e.g. sku-ace-sourdough-bistro"],
+    sku_id: Annotated[
+        str,
+        "Exact SKU id from resolve_product_sku or list_products — e.g. sku-country-harvest-cinnamon-raisin",
+    ],
     quantity_units: Annotated[int, "Number of units to produce"],
     planned_start_at: Annotated[
         str | None,
@@ -137,8 +140,12 @@ def draft_new_production_order(
 @opik.track(name="draft_schedule_change")
 def draft_schedule_change(
     facility_id: Annotated[str, "Facility ID, e.g. plant-toronto"],
-    substitute_sku_id: Annotated[str, "Substitute SKU to switch the line to"],
-    requested_by_sku_id: Annotated[str, "Current SKU being replaced"],
+    substitute_sku_id: Annotated[
+        str, "Exact substitute SKU from resolve_product_sku or list_products"
+    ],
+    requested_by_sku_id: Annotated[
+        str, "Exact current SKU from resolve_product_sku or list_products"
+    ],
     requested_units: Annotated[int, "Units of the substitute SKU to produce"],
     rationale: Annotated[str, "One-line explanation of why this change is being proposed"],
     schedule_id: Annotated[str | None, "Schedule row being replaced (from suggest_production_schedule or diff)"] = None,
@@ -248,7 +255,7 @@ def list_open_retailer_orders(
 def draft_outbound_shipment(
     facility_id: Annotated[str, "Warehouse plant ID, e.g. plant-toronto"],
     retailer_order_id: Annotated[str, "Open retailer PO UUID to fulfill"],
-    sku_id: Annotated[str, "SKU being shipped — must match PO and be in stock at facility"],
+    sku_id: Annotated[str, "Exact SKU from resolve_product_sku or list_products — must match PO and stock"],
     quantity_units: Annotated[int, "Units to ship — ≤ PO qty and ≤ warehouse available_units"],
     start_at: Annotated[str, "ISO ship window start"],
     end_at: Annotated[str, "ISO ship window end"],
