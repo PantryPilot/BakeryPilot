@@ -104,18 +104,50 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [sessionListOpen, setSessionListOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionListVersion, setSessionListVersion] = useState(0);
+  const [panelSize, setPanelSize] = useState({ w: 400, h: 560 });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const inflightRef = useRef(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const resizeStartRef = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
   const draggable = useDraggable({
     storageKey: "bp-copilot-position-v1",
     disabled: expanded,
-    width: 380,
-    height: 520,
+    width: panelSize.w,
+    height: panelSize.h,
   });
+
+  // Auto-grow textarea as user types
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [input]);
+
+  const onResizePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeStartRef.current = { px: e.clientX, py: e.clientY, w: panelSize.w, h: panelSize.h };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, [panelSize]);
+
+  const onResizePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!resizeStartRef.current) return;
+    const dw = e.clientX - resizeStartRef.current.px;
+    const dh = e.clientY - resizeStartRef.current.py;
+    setPanelSize({
+      w: Math.max(340, Math.min(window.innerWidth - 40, resizeStartRef.current.w + dw)),
+      h: Math.max(400, Math.min(window.innerHeight - 80, resizeStartRef.current.h + dh)),
+    });
+  }, []);
+
+  const onResizePointerUp = useCallback(() => {
+    resizeStartRef.current = null;
+  }, []);
 
   // Restore previous session on mount.
   useEffect(() => {
@@ -387,11 +419,12 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         ...(!expanded && draggable.position
           ? { top: draggable.position.y, left: draggable.position.x, right: "auto", bottom: "auto" }
           : {}),
+        ...(!expanded ? { width: panelSize.w, height: panelSize.h } : {}),
       }}
       className={
         expanded
           ? "fixed top-4 left-4 right-4 bottom-4 sm:top-8 sm:left-8 sm:right-8 sm:bottom-8 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
-          : `fixed bottom-32 right-2 sm:right-5 z-50 w-[calc(100vw-16px)] sm:w-[380px] h-[520px] rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden ${draggable.dragging ? "select-none" : ""}`
+          : `fixed bottom-32 right-2 sm:right-5 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden ${draggable.dragging || resizeStartRef.current ? "select-none" : ""}`
       }
     >
       <div
@@ -478,36 +511,61 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         </div>
       </div>
 
-      <div className="border-t border-slate-800 p-3 shrink-0">
-        <div className={`flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
+      <div className="border-t border-slate-800 px-3 pt-2.5 pb-3 shrink-0">
+        <div className={`rounded-xl border border-slate-700 bg-slate-900/80 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            placeholder="Ask anything…"
-            rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-[13px] text-slate-100 placeholder:text-slate-500 max-h-24"
-            style={{ minHeight: 22 }}
+            placeholder="Ask anything… (Shift+Enter for new line)"
+            rows={2}
+            className="w-full bg-transparent resize-none outline-none text-[14px] leading-relaxed text-slate-100 placeholder:text-slate-500 px-3 pt-2.5 pb-1 block"
+            style={{ minHeight: 56, maxHeight: 160 }}
           />
-          <button
-            onClick={toggleRecording}
-            disabled={isThinking}
-            title={isRecording ? "Stop recording" : "Voice input"}
-            className={`p-1.5 rounded transition disabled:opacity-40 ${isRecording ? "bg-red-500 hover:bg-red-400 text-white animate-pulse" : "text-slate-400 hover:text-slate-200"}`}
-          >
-            <Icon name="mic" size={14} />
-          </button>
-          <button
-            onClick={send}
-            disabled={isThinking}
-            className="p-1.5 rounded bg-blue-500 hover:bg-blue-400 disabled:opacity-40 text-white transition"
-          >
-            <Icon name="send" size={14} />
-          </button>
+          <div className="flex items-center justify-between px-2 pb-2">
+            <span className="text-[10px] text-slate-600 select-none">Enter to send · Shift+Enter for new line</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleRecording}
+                disabled={isThinking}
+                title={isRecording ? "Stop recording" : "Voice input"}
+                className={`p-1.5 rounded transition disabled:opacity-40 ${isRecording ? "bg-red-500 hover:bg-red-400 text-white animate-pulse" : "text-slate-500 hover:text-slate-200 hover:bg-slate-800"}`}
+              >
+                <Icon name="mic" size={14} />
+              </button>
+              <button
+                onClick={send}
+                disabled={isThinking || !input.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition"
+              >
+                {isThinking
+                  ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                  : <Icon name="send" size={12} />}
+                Send
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Resize handle — non-expanded mode only */}
+      {!expanded && (
+        <div
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          onPointerCancel={onResizePointerUp}
+          className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize z-10 flex items-end justify-end p-1"
+          title="Drag to resize"
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-slate-600">
+            <path d="M1 7L7 1M4 7L7 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
