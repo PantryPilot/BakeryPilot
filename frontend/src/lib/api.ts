@@ -1425,6 +1425,7 @@ export async function sendSupplierMessage(
     subject?: string;
     channel?: BackendSupplierMessage["channel"];
     direction?: BackendSupplierMessage["direction"];
+    author?: string;
     related_order_id?: string;
     related_negotiation_id?: string;
   }
@@ -1439,6 +1440,7 @@ export async function sendSupplierMessage(
         subject: opts?.subject,
         channel: opts?.channel ?? "email",
         direction: opts?.direction ?? "outbound",
+        author: opts?.author,
         related_order_id: opts?.related_order_id,
         related_negotiation_id: opts?.related_negotiation_id,
       }),

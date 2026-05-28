@@ -313,27 +313,91 @@ function ForecastChart({ forecast, upper, lower, actual, height = 220 }: {
 }
 
 function YieldChart({ points, status }: { points: BackendYieldTelemetryPoint[]; status: string }) {
+  const [selectedLineId, setSelectedLineId] = useState<string>("");
+  const lineIds = useMemo(() => [...new Set(points.map(p => p.line_id))].sort(), [points]);
+  const activeLineId = selectedLineId || lineIds[0] || "";
+  const linePoints = points.filter(p => p.line_id === activeLineId);
+
   if (status === "loading") {
     return <div className="text-[12px] text-slate-500 py-6 text-center">Loading yield telemetry…</div>;
   }
   if (points.length === 0) {
     return <div className="text-[12px] text-slate-500 py-6 text-center">No yield telemetry available.</div>;
   }
-  const line1 = points.filter(p => p.line_id === "line_1");
-  const target = line1[0]?.target_pct ?? 97.1;
+
+  const target = linePoints[0]?.target_pct ?? 100;
+  // Dynamic y-axis: span from min-3 to max+3 of actual values, at least a 5pt range
+  const actuals = linePoints.map(p => p.actual_pct);
+  const yMin = Math.max(80, Math.min(...actuals) - 3);
+  const yMax = Math.max(...actuals) + 3;
+  const yRange = Math.max(yMax - yMin, 5);
+
   const w = 540, h = 200, pad = 24;
-  const n = line1.length;
-  const x = (i: number) => pad + (i / Math.max(n - 1, 1)) * (w - pad * 2);
-  const y = (v: number) => pad + (h - pad * 2) * (1 - (v - 90) / 10);
+  const n = linePoints.length;
+  const xFn = (i: number) => pad + (i / Math.max(n - 1, 1)) * (w - pad * 2);
+  const yFn = (v: number) => pad + (h - pad * 2) * (1 - (v - yMin) / yRange);
+
   return (
-    <svg viewBox={`0 0 ${w} ${h + 16}`} className="w-full">
-      <line x1={pad} x2={w - pad} y1={y(target)} y2={y(target)} stroke="#64748b" strokeDasharray="3 3"/>
-      <polyline points={line1.map((p, i) => `${x(i)},${y(p.actual_pct)}`).join(" ")} fill="none" stroke="#22c55e" strokeWidth="2"/>
-      {line1.map((p, i) => p.actual_pct < 95 && (
-        <circle key={i} cx={x(i)} cy={y(p.actual_pct)} r="3.5" fill="#ef4444"/>
-      ))}
-      <text x={pad} y={y(target) - 4} fontSize="9" fill="#64748b" fontFamily="ui-monospace">target {target}%</text>
-    </svg>
+    <div>
+      {lineIds.length > 1 && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10.5px] text-slate-500">Line</span>
+          <select
+            value={activeLineId}
+            onChange={e => setSelectedLineId(e.target.value)}
+            className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[11px] text-slate-200 focus:outline-none focus:border-blue-500"
+          >
+            {lineIds.map(id => (
+              <option key={id} value={id}>{id.replace(/^line-/, "").replace(/-/g, " ")}</option>
+            ))}
+          </select>
+          <span className="text-[10.5px] text-slate-500 font-mono">{linePoints.length} readings</span>
+        </div>
+      )}
+      {linePoints.length === 0 ? (
+        <div className="text-[12px] text-slate-500 py-4 text-center">No data for {activeLineId}</div>
+      ) : (
+        <svg viewBox={`0 0 ${w} ${h + 30}`} className="w-full">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
+            const v = yMin + yRange * g;
+            const yp = yFn(v);
+            return (
+              <g key={i}>
+                <line x1={pad} x2={w - pad} y1={yp} y2={yp} stroke="#1e293b" strokeWidth="1"/>
+                <text x={pad - 2} y={yp + 3.5} fontSize="8" fill="#475569" fontFamily="ui-monospace" textAnchor="end">{v.toFixed(0)}</text>
+              </g>
+            );
+          })}
+          {/* Target line */}
+          <line x1={pad} x2={w - pad} y1={yFn(target)} y2={yFn(target)} stroke="#64748b" strokeDasharray="3 3"/>
+          <text x={w - pad + 3} y={yFn(target) + 3.5} fontSize="8" fill="#64748b" fontFamily="ui-monospace">{target.toFixed(0)}%</text>
+          {/* Actual line */}
+          <polyline
+            points={linePoints.map((p, i) => `${xFn(i).toFixed(1)},${yFn(p.actual_pct).toFixed(1)}`).join(" ")}
+            fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"
+          />
+          {/* Low-yield markers */}
+          {linePoints.map((p, i) => p.actual_pct < target * 0.98 && (
+            <circle key={i} cx={xFn(i)} cy={yFn(p.actual_pct)} r="3.5" fill="#ef4444"/>
+          ))}
+          {/* X-axis date labels */}
+          {linePoints.map((p, i) => {
+            if (n <= 1 || i % Math.max(1, Math.floor(n / 6)) !== 0) return null;
+            const d = new Date(p.date);
+            const label = `${d.getMonth() + 1}/${d.getDate()}`;
+            return <text key={i} x={xFn(i)} y={h + 14} fontSize="9" fill="#475569" fontFamily="ui-monospace" textAnchor="middle">{label}</text>;
+          })}
+          {/* Legend */}
+          <g transform={`translate(${pad}, ${h + 22})`}>
+            <line x1="0" y1="0" x2="14" y2="0" stroke="#22c55e" strokeWidth="2"/>
+            <text x="18" y="3.5" fontSize="9" fill="#94a3b8">actual yield %</text>
+            <line x1="90" y1="0" x2="104" y2="0" stroke="#64748b" strokeWidth="1.5" strokeDasharray="3 3"/>
+            <text x="108" y="3.5" fontSize="9" fill="#94a3b8">target</text>
+          </g>
+        </svg>
+      )}
+    </div>
   );
 }
 
@@ -387,7 +451,7 @@ function exportWasteCSV(events: BackendWasteEvent[]) {
   URL.revokeObjectURL(url);
 }
 
-type SupplierTab = "overview" | "contact" | "messages" | "negotiate";
+type SupplierTab = "overview" | "contact" | "messages";
 
 function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRefreshTick }: {
   supplier: Supplier;
@@ -411,6 +475,8 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   const [composeBody, setComposeBody] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeSending, setComposeSending] = useState(false);
+  const [sendAs, setSendAs] = useState<"you" | "supplier">("you");
+  const [showAIDraft, setShowAIDraft] = useState(false);
 
   // Negotiation state
   const [negGoal, setNegGoal] = useState("");
@@ -448,16 +514,19 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   async function handleSendCompose() {
     if (!composeBody.trim()) return;
     setComposeSending(true);
+    const isSupplier = sendAs === "supplier";
     const res = await sendSupplierMessage(supplier.id, composeBody.trim(), {
       subject: composeSubject.trim() || undefined,
       channel: "email",
+      direction: isSupplier ? "inbound" : "outbound",
+      author: isSupplier ? supplier.name : "demo_user",
     });
     setComposeSending(false);
     if (res) {
       setComposeBody("");
       setComposeSubject("");
       void reloadMessages();
-      onDraftAction?.("Message sent");
+      onDraftAction?.(isSupplier ? `Message received from ${supplier.name}` : "Message sent");
     } else {
       onDraftAction?.("Send failed");
     }
@@ -493,25 +562,6 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
         },
       },
     );
-  }
-
-  async function handleAgentSendDraft() {
-    if (!negDraft) return;
-    setNegSending(true);
-    const res = await sendSupplierMessage(supplier.id, negDraft, {
-      subject: negSubject || undefined,
-      channel: "agent",
-      related_negotiation_id: negDraftId ?? undefined,
-    });
-    setNegSending(false);
-    if (res) {
-      setNegDraft(null);
-      setNegSubject(null);
-      setNegDraftId(null);
-      setNegGoal("");
-      void reloadMessages();
-      onDraftAction?.("Agent message sent to supplier");
-    }
   }
 
   const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -587,7 +637,6 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
           { id: "overview", label: "Overview" },
           { id: "contact", label: "Contact" },
           { id: "messages", label: `Messages${messages.length ? ` · ${messages.length}` : ""}` },
-          { id: "negotiate", label: "Negotiate" },
         ] as { id: SupplierTab; label: string }[]).map(t => (
           <button
             key={t.id}
@@ -607,7 +656,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div className={activeTab === "messages" ? "flex-1 flex flex-col min-h-0 overflow-hidden" : "flex-1 overflow-y-auto p-5 space-y-5"}>
         {activeTab === "overview" && (
           <>
             <div className="grid grid-cols-4 gap-3">
@@ -744,139 +793,175 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
           </div>
         )}
         {activeTab === "messages" && (
-          <div className="space-y-3">
-            {messagesLoading ? (
-              <div className="text-[12px] text-slate-500 py-2">Loading conversation…</div>
-            ) : messages.length === 0 ? (
-              <div className="text-[12px] text-slate-500 py-2">No messages yet. Start a thread below.</div>
-            ) : (
-              <div className="space-y-2">
-                {messages.map(m => (
-                  <MessageBubble key={m.message_id} m={m}/>
-                ))}
-              </div>
-            )}
-            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
-              <div className="text-[10.5px] uppercase tracking-wider text-slate-500">Send new message</div>
-              <input
-                value={composeSubject}
-                onChange={e => setComposeSubject(e.target.value)}
-                placeholder="Subject (optional)"
-                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-              />
-              <textarea
-                rows={3}
-                value={composeBody}
-                onChange={e => setComposeBody(e.target.value)}
-                placeholder="Type your message…"
-                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
-              />
-              <div className="flex justify-end">
-                <button
-                  disabled={!composeBody.trim() || composeSending}
-                  onClick={handleSendCompose}
-                  className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
-                >
-                  {composeSending && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
-                  Send
-                </button>
-              </div>
+          <>
+            {/* Scrollable message thread */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {messagesLoading ? (
+                <div className="text-[12px] text-slate-500 py-2">Loading conversation…</div>
+              ) : messages.length === 0 ? (
+                <div className="text-[12px] text-slate-500 py-4 text-center">No messages yet — start a thread below.</div>
+              ) : (
+                messages.map(m => <MessageBubble key={m.message_id} m={m}/>)
+              )}
             </div>
-          </div>
-        )}
-        {activeTab === "negotiate" && (
-          <div className="space-y-3">
-            <div
-              className="rounded-md border p-3 text-[12px] text-slate-200"
-              style={{
-                borderColor: "rgb(var(--bp-accent-rgb) / 0.35)",
-                background: "rgb(var(--bp-accent-rgb) / 0.08)",
-              }}
-            >
-              <div
-                className="font-semibold mb-1 flex items-center gap-1.5"
-                style={{ color: "var(--bp-accent)" }}
+
+            {/* Sticky compose + AI draft area */}
+            <div className="shrink-0 border-t border-slate-800 p-4 space-y-3 bg-[#0c111c]">
+              {/* AI draft toggle button */}
+              <button
+                onClick={() => setShowAIDraft(v => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition ${
+                  showAIDraft
+                    ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
+                    : "border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200"
+                }`}
               >
-                <Icon name="agent" size={14}/>Agent-drafted negotiation
-              </div>
-              Describe what you want to negotiate with <span className="text-slate-100 font-semibold">{supplier.name}</span>. The ProcurementAgent will draft a structured message using the supplier&apos;s on-time, fill, window and MOQ-tax data, ready to review and send.
-            </div>
-            <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
-              <label className="text-[10.5px] uppercase tracking-wider text-slate-500 block">Goal</label>
-              <textarea
-                rows={3}
-                value={negGoal}
-                onChange={e => setNegGoal(e.target.value)}
-                placeholder="e.g. Lower MOQ from 20t to 12t while holding current per-kg price."
-                className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-[10.5px] uppercase tracking-wider text-slate-500">Tone</label>
-                <select
-                  value={negTone}
-                  onChange={e => setNegTone(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-[12px] text-slate-200 focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="firm-but-friendly">Firm but friendly</option>
-                  <option value="formal">Formal</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="collaborative">Collaborative</option>
-                </select>
-                <div className="flex-1"/>
-                <button
-                  disabled={!negGoal.trim() || negSending}
-                  onClick={handleAgentDraft}
-                  className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
-                >
-                  {negSending && !negDraft && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
-                  Generate draft
-                </button>
-              </div>
-            </div>
-            {negDraft !== null && (
-              <div className="rounded-md border border-amber-700/40 bg-amber-900/20 p-4 space-y-2">
-                <div className="text-[10.5px] uppercase tracking-wider text-amber-300 font-semibold flex items-center gap-2">
-                  {negSending ? (
-                    <>
-                      <span className="relative flex w-1.5 h-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"/>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"/>
-                      </span>
-                      ProcurementAgent · drafting live
-                    </>
-                  ) : (
-                    "Generated draft"
+                <Icon name="agent" size={12}/>
+                AI draft
+                <span className="text-[10px] opacity-60">{showAIDraft ? "▲" : "▼"}</span>
+              </button>
+
+              {/* AI draft panel (expandable) */}
+              {showAIDraft && (
+                <div className="rounded-md border border-slate-700 bg-slate-900/60 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Icon name="agent" size={13} className="text-emerald-400"/>
+                    <span className="text-[11px] font-semibold text-slate-300">ProcurementAgent</span>
+                    <span className="text-[10.5px] text-slate-500 hidden sm:inline">— describe your goal, generate a draft, then use it below</span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={negGoal}
+                    onChange={e => setNegGoal(e.target.value)}
+                    placeholder={`e.g. Lower MOQ from 20t to 12t with ${supplier.name}`}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
+                  />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={negTone}
+                      onChange={e => setNegTone(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-200 focus:outline-none"
+                    >
+                      <option value="firm-but-friendly">Firm but friendly</option>
+                      <option value="formal">Formal</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="collaborative">Collaborative</option>
+                    </select>
+                    <button
+                      disabled={!negGoal.trim() || negSending}
+                      onClick={handleAgentDraft}
+                      className="px-2.5 py-1 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[11px] flex items-center gap-1"
+                    >
+                      {negSending && !negDraft && <span className="w-2.5 h-2.5 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
+                      Generate
+                    </button>
+                    {negDraft !== null && (
+                      <button
+                        onClick={() => { setNegDraft(null); setNegSubject(null); setNegDraftId(null); }}
+                        className="text-[11px] text-slate-500 hover:text-slate-300"
+                      >Clear</button>
+                    )}
+                  </div>
+                  {negDraft !== null && (
+                    <div className="space-y-1.5">
+                      {negSending && (
+                        <div className="flex items-center gap-1.5 text-[10.5px] text-amber-300">
+                          <span className="relative flex w-1.5 h-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"/>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"/>
+                          </span>
+                          ProcurementAgent drafting…
+                        </div>
+                      )}
+                      {negSubject && <div className="text-[11px] text-slate-400 font-mono">Subject: {negSubject}</div>}
+                      <textarea
+                        rows={6}
+                        value={negDraft}
+                        onChange={e => setNegDraft(e.target.value)}
+                        readOnly={negSending}
+                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-[12px] text-slate-200 focus:border-amber-500 focus:outline-none resize-y"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          disabled={negSending || !negDraft.trim()}
+                          onClick={() => {
+                            if (negDraft) {
+                              setComposeBody(negDraft);
+                              if (negSubject) setComposeSubject(negSubject);
+                              setSendAs("you");
+                              setShowAIDraft(false);
+                            }
+                          }}
+                          className="px-3 py-1 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          Use draft →
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                {negSubject && (
-                  <div className="text-[12px] text-slate-300 font-mono break-words">Subject: {negSubject}</div>
-                )}
-                <textarea
-                  rows={10}
-                  value={negDraft}
-                  onChange={e => setNegDraft(e.target.value)}
-                  readOnly={negSending}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none resize-y whitespace-pre-wrap"
+              )}
+
+              {/* Compose */}
+              <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10.5px] uppercase tracking-wider text-slate-500">Compose</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10.5px] text-slate-500">Send as</span>
+                    {(["you", "supplier"] as const).map(role => (
+                      <button
+                        key={role}
+                        onClick={() => setSendAs(role)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition ${
+                          sendAs === role
+                            ? role === "you"
+                              ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                              : "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                            : "border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600"
+                        }`}
+                      >
+                        {role === "you" ? "You" : supplier.name.split(" ")[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  value={composeSubject}
+                  onChange={e => setComposeSubject(e.target.value)}
+                  placeholder="Subject (optional)"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
                 />
-                <div className="flex items-center gap-2 justify-end">
+                <textarea
+                  rows={3}
+                  value={composeBody}
+                  onChange={e => setComposeBody(e.target.value)}
+                  placeholder={sendAs === "supplier" ? `Type ${supplier.name.split(" ")[0]}'s reply…` : "Type your message…"}
+                  className={`w-full bg-slate-900 border rounded-md px-3 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:outline-none resize-none transition ${
+                    sendAs === "supplier"
+                      ? "border-emerald-700/50 focus:border-emerald-500"
+                      : "border-slate-700 focus:border-blue-500"
+                  }`}
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10.5px] text-slate-500 italic">
+                    {sendAs === "supplier" ? `Simulating inbound from ${supplier.name}` : "Sending as you (outbound)"}
+                  </span>
                   <button
-                    onClick={() => { setNegDraft(null); setNegSubject(null); setNegDraftId(null); }}
-                    className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-slate-500 text-[12px] text-slate-300"
+                    disabled={!composeBody.trim() || composeSending}
+                    onClick={handleSendCompose}
+                    className={`px-3 py-1.5 rounded-md font-semibold text-[12px] flex items-center gap-1.5 disabled:opacity-50 transition ${
+                      sendAs === "supplier"
+                        ? "bg-emerald-500 hover:bg-emerald-400 text-emerald-950"
+                        : "bg-blue-500 hover:bg-blue-400 text-blue-950"
+                    }`}
                   >
-                    Discard
-                  </button>
-                  <button
-                    disabled={negSending || !negDraftId}
-                    onClick={handleAgentSendDraft}
-                    className="px-3 py-1.5 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-emerald-950 font-semibold text-[12px] flex items-center gap-1.5"
-                  >
-                    {negSending && <span className="w-3 h-3 border-2 border-emerald-900/40 border-t-emerald-950 rounded-full animate-spin"/>}
-                    Send to supplier
+                    {composeSending && <span className="w-3 h-3 border-2 border-current/40 border-t-current rounded-full animate-spin"/>}
+                    {sendAs === "supplier" ? "Reply as supplier" : "Send"}
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1085,6 +1170,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [toast, setToast] = useState<{ msg: string; tone: "green" | "red" } | null>(null);
   const [orderRefreshTick, setOrderRefreshTick] = useState(0);
   const poAutoOpenedRef = useRef(false);
+  const openSupplierAutoOpenedRef = useRef(false);
   const { data: backendSuppliers } = useSuppliers();
   const { data: scorecardSummary, refetch: refetchSummary } = useScorecardSummary();
 
@@ -1117,6 +1203,17 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
     if (!ingredientId || !Number.isFinite(quantityKg) || quantityKg <= 0) return null;
     return { source: "production_shortfall", facilityId, items: [{ ingredientId, quantityKg }] };
   }, [searchParams]);
+
+  // Auto-open supplier slide-in when open_supplier param is present (from production "View draft PO" link)
+  const openSupplierParam = searchParams.get("open_supplier");
+  useEffect(() => {
+    if (openSupplierAutoOpenedRef.current) return;
+    if (!openSupplierParam || suppliers.length === 0) return;
+    openSupplierAutoOpenedRef.current = true;
+    const frontendId = openSupplierParam.replace(/^sup_/, "s-");
+    const found = suppliers.find(s => s.id === frontendId);
+    if (found) setActiveSupplier(found);
+  }, [openSupplierParam, suppliers]);
 
   const closeSupplier = useCallback(() => {
     setSupplierClosing(true);
@@ -1464,7 +1561,7 @@ function PerformanceTab() {
             <div>
               <div className="text-[14px] font-semibold text-slate-100">Yield · actual vs theoretical</div>
               <div className="text-[11px] text-slate-500 font-mono">
-                14-day · line_1
+                14-day · all lines
                 {telemetryStatus === "live" && <span className="text-emerald-400 ml-2">· live</span>}
               </div>
             </div>
