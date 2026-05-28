@@ -99,7 +99,7 @@ export default function SettingsPage() {
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center text-[16px] font-semibold shrink-0"
                 style={{
-                  color: "var(--bp-accent-foreground)",
+                  color: "#ffffff",
                   background: "linear-gradient(135deg, var(--bp-accent), var(--bp-accent-hover))",
                 }}
               >
@@ -148,8 +148,8 @@ export default function SettingsPage() {
               onClick={handleSave}
               className={`px-4 py-2 rounded-md font-semibold text-[13px] transition ${
                 saved
-                  ? "bg-emerald-500 text-emerald-950"
-                  : "bg-[var(--bp-accent)] hover:bg-[var(--bp-accent-hover)] text-[var(--bp-accent-foreground)]"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-[var(--bp-accent)] hover:bg-[var(--bp-accent-hover)] text-white"
               }`}
             >
               {saved ? "✓ Saved" : "Save changes"}
