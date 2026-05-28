@@ -246,7 +246,20 @@ INSERT INTO skus (sku_id, name, category, margin_per_unit, allergen_tags, shelf_
   ('sku-stonefire-pizza-crust-2pk',     'Stonefire Artisan Pizza Crust 2-pack','flatbread', 1.75, '{gluten}',        14),
   ('sku-wonder-classic-white-loaf',     'Wonder Classic White Bread',          'bread',     0.85, '{gluten}',         7),
   ('sku-d-italiano-hot-dog-buns-8pk',   'D''Italiano Hot Dog Buns 8-pack',     'bread',     1.05, '{gluten}',         7),
-  ('sku-country-harvest-12-grain-loaf', 'Country Harvest 12 Grain Bread',      'bread',     1.25, '{gluten}',         7)
+  ('sku-country-harvest-12-grain-loaf', 'Country Harvest 12 Grain Bread',      'bread',     1.25, '{gluten}',         7),
+  -- Muffins, pastries, cookies, quick-breads, bagels — adds coverage for
+  -- blueberries, butter, vanilla, baking agents, chocolate, fruit, nuts,
+  -- seeds, and spices that bread/flatbread SKUs don't touch.
+  ('sku-ace-blueberry-muffin-4pk',      'ACE Blueberry Muffin 4-pack',         'muffin',    1.80, '{gluten,dairy,egg}', 5),
+  ('sku-ace-butter-croissant-4pk',      'ACE All-Butter Croissant 4-pack',     'pastry',    2.20, '{gluten,dairy,egg}', 4),
+  ('sku-wonder-oatmeal-raisin-cookie',  'Wonder Oatmeal Raisin Cookies 300g',  'cookie',    1.40, '{gluten,dairy,egg}',21),
+  ('sku-wonder-choc-chip-cookie',       'Wonder Chocolate Chip Cookies 300g',  'cookie',    1.50, '{gluten,dairy,egg}',21),
+  ('sku-wonder-banana-bread-loaf',      'Wonder Banana Bread Loaf 450g',       'quick-bread',1.60,'{gluten,dairy,egg,tree_nut}', 7),
+  ('sku-stonefire-sesame-bagel-4pk',    'Stonefire Sesame Bagels 4-pack',      'bagel',     1.20, '{gluten,sesame}',   7),
+  ('sku-country-harvest-cinnamon-raisin','Country Harvest Cinnamon Raisin Bread','bread',   1.30, '{gluten}',          7),
+  ('sku-ace-lemon-poppyseed-muffin-4pk','ACE Lemon Poppy Seed Muffin 4-pack',  'muffin',    1.70, '{gluten,dairy,egg}', 5),
+  ('sku-ace-chocolate-brownie-6pk',     'ACE Fudge Brownie 6-pack',            'pastry',    1.90, '{gluten,dairy,egg}',14),
+  ('sku-ace-cranberry-almond-scone-4pk','ACE Cranberry Almond Scone 4-pack',   'pastry',    2.00, '{gluten,dairy,egg,tree_nut}', 5)
 ON CONFLICT (sku_id) DO NOTHING;
 
 -- ============================================================================
