@@ -53,20 +53,20 @@ MODEL_CATALOG: dict[str, ModelSpec] = {
         key_env="OPENAI_API_KEY",
         description="Cheap OpenAI model — good default for everyday calls",
     ),
-    "gemini-2.0-flash": ModelSpec(
-        id="gemini-2.0-flash",
-        label="Gemini 2.0 Flash",
+    "gemini-3-flash": ModelSpec(
+        id="gemini-3-flash",
+        label="Gemini 3 Flash",
         provider="google",
-        model="gemini-2.0-flash",
+        model="gemini-3-flash-preview",
         tier="free",
         key_env="GOOGLE_API_KEY",
         description="Fast Google model — free tier via AI Studio",
     ),
-    "gemini-2.0-flash-lite": ModelSpec(
-        id="gemini-2.0-flash-lite",
-        label="Gemini 2.0 Flash Lite",
+    "gemini-3.1-flash-lite": ModelSpec(
+        id="gemini-3.1-flash-lite",
+        label="Gemini 3.1 Flash Lite",
         provider="google",
-        model="gemini-2.0-flash-lite",
+        model="gemini-3.1-flash-lite",
         tier="free",
         key_env="GOOGLE_API_KEY",
         description="Lightweight Gemini — lower latency, free tier",
@@ -164,7 +164,7 @@ def get_effective_model_id(purpose: str = "default") -> str:
     if normalized and is_model_available(normalized):
         return normalized
 
-    for fallback in ("claude-sonnet-4-6", "gpt-4o-mini", "gemini-2.0-flash", "llama-3.3-70b-versatile"):
+    for fallback in ("claude-sonnet-4-6", "gpt-4o-mini", "gemini-3-flash", "llama-3.3-70b-versatile"):
         if is_model_available(fallback):
             return fallback
 
