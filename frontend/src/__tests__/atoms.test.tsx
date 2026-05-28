@@ -41,7 +41,7 @@ describe('Pill', () => {
 
   test('applies red tone class', () => {
     const { container } = render(<Pill tone="red">x</Pill>)
-    expect(container.firstChild).toHaveClass('text-red-300')
+    expect(container.firstChild).toHaveClass('text-red-400')
   })
 
   test('accepts extra className', () => {
