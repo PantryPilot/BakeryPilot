@@ -179,10 +179,14 @@ class ProductionSchedule(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="suggested")
     waste_avoided_kg: Mapped[float] = mapped_column(Numeric, nullable=False, default=0)
     action_card_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    retailer_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("retailer_orders.retailer_order_id")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     sku: Mapped["Sku"] = relationship()
     line: Mapped["ProductionLine"] = relationship()
+    retailer_order: Mapped["RetailerOrder | None"] = relationship()
 
 
 class RetailerOrder(Base):
@@ -197,6 +201,26 @@ class RetailerOrder(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
 
     retailer: Mapped["Retailer"] = relationship()
+    sku: Mapped["Sku"] = relationship()
+
+
+class OutboundShipment(Base):
+    __tablename__ = "outbound_shipments"
+
+    shipment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    facility_id: Mapped[str] = mapped_column(Text, ForeignKey("facilities.facility_id"), nullable=False)
+    retailer_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("retailer_orders.retailer_order_id"), nullable=False
+    )
+    sku_id: Mapped[str] = mapped_column(Text, ForeignKey("skus.sku_id"), nullable=False)
+    quantity_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="scheduled")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    facility: Mapped["Facility"] = relationship()
+    retailer_order: Mapped["RetailerOrder"] = relationship()
     sku: Mapped["Sku"] = relationship()
 
 

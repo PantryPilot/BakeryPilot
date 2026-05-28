@@ -81,8 +81,14 @@ export function CopilotButton() {
 
 function contextToMessage(ctx: string): string {
   if (ctx.startsWith("Inventory")) return "What ingredient lots are currently at risk? Show me the critical and expiring ones.";
+  if (ctx.startsWith("Schedule · production")) {
+    return "Optimise **production** scheduling: review current line runs, run the changeover optimizer diff, explain proposed changes, and create a schedule_change action card with draft_schedule_change so I can confirm.";
+  }
+  if (ctx.startsWith("Schedule · outbound")) {
+    return "Optimise **outbound** warehouse→retailer shipments: review current outbound schedule and warehouse stock, match open retailer POs, propose FEFO allocation, and create an outbound_shipment action card with draft_outbound_shipment so I can confirm.";
+  }
   if (ctx.startsWith("Schedule · optimise")) {
-    return "Review the current production schedule, run the changeover optimizer diff, explain the proposed changes, and create a schedule_change action card with draft_schedule_change so I can accept or reject the plan.";
+    return "Before optimising: do I want **production line scheduling** or **outbound warehouse shipments**? Ask me if unclear, then use the correct tool workflow.";
   }
   if (ctx.startsWith("Supplier:")) return `What is the status of ${ctx.replace("Supplier: ", "")}? Show me their delivery performance and any issues.`;
   if (ctx.startsWith("Plant")) return `What is happening at ${ctx}? Give me a status summary.`;

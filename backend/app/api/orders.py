@@ -206,12 +206,14 @@ async def receive_supplier_order(
 
 
 @router.get("/retailer_orders", response_model=list[RetailerOrder])
-async def list_retailer_orders(db: AsyncSession = Depends(get_db)) -> list[RetailerOrder]:
-    orders = (
-        await db.execute(
-            select(RetailerOrderORM).order_by(RetailerOrderORM.received_at.desc())
-        )
-    ).scalars().all()
+async def list_retailer_orders(
+    status: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[RetailerOrder]:
+    q = select(RetailerOrderORM).order_by(RetailerOrderORM.received_at.desc())
+    if status:
+        q = q.where(RetailerOrderORM.status == status)
+    orders = (await db.execute(q)).scalars().all()
     return [
         RetailerOrder(
             order_id=str(o.retailer_order_id),

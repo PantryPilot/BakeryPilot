@@ -52,7 +52,7 @@ async def _summary_for_action_card(db: AsyncSession, card_id: str) -> str:
 _INTENT_STATUS = {
     "inventory":       "InventoryAgent · checking lots & stock levels",
     "procurement":     "ProcurementAgent · analyzing suppliers & costs",
-    "scheduler":       "SchedulerAgent · reviewing production schedule",
+    "scheduler":       "SchedulerAgent · production or outbound schedule",
     "yield":           "YieldAgent · pulling yield telemetry",
     "esg":             "ESGAgent · computing waste & CO₂e",
     "weekly_plan":     "WeeklyPlanAgent · composing weekly plan",
@@ -99,7 +99,6 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     _sync_llm_env()
     from agent.graph import _graph
     from agent.llm import set_request_model
-    from app.services.schedule_propose import propose_current_schedule_change
 
     model_id = await get_copilot_model(db)
     set_request_model(model_id)
@@ -143,10 +142,6 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
         card_id: str | None = None
         if action_cards:
             card_id = str(action_cards[-1].get("action_card_id", "") or "")
-        elif final_state.get("intent") == "scheduler":
-            proposed = await propose_current_schedule_change(db)
-            if proposed:
-                card_id = str(proposed.card_id)
 
         if not content and card_id:
             content = await _summary_for_action_card(db, card_id)

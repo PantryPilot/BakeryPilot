@@ -339,6 +339,10 @@ export interface BackendSchedule {
   runs: BackendScheduleRun[];
   waste_avoided_kg: number;
   status: string;
+  retailer_order_id?: string | null;
+  retailer_id?: string | null;
+  retailer_name?: string | null;
+  requested_delivery_date?: string | null;
 }
 
 export interface BackendMoqTaxEntry {
@@ -397,6 +401,7 @@ export interface CreateScheduleInput {
   start_at: string;
   end_at: string;
   quantity_units: number;
+  retailer_order_id?: string;
   status?: string;
   waste_avoided_kg?: number;
 }
@@ -495,6 +500,7 @@ export function formatScheduleWindow(startIso: unknown, endIso: unknown): string
 const ACTION_CARD_ICONS: Record<string, string> = {
   supplier_order: "truck",
   schedule_change: "calendar",
+  outbound_shipment: "truck",
   work_order: "bars",
   transfer: "diff",
   notify: "bell",
@@ -541,6 +547,30 @@ export function adaptActionCard(b: BackendActionCard) {
       ],
       flags: changeSummary
         ? [{ text: changeSummary, tone: "amber" as const }]
+        : undefined,
+      state: b.state,
+      cardId: b.card_id,
+    };
+  }
+
+  if (b.kind === "outbound_shipment") {
+    const window = formatScheduleWindow(p.start_at, p.end_at);
+    return {
+      kind: "Outbound Shipment",
+      agent: String(p.agent ?? "SchedulerAgent"),
+      icon: ACTION_CARD_ICONS.outbound_shipment,
+      title: String(p.title ?? `Ship ${shortSku(p.sku_id)} to retailer`),
+      summary: [
+        { label: "Ship window", value: window },
+        { label: "SKU", value: shortSku(p.sku_id) },
+        { label: "Units", value: String(p.quantity_units ?? "—") },
+      ],
+      details: [
+        { label: "Warehouse", value: String(p.facility_id ?? "—") },
+        { label: "Retailer PO", value: String(p.retailer_order_id ?? "—").slice(0, 8) + "…" },
+      ],
+      flags: p.rationale
+        ? [{ text: String(p.rationale), tone: "amber" as const }]
         : undefined,
       state: b.state,
       cardId: b.card_id,
@@ -871,6 +901,107 @@ export interface BackendRetailer {
 
 export async function fetchRetailers(): Promise<BackendRetailer[] | null> {
   return safeFetch<BackendRetailer[]>("/api/retailers");
+}
+
+export interface BackendRetailerOrder {
+  order_id: string;
+  retailer_id: string;
+  sku_id: string;
+  quantity: number;
+  requested_delivery_date: string;
+  received_at: string;
+  status: string;
+}
+
+export async function fetchRetailerOrders(
+  status?: string,
+): Promise<BackendRetailerOrder[] | null> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return safeFetch<BackendRetailerOrder[]>(`/api/retailer_orders${qs}`);
+}
+
+// ---------- Outbound warehouse → retailer shipments ----------
+
+export interface BackendWarehouseStock {
+  sku_id: string;
+  sku_name: string;
+  available_units: number;
+  pallet_count: number;
+}
+
+export interface BackendOutboundShipment {
+  shipment_id: string;
+  facility_id: string;
+  facility_name?: string | null;
+  retailer_order_id: string;
+  retailer_id: string;
+  retailer_name?: string | null;
+  sku_id: string;
+  sku_name?: string | null;
+  quantity_units: number;
+  start_at: string;
+  end_at: string;
+  status: string;
+  requested_delivery_date?: string | null;
+}
+
+export interface CreateOutboundShipmentInput {
+  facility_id: string;
+  retailer_order_id: string;
+  sku_id: string;
+  start_at: string;
+  end_at: string;
+  quantity_units: number;
+  status?: string;
+}
+
+export interface UpdateOutboundShipmentInput {
+  start_at?: string;
+  end_at?: string;
+}
+
+export async function fetchWarehouseStock(
+  facilityId?: string,
+): Promise<BackendWarehouseStock[] | null> {
+  const qs = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
+  return safeFetch<BackendWarehouseStock[]>(
+    `/api/outbound_shipments/warehouse_stock${qs}`,
+  );
+}
+
+export async function fetchOutboundShipments(): Promise<BackendOutboundShipment[] | null> {
+  return safeFetch<BackendOutboundShipment[]>("/api/outbound_shipments");
+}
+
+export async function createOutboundShipment(
+  input: CreateOutboundShipmentInput,
+): Promise<BackendOutboundShipment | null> {
+  return safeFetch<BackendOutboundShipment>("/api/outbound_shipments", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateOutboundShipment(
+  shipmentId: string,
+  input: UpdateOutboundShipmentInput,
+): Promise<BackendOutboundShipment | null> {
+  return safeFetch<BackendOutboundShipment>(
+    `/api/outbound_shipments/${encodeURIComponent(shipmentId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
+export async function deleteOutboundShipment(shipmentId: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/outbound_shipments/${encodeURIComponent(shipmentId)}`,
+      { method: "DELETE" },
+    );
+    return res.status === 204;
+  } catch {
+    return false;
+  }
 }
 
 // ---------- Dashboard loops + network ----------

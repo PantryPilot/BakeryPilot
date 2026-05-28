@@ -3,9 +3,18 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
+import { FACILITIES } from "../lib/data";
 import type { BackendYieldTelemetryPoint, BackendFacility, BackendFacilityUtilization, BackendOrder } from "../lib/api";
 import { fetchFacilityUtilization, isActiveSupplierOrder } from "../lib/api";
 import { useSuppliers, useDisruptions, useNewsDisruptionFeed, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter, useAllSupplierOrders } from "../lib/hooks";
+import { useApp } from "../lib/context";
+
+const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
+  p1: "plant-toronto",
+  p2: "plant-mississauga",
+  p3: "plant-hamilton",
+  p4: "plant-montreal",
+};
 
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 200;
@@ -16,6 +25,7 @@ const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
 const PLANT_ROW_START = 180;
 const PLANT_ROW_GAP = 80;
+const SINGLE_PLANT_Y = PLANT_ROW_START + 2 * PLANT_ROW_GAP;
 
 type PlantData = {
   id: string;
@@ -757,6 +767,7 @@ interface FlowSightCanvasProps {
 }
 
 export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
+  const { facility: facilityFilter } = useApp();
   const [layers, setLayers] = useState<Record<string, boolean>>(
     Object.fromEntries(LAYERS_DEF.map(l => [l.id, l.defaultOn]))
   );
@@ -772,6 +783,11 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     setTimeout(() => { setActivePlant(null); setPlantClosing(false); }, 280);
   }, []);
 
+  const activeFacilityBackendId = useMemo(
+    () => (facilityFilter === "all" ? null : SHORT_CODE_TO_FACILITY_ID[facilityFilter] ?? null),
+    [facilityFilter],
+  );
+
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
   const { data: newsFeed } = useNewsDisruptionFeed();
@@ -780,10 +796,10 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const { data: orders, status: ordersStatus } = useAllSupplierOrders();
   const [utilByFacility, setUtilByFacility] = useState<Map<string, BackendFacilityUtilization>>(new Map());
 
-  const facilityIdsKey = useMemo(
-    () => facilities.map(f => f.facility_id).sort().join("|"),
-    [facilities],
-  );
+  const facilityIdsKey = useMemo(() => {
+    if (activeFacilityBackendId) return activeFacilityBackendId;
+    return facilities.map(f => f.facility_id).sort().join("|");
+  }, [facilities, activeFacilityBackendId]);
 
   useEffect(() => {
     if (!facilityIdsKey) return;
@@ -801,22 +817,45 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     return () => { alive = false; };
   }, [facilityIdsKey]);
 
-  const plantPos = useMemo(
+  const allPlantPos = useMemo(
     () => buildPlantPositions(facilities, utilByFacility),
     [facilities, utilByFacility],
   );
 
-  const activeOrders = useMemo(
-    () => orders.filter(isActiveSupplierOrder),
-    [orders],
-  );
+  const plantPos = useMemo(() => {
+    if (facilityFilter === "all") return allPlantPos;
+    const filtered = allPlantPos.filter(p => p.id === facilityFilter);
+    if (filtered.length === 0) return [];
+    return [{ ...filtered[0], y: SINGLE_PLANT_Y }];
+  }, [allPlantPos, facilityFilter]);
 
-  const supplierPos = useMemo(
-    () => suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 })),
-    [suppliers],
-  );
+  useEffect(() => {
+    if (facilityFilter !== "all" && activePlant && activePlant.id !== facilityFilter) {
+      setActivePlant(null);
+      setPlantClosing(false);
+    }
+  }, [facilityFilter, activePlant]);
+
+  const activeOrders = useMemo(() => {
+    const active = orders.filter(isActiveSupplierOrder);
+    if (!activeFacilityBackendId) return active;
+    return active.filter(o => o.facility_id === activeFacilityBackendId);
+  }, [orders, activeFacilityBackendId]);
 
   const supplierBackendId = useCallback((frontendId: string) => frontendId.replace(/^s-/, "sup_"), []);
+
+  const supplierIdsForFlows = useMemo(
+    () => new Set(activeOrders.map(o => o.supplier_id)),
+    [activeOrders],
+  );
+
+  const supplierPos = useMemo(() => {
+    const list =
+      facilityFilter === "all"
+        ? suppliers
+        : suppliers.filter(s => supplierIdsForFlows.has(supplierBackendId(s.id)));
+    return list.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
+  }, [suppliers, facilityFilter, supplierIdsForFlows, supplierBackendId]);
 
   const inboundFlows = useMemo((): InboundFlow[] => {
     const plantByFacility = new Map(plantPos.map(p => [p.facilityId, p]));
@@ -853,14 +892,19 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
 
   const retailerPos: RetailerPos[] = useMemo(() => {
     if (retailers.length === 0) return [];
-    const laneYs = plantPos.length > 0 ? plantPos.map(p => p.y) : RETAILER_LANES_Y;
+    const laneYs =
+      plantPos.length === 1
+        ? [plantPos[0].y]
+        : plantPos.length > 1
+          ? plantPos.map(p => p.y)
+          : RETAILER_LANES_Y;
     return retailers.slice(0, laneYs.length).map((r, i) => ({
       id: r.retailer_id,
       name: r.name,
       poRatio: r.po_ratio || 1,
       shelfRisk: r.shelf_risk,
       x: RETAILER_X,
-      y: laneYs[i],
+      y: laneYs[i % laneYs.length],
     }));
   }, [retailers, plantPos]);
 
@@ -869,7 +913,10 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>
         <span className="text-[11px] text-[var(--bp-text-muted)] font-mono">
-          {supplierPos.length} suppliers · {plantPos.length} plants · {retailerPos.length} retailers
+          {supplierPos.length} suppliers · {plantPos.length} plant{plantPos.length === 1 ? "" : "s"} · {retailerPos.length} retailers
+          {facilityFilter !== "all" && (
+            <> · {FACILITIES.find(f => f.id === facilityFilter)?.name ?? facilityFilter}</>
+          )}
           {ordersStatus === "live" && activeOrders.length > 0 && (
             <> · {activeOrders.length} active PO{activeOrders.length === 1 ? "" : "s"}</>
           )}
@@ -938,9 +985,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
             </g>
           );
         })}
-        {layers.forecast && retailerPos.map((rr, i) => {
-          const plant = plantPos[i % Math.max(plantPos.length, 1)];
-          if (!plant) return null;
+        {layers.forecast && plantPos.length > 0 && retailerPos.map(rr => {
+          const plant = plantPos.length === 1 ? plantPos[0] : plantPos.find(p => p.y === rr.y) ?? plantPos[0];
           return (
             <path key={"fc-" + rr.id} d={arcPath(rr, plant, -0.1)} stroke="#a855f7" strokeOpacity="0.15" strokeWidth="2" fill="none"/>
           );

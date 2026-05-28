@@ -22,6 +22,9 @@ import {
   fetchNegotiations,
   fetchOrders,
   fetchRetailers,
+  fetchOutboundShipments,
+  fetchRetailerOrders,
+  fetchWarehouseStock,
   fetchSchedules,
   fetchScorecardSummary,
   fetchSupplierPerformance,
@@ -38,10 +41,13 @@ import {
   type BackendLoopCard,
   type BackendNetworkSummary,
   type BackendNegotiationDraft,
+  type BackendOutboundShipment,
   type BackendFormulaUsage,
   type BackendOrder,
   type BackendRetailer,
+  type BackendRetailerOrder,
   type BackendSchedule,
+  type BackendWarehouseStock,
   type BackendScorecardSummary,
   type BackendSubstitutionCandidate,
   type BackendSupplierPerformance,
@@ -344,6 +350,79 @@ export function useActiveRuns(
 
 export function useRetailers(): Result<BackendRetailer[]> {
   return useBackend(fetchRetailers, []);
+}
+
+export function useRetailerOrders(status?: string): Result<BackendRetailerOrder[]> {
+  const [data, setData] = useState<BackendRetailerOrder[]>([]);
+  const [state, setState] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    let alive = true;
+    setState("loading");
+    fetchRetailerOrders(status).then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setState("live");
+      } else {
+        setData([]);
+        setState("fallback");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [status]);
+
+  return { data, status: state };
+}
+
+export function useOutboundShipments(refreshKey = 0): Result<BackendOutboundShipment[]> {
+  const [data, setData] = useState<BackendOutboundShipment[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    let alive = true;
+    fetchOutboundShipments().then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey]);
+
+  return { data, status };
+}
+
+export function useWarehouseStock(facilityId?: string): Result<BackendWarehouseStock[]> {
+  const [data, setData] = useState<BackendWarehouseStock[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    let alive = true;
+    setStatus("loading");
+    fetchWarehouseStock(facilityId).then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setData([]);
+        setStatus("fallback");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [facilityId]);
+
+  return { data, status };
 }
 
 export function useDashboardLoops(): Result<BackendLoopCard[]> {

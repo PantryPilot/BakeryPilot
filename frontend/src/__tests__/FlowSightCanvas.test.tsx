@@ -22,11 +22,15 @@ jest.mock('../lib/hooks', () => ({
   }),
 }))
 
+const mockUseApp = jest.fn(() => ({
+  theme: 'dark' as const,
+  setTheme: jest.fn(),
+  facility: 'all' as const,
+  setFacility: jest.fn(),
+}))
+
 jest.mock('../lib/context', () => ({
-  useApp: () => ({
-    theme: 'dark',
-    setTheme: jest.fn(),
-  }),
+  useApp: () => mockUseApp(),
 }))
 
 // ---------- Flow legend overlay ----------
@@ -171,5 +175,27 @@ describe('FlowSightCanvas header', () => {
   test('renders FlowSight pill', () => {
     render(<FlowSightCanvas />)
     expect(screen.getByText('FlowSight')).toBeInTheDocument()
+  })
+})
+
+describe('FlowSightCanvas plant filter', () => {
+  beforeEach(() => {
+    mockUseApp.mockReturnValue({
+      theme: 'dark',
+      setTheme: jest.fn(),
+      facility: 'all',
+      setFacility: jest.fn(),
+    })
+  })
+
+  test('shows plant name in header when a single plant is selected', () => {
+    mockUseApp.mockReturnValue({
+      theme: 'dark',
+      setTheme: jest.fn(),
+      facility: 'p1',
+      setFacility: jest.fn(),
+    })
+    render(<FlowSightCanvas />)
+    expect(screen.getByText(/Toronto/)).toBeInTheDocument()
   })
 })

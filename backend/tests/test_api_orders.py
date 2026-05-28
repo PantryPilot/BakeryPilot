@@ -10,6 +10,12 @@ def test_list_retailer_orders_returns_200(client):
     assert isinstance(r.json(), list)
 
 
+def test_list_retailer_orders_accepts_status_filter(client):
+    r = client.get("/api/retailer_orders", params={"status": "open"})
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
 def test_draft_supplier_order_supplier_not_found(client):
     payload = {
         "supplier_id": "nonexistent_supplier",
