@@ -2,6 +2,8 @@
 
 import {
   buildCanadaPath,
+  buildHudsonBayPath,
+  buildNewfoundlandPath,
   CONTEXT_CITIES,
   GREAT_LAKES,
   project,
@@ -9,12 +11,14 @@ import {
 } from "../lib/geo";
 
 const CANADA_PATH = buildCanadaPath();
+const NEWFOUNDLAND_PATH = buildNewfoundlandPath();
+const HUDSON_BAY_PATH = buildHudsonBayPath();
 
 /**
- * Stylized Canada basemap, theme-aware via CSS custom properties.
- *
- * Colours come from --bp-map-* variables defined in globals.css, so the same
- * SVG works in both light and dark themes without any JS conditional.
+ * Atlas-style Canada basemap, theme-aware via CSS custom properties.
+ * Designed as a quiet backdrop — silhouette + Great Lakes + Hudson Bay,
+ * with city dots for context. Plant / supplier / retailer nodes carry the
+ * visual weight on top.
  */
 export function CanadaMap() {
   return (
@@ -24,30 +28,38 @@ export function CanadaMap() {
           <stop offset="0%" style={{ stopColor: "var(--bp-map-land)" }} />
           <stop offset="100%" style={{ stopColor: "var(--bp-map-land-deep)" }} />
         </linearGradient>
-        <filter id="landShadow" x="-2%" y="-2%" width="104%" height="104%">
-          <feGaussianBlur stdDeviation="6" />
-        </filter>
       </defs>
 
-      {/* Soft shadow behind the land for subtle depth */}
-      <path
-        d={CANADA_PATH}
-        style={{ fill: "var(--bp-map-shadow)" }}
-        filter="url(#landShadow)"
-        opacity="0.6"
-      />
-
-      {/* Main land shape */}
+      {/* Canada mainland */}
       <path
         d={CANADA_PATH}
         fill="url(#canadaLand)"
         style={{ stroke: "var(--bp-map-stroke)" }}
-        strokeOpacity="0.55"
-        strokeWidth="1.2"
+        strokeOpacity="0.45"
+        strokeWidth="1"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+
+      {/* Newfoundland (separate island) */}
+      <path
+        d={NEWFOUNDLAND_PATH}
+        fill="url(#canadaLand)"
+        style={{ stroke: "var(--bp-map-stroke)" }}
+        strokeOpacity="0.45"
+        strokeWidth="1"
         strokeLinejoin="round"
       />
 
-      {/* Great Lakes — the most recognizable landmark on the map */}
+      {/* Hudson Bay carve-out */}
+      <path
+        d={HUDSON_BAY_PATH}
+        style={{ fill: "var(--bp-map-water)", stroke: "var(--bp-map-water-stroke)" }}
+        strokeOpacity="0.5"
+        strokeWidth="0.8"
+      />
+
+      {/* Great Lakes carve-outs */}
       {GREAT_LAKES.map((lake) => {
         const e = projectEllipse(lake.lng, lake.lat, lake.rxDeg, lake.ryDeg);
         return (
@@ -59,7 +71,7 @@ export function CanadaMap() {
             ry={e.ry}
             style={{ fill: "var(--bp-map-water)", stroke: "var(--bp-map-water-stroke)" }}
             strokeOpacity="0.55"
-            strokeWidth="0.6"
+            strokeWidth="0.5"
           />
         );
       })}
@@ -68,8 +80,8 @@ export function CanadaMap() {
       {CONTEXT_CITIES.map((c) => {
         const { x, y } = project(c.lng, c.lat);
         return (
-          <g key={c.name} opacity="0.7">
-            <circle cx={x} cy={y} r="1.6" style={{ fill: "var(--bp-map-city)" }} />
+          <g key={c.name} opacity="0.55">
+            <circle cx={x} cy={y} r="1.5" style={{ fill: "var(--bp-map-city)" }} />
             <text
               x={x + 5}
               y={y + 3}
@@ -84,7 +96,7 @@ export function CanadaMap() {
         );
       })}
 
-      {/* Country label — placed over the empty interior north */}
+      {/* Country label — very faint, over the empty north */}
       <text
         x={project(-95, 58).x}
         y={project(-95, 58).y}
@@ -94,7 +106,7 @@ export function CanadaMap() {
         style={{ fill: "var(--bp-map-label)" }}
         fontFamily="ui-monospace, monospace"
         letterSpacing="0.5em"
-        opacity="0.35"
+        opacity="0.4"
       >
         CANADA
       </text>

@@ -200,7 +200,7 @@ function SupplierNode({ s, riskOn, onClick }: { s: Supplier & { x: number; y: nu
 function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   p: PlantData; onClick: () => void; scheduleOn: boolean; esgOn: boolean; yieldOn: boolean; shelfOn: boolean;
 }) {
-  const r = 38;
+  const r = 22;
   const border = p.status === "warn" ? "#f59e0b" : p.status === "critical" ? "#ef4444" : "#22c55e";
   const segs = [
     { val: p.util.frozen, color: "#3b82f6" },
