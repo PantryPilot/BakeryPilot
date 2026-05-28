@@ -5,41 +5,43 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, SectionHeader, ActionCard, type ActionCardData } from "../../components/atoms";
 import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
-import type { BackendSchedule, BackendScheduleDiff, BackendScheduleDiffRun } from "../../lib/api";
 import {
   adaptActionCard,
   confirmActionCard,
+  createSchedule,
+  deleteSchedule,
+  updateSchedule,
   fetchActionCard,
+  fetchFacilities,
   fetchPendingScheduleChangeCard,
+  fetchProductionLines,
+  fetchProducts,
   fetchScheduleDiff,
   formatScheduleWindow,
   rejectActionCard,
+  type UpdateScheduleInput,
+  type BackendFacility,
+  type BackendProduct,
+  type BackendProductionLine,
 } from "../../lib/api";
 import { useSchedules } from "../../lib/hooks";
+import type { BackendSchedule, BackendScheduleDiff, BackendScheduleDiffRun } from "../../lib/api";
 
 const FACILITY_MAP: Record<string, string> = {
   "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
   plant_1: "p1", plant_2: "p2", plant_3: "p3", plant_4: "p4",
 };
 
-// Static demo runs — shown when backend returns no data (e.g. unseeded DB in production)
-const STATIC_RUNS: ProductionRun[] = [
-  { id: "s-p1-l1-a", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1400, start: 6,    end: 8,    allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l1-b", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1200, start: 8.5,  end: 10.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l2-a", plant: "p1", line: 2, sku: "sku-stonefire-pizza-crust-2pk",      qty: 900,  start: 9,    end: 10.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l3-a", plant: "p1", line: 3, sku: "sku-stonefire-mini-naan-8pk",        qty: 1800, start: 9.5,  end: 13,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l1-a", plant: "p2", line: 1, sku: "sku-d-italiano-hot-dog-buns-8pk",   qty: 1500, start: 9,    end: 12,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l2-a", plant: "p2", line: 2, sku: "sku-ace-rustic-italian-oval",        qty: 1100, start: 6,    end: 9,    allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l2-b", plant: "p2", line: 2, sku: "sku-ace-sourdough-bistro",           qty: 1400, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l1-a", plant: "p3", line: 1, sku: "sku-country-harvest-12-grain-loaf", qty: 1100, start: 9,    end: 11,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l2-a", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 6,    end: 8.5,  allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l2-b", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p4-l1-a", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 6,    end: 9.5,  allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p4-l1-b", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 9.5,  end: 11,   allergen: "none", risk: "ok",  lots: [] },
-];
+const PLANT_TO_FACILITY: Record<string, string> = {
+  p1: "plant-toronto",
+  p2: "plant-mississauga",
+  p3: "plant-hamilton",
+  p4: "plant-montreal",
+};
 
 const LANE_H = 44;
-const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
+const TIMELINE_HOURS = 24;
+const HOURS = Array.from({ length: TIMELINE_HOURS }, (_, i) => i);
 const GANTT_GRID_COLS = `repeat(${HOURS.length}, minmax(0, 1fr))`;
 
 function hourLeftPct(hour: number, timelineStart: number, slotCount: number): number {
@@ -50,16 +52,39 @@ function hourWidthPct(start: number, end: number, slotCount: number): number {
   return ((end - start) / slotCount) * 100;
 }
 
-type ScheduledRun = ProductionRun & { dateKey: string };
+type ScheduledRun = ProductionRun & {
+  dateKey: string;
+  startAt: string;
+  endAt: string;
+  facilityId: string;
+  lineId: string;
+};
+
+type GanttLaneModel = { key: string; plant: string; line: number; label: string; runs: ScheduledRun[] };
+
+const DRAG_SNAP_HOURS = 0.25;
+const DRAG_THRESHOLD_PX = 4;
 
 function toDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function shiftDateKey(dateKey: string, days: number): string {
-  const d = new Date(`${dateKey}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
+  const [y, m, day] = dateKey.split("-").map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + days);
   return toDateKey(d);
+}
+
+function timelineHour(d: Date): number {
+  return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+}
+
+function formatClockLabel(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function quickDatesAround(anchorDate: string): string[] {
@@ -86,15 +111,15 @@ const GANTT_HEADER =
 const GANTT_ROW_LABEL = "text-[11px] font-medium leading-snug text-[var(--bp-text-secondary)] truncate";
 const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
 const GANTT_RUN_TILE =
-  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-pointer transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-grab active:cursor-grabbing touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
 
 function formatDateLabel(dateKey: string): string {
-  const d = new Date(`${dateKey}T12:00:00Z`);
+  const [y, m, day] = dateKey.split("-").map(Number);
+  const d = new Date(y, m - 1, day);
   return d.toLocaleDateString("en-CA", {
     weekday: "short",
     day: "numeric",
     month: "short",
-    timeZone: "UTC",
   });
 }
 
@@ -113,34 +138,74 @@ function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
         line: lineNum,
         sku: r.sku_id,
         qty: r.quantity,
-        start: start.getUTCHours() + start.getUTCMinutes() / 60,
-        end: end.getUTCHours() + end.getUTCMinutes() / 60,
+        start: timelineHour(start),
+        end: timelineHour(end),
         allergen: "none",
         risk: "ok",
         lots: r.lot_assignments,
         dateKey: toDateKey(start),
+        startAt: r.start_at,
+        endAt: r.end_at,
+        facilityId: s.facility_id,
+        lineId: s.line_id,
       });
     }
   }
   return runs;
 }
 
-// Default lanes to always show, even when a line has no runs today
-const ALL_LANES: Array<{ plant: string; line: number }> = [
-  { plant: "p1", line: 1 }, { plant: "p1", line: 2 }, { plant: "p1", line: 3 },
-  { plant: "p2", line: 1 }, { plant: "p2", line: 2 },
-  { plant: "p3", line: 1 }, { plant: "p3", line: 2 },
-  { plant: "p4", line: 1 }, { plant: "p4", line: 2 },
-];
+function lineNumberFromId(lineId: string): number {
+  return parseInt(lineId.replace(/\D/g, ""), 10) || 1;
+}
+
+function facilityDisplayName(plantOrFacilityId: string, facilities: BackendFacility[]): string {
+  const mapped = FACILITY_MAP[plantOrFacilityId] ?? plantOrFacilityId;
+  const fromStatic = FACILITIES.find(f => f.id === mapped)?.name;
+  if (fromStatic) return fromStatic;
+  const backendId = PLANT_TO_FACILITY[mapped] ?? plantOrFacilityId;
+  const fromApi = facilities.find(
+    f => f.facility_id === backendId || f.facility_id === plantOrFacilityId,
+  )?.name;
+  if (fromApi) return fromApi;
+  return mapped.replace(/^plant[-_]/, "").replace(/-/g, " ");
+}
+
+function lineLabelFor(
+  plantId: string,
+  lineNum: number,
+  productionLines: BackendProductionLine[],
+  facilities: BackendFacility[],
+): string {
+  const match = productionLines.find(
+    ln =>
+      lineNumberFromId(ln.line_id) === lineNum &&
+      ((FACILITY_MAP[ln.facility_id] ?? ln.facility_id) === plantId ||
+        ln.facility_id === PLANT_TO_FACILITY[plantId]),
+  );
+  if (match?.name) return match.name;
+  return `${facilityDisplayName(plantId, facilities)} Line ${lineNum}`;
+}
+
+function skuLabel(skuId: string, productNames?: Map<string, string>): string {
+  return productNames?.get(skuId) ?? SKUS.find(s => s.id === skuId)?.name ?? skuId.replace(/^sku-/, "").replace(/-/g, " ");
+}
+
+function isoFromDateAndTime(dateKey: string, time: string): string {
+  const [hh, mm] = time.split(":").map(v => parseInt(v, 10));
+  const [y, m, day] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, day, hh || 0, mm || 0, 0, 0).toISOString();
+}
 
 function RunHoverCard({
   run,
   anchorEl,
+  productNames,
 }: {
   run: ProductionRun;
   anchorEl: HTMLElement | null;
+  productNames?: Map<string, string>;
 }) {
-  const sku = SKUS.find(s => s.id === run.sku);
+  const name = skuLabel(run.sku, productNames);
   const [pos, setPos] = useState({ left: 0, top: 0 });
 
   useLayoutEffect(() => {
@@ -169,7 +234,7 @@ function RunHoverCard({
       style={{ left: pos.left, top: pos.top }}
     >
       <div className="font-mono text-[10px] text-[var(--bp-text-subtle)] mb-1">{run.id}</div>
-      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1.5">{sku?.name || run.sku}</div>
+      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1.5">{name}</div>
       <div className="text-[var(--bp-text-muted)]">Lots consumed</div>
       {run.lots.length > 0
         ? run.lots.map(l => <div key={l} className="font-mono text-[11px] text-[var(--bp-text-secondary)]">· {l}</div>)
@@ -183,29 +248,181 @@ function RunHoverCard({
   );
 }
 
+type RunMenuState = { run: ScheduledRun; x: number; y: number } | null;
+
+type MovePreview = {
+  runId: string;
+  sourceLaneKey: string;
+  targetLaneKey: string;
+  start: number;
+  end: number;
+};
+
+function snapHour(hour: number): number {
+  return Math.round(hour / DRAG_SNAP_HOURS) * DRAG_SNAP_HOURS;
+}
+
+function lineIdForLane(
+  lane: Pick<GanttLaneModel, "plant" | "line">,
+  productionLines: BackendProductionLine[],
+): string | null {
+  const facilityId = PLANT_TO_FACILITY[lane.plant];
+  const match = productionLines.find(
+    ln =>
+      lineNumberFromId(ln.line_id) === lane.line &&
+      ((FACILITY_MAP[ln.facility_id] ?? ln.facility_id) === lane.plant ||
+        ln.facility_id === facilityId),
+  );
+  return match?.line_id ?? null;
+}
+
+function facilityIdForLane(lane: Pick<GanttLaneModel, "plant">): string {
+  return PLANT_TO_FACILITY[lane.plant] ?? lane.plant;
+}
+
+function DragRunGhost({
+  preview,
+  run,
+  lanes,
+  hours,
+  anchorEl,
+  productNames,
+}: {
+  preview: MovePreview;
+  run: ScheduledRun | undefined;
+  lanes: GanttLaneModel[];
+  hours: number[];
+  anchorEl: HTMLElement | null;
+  productNames?: Map<string, string>;
+}) {
+  const name = run ? skuLabel(run.sku, productNames) : "";
+  const [pos, setPos] = useState({ left: 0, top: 0, width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    if (!anchorEl || !run) return;
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      const trackWidth = anchorEl.clientWidth || rect.width;
+      const laneIdx = lanes.findIndex(l => l.key === preview.targetLaneKey);
+      if (laneIdx < 0) return;
+      const leftPct = hourLeftPct(preview.start, hours[0], hours.length);
+      const widthPct = hourWidthPct(preview.start, preview.end, hours.length);
+      setPos({
+        left: rect.left + (leftPct / 100) * trackWidth + 3,
+        top: rect.top + GANTT_HEADER_H + laneIdx * LANE_H + 6,
+        width: Math.max(24, (widthPct / 100) * trackWidth - 6),
+        height: LANE_H - 12,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorEl, hours, lanes, preview, run]);
+
+  if (!run || !anchorEl || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className={`fixed z-40 pointer-events-none rounded-lg border border-l-[3px] shadow-lg ring-2 ring-blue-400/50 ${runTileStyle(run.risk)} flex items-center gap-2 px-2.5 opacity-95`}
+      style={{ left: pos.left, top: pos.top, width: pos.width, height: pos.height }}
+    >
+      <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{name}</span>
+      <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
+        {(run.qty / 1000).toFixed(1)}k
+      </span>
+    </div>,
+    document.body,
+  );
+}
+
+function RunContextMenu({
+  menu,
+  onClose,
+  onDelete,
+  deletingId,
+  productNames,
+}: {
+  menu: RunMenuState;
+  onClose: () => void;
+  onDelete: (run: ScheduledRun) => void;
+  deletingId: string | null;
+  productNames?: Map<string, string>;
+}) {
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => onClose();
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu, onClose]);
+
+  if (!menu) return null;
+  const busy = deletingId === menu.run.id;
+  const skuName = skuLabel(menu.run.sku, productNames);
+  return createPortal(
+    <div
+      className="fixed z-[10000] min-w-[148px] rounded-lg border border-[var(--bp-border)] bg-[var(--bp-surface)] py-1 shadow-xl ring-1 ring-white/[0.04]"
+      style={{ left: menu.x, top: menu.y }}
+      onClick={e => e.stopPropagation()}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <button
+        type="button"
+        disabled={busy}
+        className="w-full px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+        onClick={() => onDelete(menu.run)}
+      >
+        {busy ? "Deleting…" : `Delete ${skuName}`}
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function GanttLane({
   lane,
   hours,
   nowHour,
+  nowAt,
   isFirst,
   showNowLine,
   rowIndex,
+  onRunContextMenu,
+  onRunDragStart,
+  draggingRunId,
+  savingRunId,
+  productNames,
 }: {
-  lane: { key: string; plant: string; line: number; runs: ProductionRun[] };
+  lane: GanttLaneModel;
   hours: number[];
   nowHour: number;
+  nowAt: Date;
   isFirst: boolean;
   showNowLine: boolean;
   rowIndex: number;
+  onRunContextMenu: (e: React.MouseEvent, run: ScheduledRun) => void;
+  onRunDragStart: (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => void;
+  draggingRunId: string | null;
+  savingRunId: string | null;
+  productNames?: Map<string, string>;
 }) {
-  const sku = (id: string) => SKUS.find(s => s.id === id);
-  const [hoveredRun, setHoveredRun] = useState<{ run: ProductionRun; el: HTMLElement } | null>(null);
-  const showNow = showNowLine && nowHour >= hours[0] && nowHour <= hours[hours.length - 1];
-  const nowLabel = `${String(Math.floor(nowHour)).padStart(2, "0")}:${String(Math.round((nowHour % 1) * 60)).padStart(2, "0")}`;
+  const [hoveredRun, setHoveredRun] = useState<{ run: ScheduledRun; el: HTMLElement } | null>(null);
+  const showNow = showNowLine && nowHour >= hours[0] && nowHour < hours[0] + hours.length;
+  const nowLabel = formatClockLabel(nowAt);
   return (
     <div
       className={`relative w-full border-b border-[var(--bp-border-soft)] ${laneRowBg(rowIndex)}`}
       style={{ height: LANE_H }}
+      data-lane-key={lane.key}
     >
       {Array.from({ length: hours.length + 1 }, (_, i) => (
         <div
@@ -220,7 +437,7 @@ function GanttLane({
           style={{ left: `${hourLeftPct(nowHour, hours[0], hours.length)}%` }}
         >
           {isFirst && (
-            <div className="absolute -top-2.5 -translate-x-1/2 rounded-full bg-blue-500/35 px-1.5 py-0.5 text-[9px] font-mono text-blue-100 whitespace-nowrap ring-1 ring-blue-400/50">
+            <div className="absolute top-1 -translate-x-1/2 rounded-full bg-blue-500/35 px-1.5 py-0.5 text-[9px] font-mono text-blue-100 whitespace-nowrap ring-1 ring-blue-400/50">
               now · {nowLabel}
             </div>
           )}
@@ -230,15 +447,22 @@ function GanttLane({
         const leftPct = hourLeftPct(r.start, hours[0], hours.length);
         const widthPct = hourWidthPct(r.start, r.end, hours.length);
         const allergenTone = r.allergen === "nuts" ? "red" : r.allergen === "milk" ? "amber" : "slate";
+        const isDragging = draggingRunId === r.id;
+        const isSaving = savingRunId === r.id;
         return (
           <div
             key={r.id}
-            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)}`}
+            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)} ${isDragging ? "opacity-35" : ""} ${isSaving ? "opacity-50 pointer-events-none" : ""}`}
             style={{ left: `calc(${leftPct}% + 3px)`, width: `calc(${widthPct}% - 6px)` }}
-            onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
+            onMouseEnter={e => {
+              if (draggingRunId) return;
+              setHoveredRun({ run: r, el: e.currentTarget });
+            }}
             onMouseLeave={() => setHoveredRun(null)}
+            onContextMenu={e => onRunContextMenu(e, r)}
+            onPointerDown={e => onRunDragStart(e, r, lane.key)}
           >
-            <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{sku(r.sku)?.name || r.sku}</span>
+            <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{skuLabel(r.sku, productNames)}</span>
             <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
               {(r.qty / 1000).toFixed(1)}k
             </span>
@@ -246,14 +470,16 @@ function GanttLane({
           </div>
         );
       })}
-      {hoveredRun && <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} />}
+      {hoveredRun && !draggingRunId && (
+        <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} productNames={productNames} />
+      )}
       {lane.runs.length > 1 && lane.runs.slice(0, -1).map((r, i) => {
         const next = lane.runs[i + 1];
         const xPct = hourLeftPct(next.start, hours[0], hours.length);
         if (r.allergen !== next.allergen && r.allergen !== "none" && next.allergen !== "none") {
           return (
             <div key={i} className="absolute top-0 bottom-0 border-l-2 border-dashed border-amber-500/60" style={{ left: `calc(${xPct}% - 1px)` }}>
-              <div className="absolute -top-2 left-1 text-[9px] font-mono text-amber-300 whitespace-nowrap bg-[#0a0d14] px-1">{r.allergen}→{next.allergen} · 90m</div>
+              <div className="absolute top-0.5 left-1 text-[9px] font-mono text-amber-300 whitespace-nowrap bg-[var(--bp-surface-soft)] px-1">{r.allergen}→{next.allergen} · 90m</div>
             </div>
           );
         }
@@ -263,12 +489,205 @@ function GanttLane({
   );
 }
 
+function GanttTimeline({
+  lanes,
+  nowHour,
+  nowAt,
+  showNowLine,
+  productionLines,
+  onRunContextMenu,
+  onRunMove,
+  productNames,
+}: {
+  lanes: GanttLaneModel[];
+  nowHour: number;
+  nowAt: Date;
+  showNowLine: boolean;
+  productionLines: BackendProductionLine[];
+  onRunContextMenu: (e: React.MouseEvent, run: ScheduledRun) => void;
+  onRunMove: (run: ScheduledRun, update: UpdateScheduleInput) => Promise<boolean>;
+  productNames?: Map<string, string>;
+}) {
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const hours = HOURS;
+  const [drag, setDrag] = useState<{
+    run: ScheduledRun;
+    sourceLaneKey: string;
+    startClientX: number;
+    startClientY: number;
+    originStart: number;
+    durationHours: number;
+  } | null>(null);
+  const [preview, setPreview] = useState<MovePreview | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const draggingRun = useMemo(
+    () => (drag ? lanes.flatMap(l => l.runs).find(r => r.id === drag.run.id) : undefined),
+    [drag, lanes],
+  );
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const onMove = (e: PointerEvent) => {
+      const el = timelineRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * hours.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const end = start + drag.durationHours;
+      const laneIdx = Math.max(
+        0,
+        Math.min(
+          lanes.length - 1,
+          Math.floor((e.clientY - rect.top - GANTT_HEADER_H) / LANE_H),
+        ),
+      );
+      const targetLaneKey = lanes[laneIdx]?.key ?? drag.sourceLaneKey;
+      setPreview({
+        runId: drag.run.id,
+        sourceLaneKey: drag.sourceLaneKey,
+        targetLaneKey,
+        start,
+        end,
+      });
+    };
+
+    const onUp = async (e: PointerEvent) => {
+      const el = timelineRef.current;
+      const rect = el?.getBoundingClientRect();
+      const moved =
+        el != null &&
+        rect != null &&
+        (Math.abs(e.clientX - drag.startClientX) > DRAG_THRESHOLD_PX ||
+          Math.abs(e.clientY - drag.startClientY) > DRAG_THRESHOLD_PX);
+
+      if (!el || !rect || !moved) {
+        setDrag(null);
+        setPreview(null);
+        return;
+      }
+
+      const trackWidth = rect.width;
+      const deltaHours = ((e.clientX - drag.startClientX) / trackWidth) * hours.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const laneIdx = Math.max(
+        0,
+        Math.min(
+          lanes.length - 1,
+          Math.floor((e.clientY - rect.top - GANTT_HEADER_H) / LANE_H),
+        ),
+      );
+      const targetLane = lanes[laneIdx] ?? lanes.find(l => l.key === drag.sourceLaneKey)!;
+      const deltaMs = (start - drag.originStart) * 3600 * 1000;
+      const newStartAt = new Date(new Date(drag.run.startAt).getTime() + deltaMs).toISOString();
+      const newEndAt = new Date(new Date(drag.run.endAt).getTime() + deltaMs).toISOString();
+
+      const update: UpdateScheduleInput = {
+        start_at: newStartAt,
+        end_at: newEndAt,
+      };
+      if (targetLane.key !== drag.sourceLaneKey) {
+        const lineId = lineIdForLane(targetLane, productionLines);
+        if (lineId) {
+          update.line_id = lineId;
+          update.facility_id = facilityIdForLane(targetLane);
+        }
+      }
+
+      const run = drag.run;
+      setSavingId(run.id);
+      setDrag(null);
+      setPreview(null);
+      await onRunMove(run, update);
+      setSavingId(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [drag, hours.length, lanes, onRunMove, productionLines]);
+
+  const beginDrag = useCallback(
+    (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => {
+      if (e.button !== 0 || savingId) return;
+      e.preventDefault();
+      setDrag({
+        run,
+        sourceLaneKey: laneKey,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        originStart: run.start,
+        durationHours: run.end - run.start,
+      });
+      setPreview({
+        runId: run.id,
+        sourceLaneKey: laneKey,
+        targetLaneKey: laneKey,
+        start: run.start,
+        end: run.end,
+      });
+    },
+    [savingId],
+  );
+
+  return (
+    <div ref={timelineRef} className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
+      <div
+        className={`grid w-full ${GANTT_HEADER}`}
+        style={{ gridTemplateColumns: GANTT_GRID_COLS, height: GANTT_HEADER_H }}
+      >
+        {hours.map(h => (
+          <div
+            key={h}
+            className={`min-w-0 border-r border-[var(--bp-border-soft)] flex items-center justify-center text-center ${GANTT_HOUR_LABEL}`}
+          >
+            {String(h).padStart(2, "0")}:00
+          </div>
+        ))}
+      </div>
+      {lanes.map((ln, i) => (
+        <GanttLane
+          key={ln.key}
+          lane={ln}
+          hours={hours}
+          nowHour={nowHour}
+          nowAt={nowAt}
+          isFirst={i === 0}
+          showNowLine={showNowLine}
+          rowIndex={i}
+          onRunContextMenu={onRunContextMenu}
+          onRunDragStart={beginDrag}
+          draggingRunId={drag?.run.id ?? null}
+          savingRunId={savingId}
+          productNames={productNames}
+        />
+      ))}
+      {preview && drag && (
+        <DragRunGhost
+          preview={preview}
+          run={draggingRun}
+          lanes={lanes}
+          hours={hours}
+          anchorEl={timelineRef.current}
+          productNames={productNames}
+        />
+      )}
+    </div>
+  );
+}
+
 function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; sku: string; state: string; window?: string; note?: string; risk?: boolean }[] }) {
   return (
     <div className="space-y-2">
       {runs.map((r, i) => {
-        const left = (r.start - 6) / 18 * 100;
-        const w = (r.end - r.start) / 18 * 100;
+        const left = (r.start / TIMELINE_HOURS) * 100;
+        const w = ((r.end - r.start) / TIMELINE_HOURS) * 100;
         const bg = r.state === "new" ? "border-dashed border-emerald-400 bg-emerald-500/10" : r.state === "moved" ? "border-blue-400 bg-blue-500/10" : "border-slate-700 bg-slate-800/40";
         return (
           <div key={i} className="space-y-1">
@@ -291,17 +710,13 @@ function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; 
   );
 }
 
-function skuLabel(skuId: string): string {
-  return SKUS.find(s => s.id === skuId)?.name || skuId.replace(/^sku-/, "").replace(/-/g, " ");
-}
-
 function diffRunToMini(run: BackendScheduleDiffRun, state: string, lane = "Line") {
   const start = new Date(run.start_at);
   const end = new Date(run.end_at);
   return {
     lane,
-    start: start.getUTCHours() + start.getUTCMinutes() / 60,
-    end: end.getUTCHours() + end.getUTCMinutes() / 60,
+    start: timelineHour(start),
+    end: timelineHour(end),
     sku: skuLabel(run.sku_id),
     state,
     window: formatScheduleWindow(run.start_at, run.end_at),
@@ -479,6 +894,175 @@ function ScheduleProposalPanel({
   );
 }
 
+function AddScheduleModal({
+  activeDate,
+  defaultFacilityId,
+  facilities,
+  lines,
+  products,
+  onClose,
+  onSuccess,
+}: {
+  activeDate: string;
+  defaultFacilityId: string;
+  facilities: BackendFacility[];
+  lines: BackendProductionLine[];
+  products: BackendProduct[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [facilityId, setFacilityId] = useState(defaultFacilityId || facilities[0]?.facility_id || "");
+  const [lineId, setLineId] = useState("");
+  const [skuId, setSkuId] = useState(products[0]?.sku_id || "");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("13:00");
+  const [quantity, setQuantity] = useState("1000");
+  const [status, setStatus] = useState<"approved" | "suggested">("approved");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const linesForFacility = useMemo(
+    () => lines.filter(l => l.facility_id === facilityId),
+    [lines, facilityId],
+  );
+
+  useEffect(() => {
+    if (linesForFacility.length === 0) {
+      setLineId("");
+      return;
+    }
+    if (!linesForFacility.some(l => l.line_id === lineId)) {
+      setLineId(linesForFacility[0].line_id);
+    }
+  }, [linesForFacility, lineId]);
+
+  useEffect(() => {
+    if (defaultFacilityId) setFacilityId(defaultFacilityId);
+  }, [defaultFacilityId]);
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!facilityId || !lineId || !skuId) {
+      setError("Choose facility, line, and product.");
+      return;
+    }
+    const qty = parseInt(quantity, 10);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError("Quantity must be a positive number.");
+      return;
+    }
+    const start_at = isoFromDateAndTime(activeDate, startTime);
+    const end_at = isoFromDateAndTime(activeDate, endTime);
+    if (new Date(end_at) <= new Date(start_at)) {
+      setError("End time must be after start time.");
+      return;
+    }
+    setSaving(true);
+    const created = await createSchedule({
+      facility_id: facilityId,
+      line_id: lineId,
+      sku_id: skuId,
+      start_at,
+      end_at,
+      quantity_units: qty,
+      status,
+    });
+    setSaving(false);
+    if (!created) {
+      setError("Could not save schedule run. Check backend is up and master data is seeded.");
+      return;
+    }
+    onSuccess();
+    onClose();
+  };
+
+  const inputCls =
+    "w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-2 text-[13px] text-slate-100 focus:outline-none focus:border-blue-500/60";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div>
+            <div className="text-[14px] font-semibold text-slate-100">Add schedule run</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{formatDateLabel(activeDate)} · local times</div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400">
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Facility</span>
+            <select value={facilityId} onChange={e => setFacilityId(e.target.value)} className={`mt-1 ${inputCls}`}>
+              {facilities.map(f => (
+                <option key={f.facility_id} value={f.facility_id}>{f.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Line</span>
+            <select value={lineId} onChange={e => setLineId(e.target.value)} className={`mt-1 ${inputCls}`} disabled={linesForFacility.length === 0}>
+              {linesForFacility.length === 0 ? (
+                <option value="">No lines — run make schema.seed</option>
+              ) : (
+                linesForFacility.map(l => (
+                  <option key={l.line_id} value={l.line_id}>{l.name}</option>
+                ))
+              )}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Product (SKU)</span>
+            <select value={skuId} onChange={e => setSkuId(e.target.value)} className={`mt-1 ${inputCls}`}>
+              {products.map(p => (
+                <option key={p.sku_id} value={p.sku_id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Start</span>
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">End</span>
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Quantity (units)</span>
+              <input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Status</span>
+              <select value={status} onChange={e => setStatus(e.target.value as "approved" | "suggested")} className={`mt-1 ${inputCls}`}>
+                <option value="approved">Approved</option>
+                <option value="suggested">Suggested</option>
+              </select>
+            </label>
+          </div>
+          {error && <p className="text-[12px] text-red-400">{error}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-800">
+          <button type="button" onClick={onClose} className="px-3 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving || linesForFacility.length === 0 || !skuId}
+            className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-[13px]"
+          >
+            {saving ? "Saving…" : "Add run"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WhatIfPanel({ onClose }: { onClose: () => void }) {
   const SimRun = ({ label, y, waste, cost, delta, active, risk }: { label: string; y: string; waste: string; cost: string; delta?: string; active?: boolean; risk?: boolean }) => (
     <div className={`rounded-md border p-2 flex items-center gap-2 ${active ? "border-purple-500/40 bg-purple-500/[0.06]" : risk ? "border-red-500/30 bg-red-500/[0.04]" : "border-slate-800 bg-slate-900/40"}`}>
@@ -507,7 +1091,7 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
             <input placeholder="LOT-ID or ingredient" className="w-full bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100"/>
           )},
           { title: "Block production line", content: (
-            <div className="flex gap-2"><select className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] text-slate-200"><option>P1-L2 · Plant 1 Line 2</option></select><input defaultValue="2h" className="w-16 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100 text-right"/></div>
+            <div className="flex gap-2"><select className="flex-1 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] text-slate-200"><option>Toronto L2 · Toronto Line 2</option></select><input defaultValue="2h" className="w-16 bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[12px] font-mono text-slate-100 text-right"/></div>
           )},
         ].map((b, i) => (
           <div key={i} className="rounded-md border border-slate-800 bg-slate-900/40 p-3">
@@ -515,15 +1099,15 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
             {b.content}
           </div>
         ))}
-        <button className="w-full py-2.5 rounded-md bg-purple-500 hover:bg-purple-400 text-purple-950 font-semibold text-[13px] flex items-center justify-center gap-2">
-          <Icon name="zap" size={14}/> Run simulation
+        <button className="w-full py-2.5 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[13px] flex items-center justify-center gap-2">
+          <Icon name="zap" size={14} className="text-white"/> Run simulation
         </button>
         <div className="pt-3 border-t border-slate-800">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Stack (compare runs)</div>
           <div className="space-y-1.5">
             <SimRun label="Baseline" y="96.2%" waste="$0" cost="$1.42M" active/>
             <SimRun label="+35% Costco" y="95.1%" waste="$420" cost="$1.46M" delta="+$36k"/>
-            <SimRun label="+35% Costco · P1-L2 block 4h" y="93.4%" waste="$2,140" cost="$1.49M" delta="+$72k" risk/>
+            <SimRun label="+35% Costco · Toronto L2 block 4h" y="93.4%" waste="$2,140" cost="$1.49M" delta="+$72k" risk/>
           </div>
         </div>
       </div>
@@ -545,8 +1129,23 @@ export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [runMenu, setRunMenu] = useState<RunMenuState>(null);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
+  const [facilities, setFacilities] = useState<BackendFacility[]>([]);
+  const [productionLines, setProductionLines] = useState<BackendProductionLine[]>([]);
+  const [products, setProducts] = useState<BackendProduct[]>([]);
+  const [nowAt, setNowAt] = useState(() => new Date());
   const dateInputRef = useRef<HTMLInputElement>(null);
   const { data: backendSchedules, status: scheduleStatus } = useSchedules(scheduleRefreshKey);
+
+  useEffect(() => {
+    Promise.all([fetchFacilities(), fetchProductionLines(), fetchProducts()]).then(([f, l, p]) => {
+      if (f) setFacilities(f);
+      if (l) setProductionLines(l);
+      if (p) setProducts(p);
+    });
+  }, [scheduleRefreshKey]);
 
   useEffect(() => {
     if (showScheduleProposal || pendingScheduleCardId) {
@@ -554,23 +1153,22 @@ export default function SchedulePage() {
     }
   }, [showScheduleProposal, pendingScheduleCardId]);
 
-  const todayKey = useMemo(() => toDateKey(new Date()), []);
-
-  const nowHour = useMemo(() => {
-    const n = new Date();
-    return n.getUTCHours() + n.getUTCMinutes() / 60;
+  useEffect(() => {
+    const tick = () => setNowAt(new Date());
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
+  const todayKey = useMemo(() => toDateKey(nowAt), [nowAt]);
+
+  const nowHour = useMemo(() => timelineHour(nowAt), [nowAt]);
+
   const allRuns = useMemo<ScheduledRun[]>(() => {
-    if (scheduleStatus === "loading") {
-      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-    }
-    if (scheduleStatus === "fallback" || backendSchedules.length === 0) {
-      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-    }
-    const runs = backendSchedulesToRuns(backendSchedules);
-    return runs.length > 0 ? runs : STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-  }, [backendSchedules, scheduleStatus, todayKey]);
+    if (scheduleStatus === "loading") return [];
+    if (scheduleStatus === "fallback") return [];
+    return backendSchedulesToRuns(backendSchedules);
+  }, [backendSchedules, scheduleStatus]);
 
   const activeDate = selectedDate ?? todayKey;
 
@@ -592,35 +1190,100 @@ export default function SchedulePage() {
 
   const isEmptyDate = (runCountByDate[activeDate] ?? 0) === 0;
 
+  const productNames = useMemo(
+    () => new Map(products.map(p => [p.sku_id, p.name])),
+    [products],
+  );
+
   const runs = useMemo(() => {
     const forDate = allRuns.filter(r => r.dateKey === activeDate);
     return plant === "all" ? forDate : forDate.filter(r => r.plant === plant);
   }, [allRuns, activeDate, plant]);
 
   const lanes = useMemo(() => {
-    const visiblePlants = new Set(plant === "all" ? ALL_LANES.map(l => l.plant) : [plant]);
-    const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
-    // Pre-populate all standard lanes so empty lines still appear
-    ALL_LANES.filter(l => visiblePlants.has(l.plant)).forEach(l => {
-      const key = `${l.plant}-L${l.line}`;
-      byKey[key] = { key, plant: l.plant, line: l.line, runs: [] };
+    const visiblePlants = new Set(
+      plant === "all"
+        ? [...new Set(productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id)), ...runs.map(r => r.plant)]
+        : [plant],
+    );
+    const byKey: Record<string, GanttLaneModel> = {};
+
+    productionLines.forEach(ln => {
+      const plantId = FACILITY_MAP[ln.facility_id] ?? ln.facility_id;
+      if (!visiblePlants.has(plantId)) return;
+      const lineNum = lineNumberFromId(ln.line_id);
+      const key = `${plantId}-L${lineNum}`;
+      byKey[key] = {
+        key,
+        plant: plantId,
+        line: lineNum,
+        label: ln.name || lineLabelFor(plantId, lineNum, productionLines, facilities),
+        runs: [],
+      };
     });
+
     runs.forEach(r => {
       const key = `${r.plant}-L${r.line}`;
-      if (!byKey[key]) byKey[key] = { key, plant: r.plant, line: r.line, runs: [] };
+      if (!byKey[key]) {
+        byKey[key] = {
+          key,
+          plant: r.plant,
+          line: r.line,
+          label: lineLabelFor(r.plant, r.line, productionLines, facilities),
+          runs: [],
+        };
+      }
       byKey[key].runs.push(r);
     });
-    return Object.values(byKey).sort((a, b) => (a.plant + a.line).localeCompare(b.plant + b.line));
-  }, [runs, plant]);
+
+    return Object.values(byKey).sort((a, b) => a.label.localeCompare(b.label));
+  }, [runs, plant, productionLines, facilities]);
+
+  const defaultFacilityForAdd =
+    plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
+
+  const handleRunContextMenu = useCallback((e: React.MouseEvent, run: ScheduledRun) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRunMenu({ run, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleDeleteRun = useCallback(async (run: ScheduledRun) => {
+    const skuName = skuLabel(run.sku, productNames);
+    if (!window.confirm(`Delete schedule run for ${skuName}?`)) return;
+    setDeletingRunId(run.id);
+    const ok = await deleteSchedule(run.id);
+    setDeletingRunId(null);
+    setRunMenu(null);
+    if (ok) bumpScheduleRefresh();
+    else window.alert("Could not delete schedule run.");
+  }, [bumpScheduleRefresh, productNames]);
+
+  const handleRunMove = useCallback(async (run: ScheduledRun, update: UpdateScheduleInput) => {
+    const result = await updateSchedule(run.id, update);
+    if (result) {
+      bumpScheduleRefresh();
+      return true;
+    }
+    window.alert("Could not update schedule run.");
+    return false;
+  }, [bumpScheduleRefresh]);
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Schedule"
-          sub="Production runs across all plants · changeovers minimized by OR-Tools"
+          sub="Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
           right={
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold flex items-center gap-2"
+              >
+                <Icon name="calendar" size={13} className="text-white" /> Add run
+              </button>
               <button onClick={() => openChatContext("Schedule · optimise")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
                 <Icon name="chat" size={13}/> Ask copilot to optimise
               </button>
@@ -713,7 +1376,27 @@ export default function SchedulePage() {
           </button>
         </div>
 
-        {runs.length === 0 && (
+        {scheduleStatus === "loading" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
+            Loading schedules from API…
+          </div>
+        )}
+
+        {scheduleStatus === "fallback" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.06] text-[12px] text-amber-200/90">
+            Could not reach the schedule API. Add runs once the backend is available, or seed data with{" "}
+            <span className="font-mono text-amber-100">make schema.seed</span>.
+          </div>
+        )}
+
+        {scheduleStatus === "live" && allRuns.length === 0 && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/[0.06] text-[12px] text-slate-300">
+            No schedule runs in the database yet. Use <span className="text-slate-100 font-medium">Add run</span> to
+            plan production manually, or ask copilot to optimize.
+          </div>
+        )}
+
+        {runs.length === 0 && allRuns.length > 0 && (
           <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
             No production runs scheduled for {formatDateLabel(activeDate)}.
             {scheduledDates.length > 0 && (
@@ -722,6 +1405,13 @@ export default function SchedulePage() {
           </div>
         )}
 
+        {lanes.length === 0 && scheduleStatus === "live" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
+            No production lines found. Run <span className="font-mono text-slate-300">make schema.seed</span> to load facilities and lines.
+          </div>
+        )}
+
+        {lanes.length > 0 && (
         <div className="rounded-xl border border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)] shadow-sm overflow-hidden ring-1 ring-white/[0.03]">
           <div className="flex min-w-0">
             <div className="w-44 shrink-0 border-r border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)]">
@@ -737,41 +1427,23 @@ export default function SchedulePage() {
                   className={`flex items-center px-3 border-b border-[var(--bp-border-soft)] ${laneRowBg(i)}`}
                   style={{ height: LANE_H }}
                 >
-                  <span className={GANTT_ROW_LABEL}>
-                    {FACILITIES.find(f => f.id === ln.plant)?.name || ln.plant}{" "}
-                    <span className="font-mono text-[var(--bp-text-muted)]">L{ln.line}</span>
-                  </span>
+                  <span className={GANTT_ROW_LABEL}>{ln.label}</span>
                 </div>
               ))}
             </div>
-            <div className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
-              <div
-                className={`grid w-full ${GANTT_HEADER}`}
-                style={{ gridTemplateColumns: GANTT_GRID_COLS, height: GANTT_HEADER_H }}
-              >
-                {HOURS.map(h => (
-                  <div
-                    key={h}
-                    className={`min-w-0 border-r border-[var(--bp-border-soft)] flex items-center justify-center text-center ${GANTT_HOUR_LABEL}`}
-                  >
-                    {String(h).padStart(2, "0")}:00
-                  </div>
-                ))}
-              </div>
-              {lanes.map((ln, i) => (
-                  <GanttLane
-                    key={ln.key}
-                    lane={ln}
-                    hours={HOURS}
-                    nowHour={nowHour}
-                    isFirst={i === 0}
-                    showNowLine={activeDate === todayKey}
-                    rowIndex={i}
-                  />
-              ))}
-            </div>
+            <GanttTimeline
+              lanes={lanes}
+              nowHour={nowHour}
+              nowAt={nowAt}
+              showNowLine={activeDate === todayKey}
+              productionLines={productionLines}
+              onRunContextMenu={handleRunContextMenu}
+              onRunMove={handleRunMove}
+              productNames={productNames}
+            />
           </div>
         </div>
+        )}
 
         {showDiff && (
           <ScheduleProposalPanel
@@ -788,6 +1460,24 @@ export default function SchedulePage() {
           />
         )}
         {whatIfOpen && <WhatIfPanel onClose={() => setWhatIfOpen(false)}/>}
+        {addOpen && (
+          <AddScheduleModal
+            activeDate={activeDate}
+            defaultFacilityId={defaultFacilityForAdd}
+            facilities={facilities}
+            lines={productionLines}
+            products={products}
+            onClose={() => setAddOpen(false)}
+            onSuccess={() => bumpScheduleRefresh()}
+          />
+        )}
+        <RunContextMenu
+          menu={runMenu}
+          onClose={() => setRunMenu(null)}
+          onDelete={handleDeleteRun}
+          deletingId={deletingRunId}
+          productNames={productNames}
+        />
       </div>
     </div>
   );

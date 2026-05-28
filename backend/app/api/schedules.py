@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -11,12 +12,14 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.models.schedules import (
+    CreateScheduleRequest,
     ProductionSchedule,
     ScheduleDiff,
     ScheduleRun,
+    UpdateScheduleRequest,
     WhatIfRequest,
 )
-from app.services.schedule_apply import resolve_schedule, utc_iso
+from app.services.schedule_apply import parse_iso_dt, resolve_schedule, utc_iso
 from app.services.schedule_propose import (
     build_schedule_change_payload,
     build_schedule_diff,
@@ -35,6 +38,16 @@ def _utc_iso(dt: datetime) -> str:
 
 async def _resolve_schedule(db: AsyncSession, schedule_id: str) -> ScheduleORM | None:
     return await resolve_schedule(db, schedule_id)
+
+
+def _schedule_not_found_detail(schedule_id: str) -> str:
+    hint = ""
+    if schedule_id not in ("current", "latest"):
+        try:
+            uuid.UUID(schedule_id)
+        except ValueError:
+            hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
+    return f"schedule {schedule_id} not found.{hint}"
 
 
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
@@ -65,13 +78,117 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
     return [_to_model(s) for s in schedules]
 
 
+@router.post("", response_model=ProductionSchedule, status_code=201)
+async def create_schedule(
+    req: CreateScheduleRequest, db: AsyncSession = Depends(get_db)
+) -> ProductionSchedule:
+    """Insert a production_schedules row (manual planner entry)."""
+    if req.status not in ("suggested", "approved", "complete"):
+        raise HTTPException(422, "status must be suggested, approved, or complete")
+    if req.quantity_units <= 0:
+        raise HTTPException(422, "quantity_units must be positive")
+    try:
+        start_at = parse_iso_dt(req.start_at)
+        end_at = parse_iso_dt(req.end_at)
+    except ValueError as exc:
+        raise HTTPException(422, f"invalid datetime: {exc}") from exc
+    if end_at <= start_at:
+        raise HTTPException(422, "end_at must be after start_at")
+
+    row = ScheduleORM(
+        facility_id=req.facility_id,
+        line_id=req.line_id,
+        sku_id=req.sku_id,
+        start_at=start_at,
+        end_at=end_at,
+        quantity_units=req.quantity_units,
+        status=req.status,
+        waste_avoided_kg=req.waste_avoided_kg,
+        version=1,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _to_model(row)
+
+
+@router.patch("/{schedule_id}", response_model=ProductionSchedule)
+async def update_schedule(
+    schedule_id: str,
+    req: UpdateScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ProductionSchedule:
+    """Update schedule timing or line placement (manual planner drag-and-drop)."""
+    if not any(
+        v is not None
+        for v in (req.start_at, req.end_at, req.line_id, req.facility_id)
+    ):
+        raise HTTPException(422, "at least one field must be provided")
+
+    try:
+        sid = uuid.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    row = await db.get(ScheduleORM, sid)
+    if not row:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+
+    start_at = row.start_at
+    end_at = row.end_at
+    if req.start_at is not None:
+        try:
+            start_at = parse_iso_dt(req.start_at)
+        except ValueError as exc:
+            raise HTTPException(422, f"invalid start_at: {exc}") from exc
+    if req.end_at is not None:
+        try:
+            end_at = parse_iso_dt(req.end_at)
+        except ValueError as exc:
+            raise HTTPException(422, f"invalid end_at: {exc}") from exc
+    if end_at <= start_at:
+        raise HTTPException(422, "end_at must be after start_at")
+
+    if req.facility_id is not None:
+        row.facility_id = req.facility_id
+    if req.line_id is not None:
+        row.line_id = req.line_id
+    row.start_at = start_at
+    row.end_at = end_at
+    row.version += 1
+
+    await db.commit()
+    await db.refresh(row)
+    return _to_model(row)
+
+
+@router.delete("/{schedule_id}", status_code=204)
+async def delete_schedule(
+    schedule_id: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    """Remove a production_schedules row (manual planner delete)."""
+    try:
+        sid = uuid.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    row = await db.get(ScheduleORM, sid)
+    if not row:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    await db.execute(
+        text("UPDATE production_runs SET schedule_id = NULL WHERE schedule_id = :sid"),
+        {"sid": sid},
+    )
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
+
+
 @router.get("/{schedule_id}", response_model=ProductionSchedule)
 async def get_schedule(
     schedule_id: str, db: AsyncSession = Depends(get_db)
 ) -> ProductionSchedule:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
     return _to_model(s)
 
 
@@ -86,7 +203,7 @@ async def schedule_diff(
 ) -> ScheduleDiff:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
     return build_schedule_diff(s)
 
 

@@ -246,7 +246,20 @@ INSERT INTO skus (sku_id, name, category, margin_per_unit, allergen_tags, shelf_
   ('sku-stonefire-pizza-crust-2pk',     'Stonefire Artisan Pizza Crust 2-pack','flatbread', 1.75, '{gluten}',        14),
   ('sku-wonder-classic-white-loaf',     'Wonder Classic White Bread',          'bread',     0.85, '{gluten}',         7),
   ('sku-d-italiano-hot-dog-buns-8pk',   'D''Italiano Hot Dog Buns 8-pack',     'bread',     1.05, '{gluten}',         7),
-  ('sku-country-harvest-12-grain-loaf', 'Country Harvest 12 Grain Bread',      'bread',     1.25, '{gluten}',         7)
+  ('sku-country-harvest-12-grain-loaf', 'Country Harvest 12 Grain Bread',      'bread',     1.25, '{gluten}',         7),
+  -- Muffins, pastries, cookies, quick-breads, bagels — adds coverage for
+  -- blueberries, butter, vanilla, baking agents, chocolate, fruit, nuts,
+  -- seeds, and spices that bread/flatbread SKUs don't touch.
+  ('sku-ace-blueberry-muffin-4pk',      'ACE Blueberry Muffin 4-pack',         'muffin',    1.80, '{gluten,dairy,egg}', 5),
+  ('sku-ace-butter-croissant-4pk',      'ACE All-Butter Croissant 4-pack',     'pastry',    2.20, '{gluten,dairy,egg}', 4),
+  ('sku-wonder-oatmeal-raisin-cookie',  'Wonder Oatmeal Raisin Cookies 300g',  'cookie',    1.40, '{gluten,dairy,egg}',21),
+  ('sku-wonder-choc-chip-cookie',       'Wonder Chocolate Chip Cookies 300g',  'cookie',    1.50, '{gluten,dairy,egg}',21),
+  ('sku-wonder-banana-bread-loaf',      'Wonder Banana Bread Loaf 450g',       'quick-bread',1.60,'{gluten,dairy,egg,tree_nut}', 7),
+  ('sku-stonefire-sesame-bagel-4pk',    'Stonefire Sesame Bagels 4-pack',      'bagel',     1.20, '{gluten,sesame}',   7),
+  ('sku-country-harvest-cinnamon-raisin','Country Harvest Cinnamon Raisin Bread','bread',   1.30, '{gluten}',          7),
+  ('sku-ace-lemon-poppyseed-muffin-4pk','ACE Lemon Poppy Seed Muffin 4-pack',  'muffin',    1.70, '{gluten,dairy,egg}', 5),
+  ('sku-ace-chocolate-brownie-6pk',     'ACE Fudge Brownie 6-pack',            'pastry',    1.90, '{gluten,dairy,egg}',14),
+  ('sku-ace-cranberry-almond-scone-4pk','ACE Cranberry Almond Scone 4-pack',   'pastry',    2.00, '{gluten,dairy,egg,tree_nut}', 5)
 ON CONFLICT (sku_id) DO NOTHING;
 
 -- ============================================================================
@@ -534,6 +547,23 @@ BEGIN
           'line-mississauga-1','line-mississauga-2',
           'line-montreal-1'
         );
+  END IF;
+
+  -- production_schedules: minimal rows for Schedule page + copilot optimizer.
+  -- Requires production_lines (from seed_synthetic / make schema.seed). CD re-applies
+  -- seed.sql but not seed_demo.py, so this keeps the walking skeleton green on deploy.
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'production_schedules')
+     AND (SELECT count(*) FROM production_lines) > 0
+     AND (SELECT count(*) FROM production_schedules) = 0 THEN
+
+    INSERT INTO production_schedules
+      (schedule_id, facility_id, line_id, sku_id, start_at, end_at, quantity_units, status, waste_avoided_kg, version)
+    VALUES
+      ('bbbb0001-0000-4000-8000-000000000001'::uuid, 'plant-toronto', 'line-toronto-1', 'sku-wonder-classic-white-loaf',
+       NOW() + INTERVAL '2 hours', NOW() + INTERVAL '6 hours', 1400, 'approved', 0, 1),
+      ('bbbb0001-0000-4000-8000-000000000002'::uuid, 'plant-toronto', 'line-toronto-2', 'sku-stonefire-original-naan-2pk',
+       NOW() + INTERVAL '1 day', NOW() + INTERVAL '1 day 4 hours', 800, 'suggested', 12.0, 1)
+    ON CONFLICT (schedule_id) DO NOTHING;
   END IF;
 END $$;
 

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
 
 // ---------- Pill ----------
-type PillTone = "slate" | "blue" | "green" | "amber" | "red" | "redPulse" | "teal" | "ghost";
+type PillTone = "slate" | "blue" | "green" | "amber" | "red" | "redPulse" | "teal" | "ghost" | "purple";
 
 export function Pill({ tone = "slate", children, className = "", style }: { tone?: PillTone; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   const tones: Record<PillTone, string> = {
@@ -15,6 +15,7 @@ export function Pill({ tone = "slate", children, className = "", style }: { tone
     redPulse: "bg-red-500/15 text-red-200 border-red-500/40 pulse-red",
     teal:     "bg-teal-500/10 text-teal-300 border-teal-500/30",
     ghost:    "bg-transparent text-slate-400 border-slate-700",
+    purple:   "bg-purple-500/10 text-purple-300 border-purple-500/30",
   };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-medium tracking-wide ${tones[tone]} ${className}`} style={style}>
@@ -174,8 +175,8 @@ export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false 
 
       {!confirmed && !rejected && !compact && (
         <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2 p-3 pt-2 border-t border-slate-800">
-          <button onClick={handleConfirm} disabled={busy} className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-emerald-950 font-semibold text-sm transition">{busy ? "Applying…" : "Confirm"}</button>
-          <button onClick={onEdit} disabled={busy} className="px-3 py-2 rounded-md border border-slate-700 hover:border-slate-500 text-slate-200 text-sm transition">Edit</button>
+          <button onClick={handleConfirm} disabled={busy} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold text-sm transition">{busy ? "Applying…" : "Confirm"}</button>
+          <button onClick={onEdit} disabled={busy} className="px-3 py-2 rounded-md border border-slate-600 bg-slate-800/60 hover:border-slate-500 hover:bg-slate-800 text-slate-100 text-sm transition">Edit</button>
           <button onClick={handleReject} disabled={busy} className="px-3 py-2 rounded-md text-red-400 hover:text-red-300 text-sm transition">Reject</button>
         </div>
       )}
@@ -257,8 +258,8 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { tone: PillTone; label: string }> = {
     ok:       { tone: "green", label: "OK" },
     warn:     { tone: "amber", label: "At Risk" },
-    critical: { tone: "red",   label: "Critical" },
-    expired:  { tone: "red",   label: "Expired" },
+    critical: { tone: "red",    label: "Critical" },
+    expired:  { tone: "purple", label: "Expired" },
   };
   const { tone, label } = map[status] || map.ok;
   return <Pill tone={tone}>{label}</Pill>;

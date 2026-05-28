@@ -303,6 +303,14 @@ export interface BackendSubstitutionCandidate {
   allergens?: string[];
 }
 
+export interface BackendFormulaUsage {
+  sku_id: string;
+  sku_name: string;
+  category: string | null;
+  kg_per_unit: number;
+  allergen_tags: string[];
+}
+
 export interface BackendScheduleRun {
   run_id: string;
   sku_id: string;
@@ -341,6 +349,7 @@ export interface BackendEsgPattern {
 export interface BackendOrder {
   order_id: string;
   supplier_id: string;
+  facility_id: string;
   items: { ingredient_id: string; quantity_kg: number; unit_price: number }[];
   delivery_date: string;
   status: string;
@@ -358,8 +367,64 @@ export async function fetchLotSubstitutions(
   );
 }
 
+export async function fetchLotUsedIn(
+  lotId: string,
+): Promise<BackendFormulaUsage[] | null> {
+  return safeFetch<BackendFormulaUsage[]>(
+    `/api/lots/${encodeURIComponent(lotId)}/used_in`,
+  );
+}
+
 export async function fetchSchedules(): Promise<BackendSchedule[] | null> {
   return safeFetch<BackendSchedule[]>("/api/schedules");
+}
+
+export interface CreateScheduleInput {
+  facility_id: string;
+  line_id: string;
+  sku_id: string;
+  start_at: string;
+  end_at: string;
+  quantity_units: number;
+  status?: string;
+  waste_avoided_kg?: number;
+}
+
+export interface UpdateScheduleInput {
+  start_at?: string;
+  end_at?: string;
+  line_id?: string;
+  facility_id?: string;
+}
+
+export async function createSchedule(
+  input: CreateScheduleInput,
+): Promise<BackendSchedule | null> {
+  return safeFetch<BackendSchedule>("/api/schedules", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: "DELETE",
+    });
+    return res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
+export async function updateSchedule(
+  scheduleId: string,
+  input: UpdateScheduleInput,
+): Promise<BackendSchedule | null> {
+  return safeFetch<BackendSchedule>(`/api/schedules/${encodeURIComponent(scheduleId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function fetchMoqTax(

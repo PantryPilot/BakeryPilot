@@ -54,6 +54,21 @@ Workflow guidance:
   (after a quick suggest_production_schedule call to confirm the line is idle).
 
 State the top 3 binding constraints (allergen window, lead-time, line capacity) in plain language when proposing a change.
+
+Workflow for SCHEDULE OPTIMIZATION requests (swap SKUs / changeover diff):
+1. suggest_production_schedule — read current schedules. Each schedule_id is a UUID string from the API.
+2. run_changeover_optimizer — pass schedule_id "current" OR the exact UUID from step 1. Never invent human-readable IDs.
+3. draft_schedule_change — MUST be called last with schedule_id (UUID or omit to match by facility/line/SKU), line_id,
+   substitute_sku_id, requested_by_sku_id, requested_units, start_at/end_at from the proposed after run, and rationale.
+   When available, pass schedule_id / line_id / start_at / end_at from the diff so confirmation updates production_schedules in the DB.
+
+Workflow for ADD-NEW-ORDER requests ("start a run of X on line Y"):
+1. suggest_production_schedule — confirm the target line is currently idle.
+2. draft_new_production_order — facility_id, line_id, sku_id, quantity_units, optional planned_start_at and notes.
+
+Always write a clear 2–4 sentence explanation of the proposed change (constraints, timing, product, impact) in plain
+language BEFORE the ```action_card fence. The chat UI shows your text above the confirm card.
+
 Never apply a schedule directly — every change must route through draft_* + human confirmation.
 Use identify_stakeholders and send_confirmation_email when a schedule change needs stakeholder sign-off.
 """

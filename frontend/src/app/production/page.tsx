@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { fetchFacilities, fetchProductionLines, fetchProducts, fetchOrders, createProductionOrder, updateOrderStatus, cancelProductionOrder, markOrderProduced, validateProduction, type BackendProductionLine, type BackendProductionOrder, type BackendProduct, type BackendFacility, type BackendValidationResult, type BackendOrder } from "../../lib/api";
-import { requestShortfallTransferPlan, requestShortfallSubstitution, confirmActionCard } from "../../lib/api";
+import { requestShortfallTransferPlan, confirmActionCard } from "../../lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,36 +207,6 @@ function AssignModal({
     }
   };
 
-  const handleRequestSubstitution = async (substituteSkuId: string) => {
-    if (!selectedSkuId) return;
-    const key = `sub-${substituteSkuId}`;
-    setRequestingKey(key);
-    const blockedIds = (validation?.ingredients ?? [])
-      .filter(i => i.shortfall_kg > 0)
-      .map(i => i.ingredient_id);
-    const res = await requestShortfallSubstitution({
-      facility_id: facilityId,
-      substitute_sku_id: substituteSkuId,
-      requested_by_sku_id: selectedSkuId,
-      requested_units: quantity,
-      blocked_ingredient_ids: blockedIds,
-    });
-    if (!res?.action_card_id) {
-      setRequestingKey(null);
-      setError("Failed to request substitution.");
-      onToast?.("Substitution request failed", "error");
-      return;
-    }
-    const confirmed = await confirmActionCard(res.action_card_id);
-    setRequestingKey(null);
-    setError(null);
-    if (!confirmed) {
-      onToast?.("Substitution recorded but execution failed — check action cards", "error");
-    } else {
-      onToast?.("Switched to substitute — new production order created", "success");
-      onSuccess();
-    }
-  };
 
   const shortfallIngredients = validation?.ingredients.filter(i => i.shortfall_kg > 0) ?? [];
   const transferPlan = validation?.transfer_plan ?? null;
@@ -301,32 +271,41 @@ function AssignModal({
             />
           </div>
 
-          {/* Recipe preview */}
-          {selectedProduct && selectedProduct.recipe.length > 0 && (
+          {/* Ingredient availability — always show once a product is selected */}
+          {selectedProduct && (
             <div className="rounded-lg border border-slate-800 bg-slate-900/40">
               <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">Recipe ({quantity} units)</span>
-                {validating && <span className="text-[10px] text-slate-500">checking…</span>}
+                <span className="text-[10px] uppercase tracking-wider text-slate-500">Ingredients ({quantity} units)</span>
+                {validating && <span className="text-[10px] text-slate-500 flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 border border-slate-500 border-t-slate-300 rounded-full animate-spin"/>checking…</span>}
               </div>
               <div className="p-3 space-y-1.5">
-                {selectedProduct.recipe.map(r => {
-                  const totalKg = r.kg_per_unit * quantity;
-                  const detail = validation?.ingredients.find(i => i.ingredient_id === r.ingredient_id);
-                  const ok = !detail || detail.shortfall_kg === 0;
-                  return (
-                    <div key={r.ingredient_id} className="flex items-center justify-between text-[12px]">
-                      <span className={ok ? "text-slate-200" : "text-red-300"}>{r.ingredient_name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-400 font-mono">{totalKg.toFixed(1)} kg</span>
-                        {detail && (
-                          <span className={`text-[10px] font-mono ${ok ? "text-emerald-400" : "text-red-400"}`}>
-                            {ok ? `${detail.available_kg.toFixed(1)} avail` : `short ${detail.shortfall_kg.toFixed(1)}`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* Prefer validation.ingredients (has live availability); fall back to recipe during loading */}
+                {validation?.ingredients && validation.ingredients.length > 0
+                  ? validation.ingredients.map(i => {
+                      const ok = i.shortfall_kg === 0;
+                      return (
+                        <div key={i.ingredient_id} className="flex items-center justify-between text-[12px]">
+                          <span className={ok ? "text-slate-200" : "text-red-300"}>{i.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-400 font-mono">{i.needed_kg.toFixed(1)} kg</span>
+                            <span className={`text-[10px] font-mono w-20 text-right ${ok ? "text-emerald-400" : "text-red-400"}`}>
+                              {ok ? `✓ ${i.available_kg.toFixed(1)} avail` : `✗ short ${i.shortfall_kg.toFixed(1)}`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  : selectedProduct.recipe.length > 0
+                    ? selectedProduct.recipe.map(r => (
+                        <div key={r.ingredient_id} className="flex items-center justify-between text-[12px] text-slate-400">
+                          <span>{r.ingredient_name}</span>
+                          <span className="font-mono">{(r.kg_per_unit * quantity).toFixed(1)} kg</span>
+                        </div>
+                      ))
+                    : !validating && (
+                        <div className="text-[12px] text-slate-500 italic">No recipe configured for this product.</div>
+                      )
+                }
               </div>
             </div>
           )}
@@ -464,8 +443,6 @@ function AssignModal({
                   </div>
                   <div className="px-3 py-2 space-y-1.5">
                     {substituteSkus.slice(0, 4).map(s => {
-                      const key = `sub-${s.sku_id}`;
-                      const busy = requestingKey === key;
                       return (
                         <div key={s.sku_id} className="flex items-center justify-between gap-2 text-[12px]">
                           <div className="min-w-0 flex-1">
@@ -477,12 +454,15 @@ function AssignModal({
                             </div>
                           </div>
                           <button
-                            onClick={() => handleRequestSubstitution(s.sku_id)}
-                            disabled={busy}
-                            className="shrink-0 h-7 px-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 text-[11px] font-medium transition flex items-center gap-1.5"
+                            onClick={() => {
+                              handleSkuChange(s.sku_id);
+                              if (!s.covers_requested_units && s.achievable_quantity > 0) {
+                                handleQtyChange(s.achievable_quantity);
+                              }
+                            }}
+                            className="shrink-0 h-7 px-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-[11px] font-medium transition"
                           >
-                            {busy && <span className="w-3 h-3 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
-                            {busy ? "Requesting" : "Switch"}
+                            Select
                           </button>
                         </div>
                       );
@@ -491,49 +471,51 @@ function AssignModal({
                 </div>
               )}
 
-              {!transferPlan && substituteSkus.length === 0 && (
-                <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
-                    <span className="text-[12px] text-slate-400">No transfer or substitution options — order from supplier</span>
-                    {shortfallIngredients.length > 1 && (
-                      <button
-                        onClick={() => openSupplierOrderingAll(shortfallIngredients.map(i => ({ id: i.ingredient_id, qty: i.shortfall_kg })))}
-                        className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
-                      >
-                        Order all ({shortfallIngredients.length})
-                      </button>
-                    )}
+              {/* Option C — Order from supplier (always shown when there are shortfalls) */}
+              <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Icon name="truck" size={12} className="text-violet-300 shrink-0" />
+                    <span className="text-[12px] font-medium text-slate-100">Order from supplier</span>
                   </div>
-                  <div className="divide-y divide-slate-800/60">
-                    {shortfallIngredients.map(i => {
-                      const draft = draftForIngredient(i.ingredient_id);
-                      return (
-                        <div key={i.ingredient_id} className="px-3 py-2 flex items-center justify-between gap-2 text-[12px]">
-                          <span className="text-slate-200 truncate">{i.name ?? i.ingredient_id}</span>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="font-mono text-red-400 text-[11px]">short {i.shortfall_kg.toFixed(1)} kg</span>
-                            {draft ? (
-                              <button
-                                onClick={() => router.push(`/scorecard?tab=suppliers&open_supplier=${encodeURIComponent(draft.supplier_id)}`)}
-                                className="h-7 px-2.5 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 text-[11px] font-medium transition"
-                              >
-                                View draft PO
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => openSupplierOrdering(i.ingredient_id, i.shortfall_kg)}
-                                className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
-                              >
-                                Order
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {shortfallIngredients.length > 1 && (
+                    <button
+                      onClick={() => openSupplierOrderingAll(shortfallIngredients.map(i => ({ id: i.ingredient_id, qty: i.shortfall_kg })))}
+                      className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                    >
+                      Order all ({shortfallIngredients.length})
+                    </button>
+                  )}
                 </div>
-              )}
+                <div className="divide-y divide-slate-800/60">
+                  {shortfallIngredients.map(i => {
+                    const draft = draftForIngredient(i.ingredient_id);
+                    return (
+                      <div key={i.ingredient_id} className="px-3 py-2 flex items-center justify-between gap-2 text-[12px]">
+                        <span className="text-slate-200 truncate">{i.name ?? i.ingredient_id}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="font-mono text-red-400 text-[11px]">short {i.shortfall_kg.toFixed(1)} kg</span>
+                          {draft ? (
+                            <button
+                              onClick={() => router.push(`/scorecard?tab=suppliers&open_supplier=${encodeURIComponent(draft.supplier_id)}`)}
+                              className="h-7 px-2.5 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 text-[11px] font-medium transition"
+                            >
+                              View draft PO
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => openSupplierOrdering(i.ingredient_id, i.shortfall_kg)}
+                              className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                            >
+                              Order
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -610,24 +592,28 @@ function ProduceModal({
             </div>
           ) : (
             <>
-              {/* Ingredient consumption */}
-              {validation && validation.ingredients.length > 0 && (
+              {/* Ingredient consumption — always show when validation is loaded */}
+              {validation && (
                 <div>
                   <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">Ingredients to consume</div>
-                  <div className="space-y-1">
-                    {validation.ingredients.map(i => (
-                      <div key={i.ingredient_id} className="flex items-center justify-between text-[12px]">
-                        <span className={i.shortfall_kg > 0 ? "text-red-300" : "text-slate-300"}>{i.name}</span>
-                        <div className="flex items-center gap-2 font-mono">
-                          <span className="text-slate-400">{i.needed_kg.toFixed(1)} kg</span>
-                          {i.shortfall_kg > 0
-                            ? <span className="text-red-400 text-[10px]">✗ short {i.shortfall_kg.toFixed(1)}</span>
-                            : <span className="text-emerald-400 text-[10px]">✓</span>
-                          }
+                  {validation.ingredients.length === 0 ? (
+                    <div className="text-[12px] text-slate-500 italic">No recipe configured for this product.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {validation.ingredients.map(i => (
+                        <div key={i.ingredient_id} className="flex items-center justify-between text-[12px]">
+                          <span className={i.shortfall_kg > 0 ? "text-red-300" : "text-slate-300"}>{i.name}</span>
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="text-slate-400">{i.needed_kg.toFixed(1)} kg</span>
+                            {i.shortfall_kg > 0
+                              ? <span className="text-red-400 text-[10px]">✗ short {i.shortfall_kg.toFixed(1)}</span>
+                              : <span className="text-emerald-400 text-[10px]">✓</span>
+                            }
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
