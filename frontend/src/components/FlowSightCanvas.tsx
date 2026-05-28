@@ -36,9 +36,12 @@ const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 200;
 const PLANT_CX = 640;
-const RETAILER_X = 900;
 const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
+/** Left edge of retailer cards — inside the retailer column (right of divider). */
+const RETAILER_ANCHOR_X = COL_DIVIDER_R + 28;
+/** Column header centered in the retailer zone. */
+const RETAILER_COL_CENTER = (COL_DIVIDER_R + CANVAS_W) / 2;
 const COL_LABEL_Y = 92;
 const PLANT_RADIUS = 44;
 const PLANT_ROW_GAP = 112;
@@ -594,21 +597,20 @@ function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boole
     name.length > maxChars ? `${name.slice(0, maxChars - 1)}…` : name;
   const label = truncateName(rr.name);
   const cardWidth = 128;
-  const cardLeft = -cardWidth;
-  const barLeft = cardLeft + 6;
+  const barLeft = 6;
   const barWidthMax = cardWidth - 12;
   const color = rr.shelfRisk === "red" ? "#ef4444" : rr.shelfRisk === "amber" ? "#f59e0b" : "#22c55e";
   const barWidth = Math.min(barWidthMax, barWidthMax * rr.poRatio * 0.75);
   return (
     <g transform={`translate(${rr.x}, ${rr.y})`}>
-      <rect x={cardLeft} y="-14" width={cardWidth} height="28" rx="3" fill="#0c111c" stroke="#334155" strokeWidth="1.2"/>
-      <text textAnchor="start" x={cardLeft + 8} y="3" fontSize="10" fontWeight="600" fill="#cbd5e1">{label}</text>
+      <rect x={0} y="-14" width={cardWidth} height="28" rx="3" fill="#0c111c" stroke="#334155" strokeWidth="1.2"/>
+      <text textAnchor="start" x={8} y="3" fontSize="10" fontWeight="600" fill="#cbd5e1">{label}</text>
       <rect x={barLeft} y="18" width={barWidthMax} height="3" rx="1" fill="#1e293b"/>
       <rect x={barLeft} y="18" width={barWidth} height="3" rx="1" fill={rr.poRatio > 1.2 ? "#f59e0b" : "#3b82f6"}/>
-      <text textAnchor="start" x={6} y="22" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{(rr.poRatio * 100).toFixed(0)}%</text>
-      <circle r="3" cx={-8} cy="-10" fill={color}/>
+      <text textAnchor="start" x={barLeft} y="31" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{(rr.poRatio * 100).toFixed(0)}%</text>
+      <circle r="3" cx={8} cy="-10" fill={color}/>
       {forecastOn && (
-        <text textAnchor="start" x={cardLeft} y="-20" fontSize="9" fill="#3b82f6" fontFamily="ui-monospace, monospace">↑ 14d band</text>
+        <text textAnchor="start" x={0} y="-20" fontSize="9" fill="#3b82f6" fontFamily="ui-monospace, monospace">↑ 14d band</text>
       )}
     </g>
   );
@@ -1151,7 +1153,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         name: r?.name ?? retailerId.replace(/_/g, " "),
         poRatio: r?.po_ratio ?? 1,
         shelfRisk: r?.shelf_risk ?? "green",
-        x: RETAILER_X,
+        x: RETAILER_ANCHOR_X,
         y: plant.y,
       };
     },
@@ -1171,7 +1173,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       name: r.name,
       poRatio: r.po_ratio || 1,
       shelfRisk: r.shelf_risk,
-      x: RETAILER_X,
+      x: RETAILER_ANCHOR_X,
       y: laneYs[i % laneYs.length],
     }));
     const seen = new Set(base.map(r => r.id));
@@ -1244,7 +1246,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {[
           { x: SUPPLIER_X, label: "Suppliers" },
           { x: PLANT_CX, label: "Plants" },
-          { x: RETAILER_X, label: "Retailers" },
+          { x: RETAILER_COL_CENTER, label: "Retailers" },
         ].map(col => {
           const hovered = hoveredCol === col.label;
           return (

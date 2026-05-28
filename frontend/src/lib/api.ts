@@ -960,6 +960,22 @@ export async function fetchRetailerOrders(
   return safeFetch<BackendRetailerOrder[]>(`/api/retailer_orders${qs}`);
 }
 
+export interface CreateRetailerOrderInput {
+  retailer_id: string;
+  sku_id: string;
+  quantity: number;
+  requested_delivery_date: string;
+}
+
+export async function createRetailerOrder(
+  input: CreateRetailerOrderInput,
+): Promise<{ order_id: string; action_card_id: string } | null> {
+  return safeFetch<{ order_id: string; action_card_id: string }>("/api/retailer_orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ---------- Outbound warehouse → retailer shipments ----------
 
 export interface BackendWarehouseStock {

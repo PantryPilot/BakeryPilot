@@ -15,6 +15,7 @@ const NAV: Array<{ id: string; route: string; labelKey: TranslationKey; icon: st
   { id: "facilities", route: "/facilities",              labelKey: "sidebar.flowsight",  icon: "grid",     tour: "nav-flowsight"     },
   { id: "materials",  route: "/materials",               labelKey: "sidebar.inventory",  icon: "box",      tour: "nav-inventory"     },
   { id: "production", route: "/production",              labelKey: "sidebar.production", icon: "factory",  tour: "nav-production"    },
+  { id: "retailers",  route: "/retailers",                labelKey: "sidebar.retailers",  icon: "bars",     tour: "nav-retailers"     },
   { id: "suppliers",  route: "/scorecard?tab=suppliers", labelKey: "sidebar.suppliers",  icon: "truck",    tour: "nav-suppliers"     },
   { id: "schedule",   route: "/schedule",                labelKey: "sidebar.schedule",   icon: "calendar", tour: "nav-schedule"      },
   { id: "settings",  route: "/settings",                 labelKey: "sidebar.settings",   icon: "settings", tour: ""                  },

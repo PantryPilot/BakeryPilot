@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import {
   createOutboundShipment,
@@ -555,6 +556,7 @@ function AddOutboundModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const router = useRouter();
   const [facilityId, setFacilityId] = useState(defaultFacilityId || facilities[0]?.facility_id || "");
   const { data: stock } = useWarehouseStock(facilityId);
   const { data: openOrders, status: ordersStatus } = useRetailerOrders("open");
@@ -602,6 +604,13 @@ function AddOutboundModal({
   useEffect(() => {
     if (defaultFacilityId) setFacilityId(defaultFacilityId);
   }, [defaultFacilityId]);
+
+  const goAddRetailerOrder = () => {
+    const params = new URLSearchParams();
+    if (skuId) params.set("sku_id", skuId);
+    onClose();
+    router.push(params.toString() ? `/retailers?${params.toString()}` : "/retailers");
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -689,8 +698,16 @@ function AddOutboundModal({
             {ordersStatus === "loading" ? (
               <div className={`mt-1 ${inputCls} text-slate-500`}>Loading open orders…</div>
             ) : matchingOrders.length === 0 ? (
-              <div className={`mt-1 ${inputCls} text-amber-300/90`}>
-                No open PO for this SKU — create a retailer order first.
+              <div className={`mt-1 ${inputCls} text-amber-300/90 space-y-2`}>
+                <p>No open PO for this SKU.</p>
+                <button
+                  type="button"
+                  onClick={goAddRetailerOrder}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-semibold"
+                >
+                  <Icon name="calendar" size={12} className="text-white" />
+                  Add retailer order
+                </button>
               </div>
             ) : (
               <select

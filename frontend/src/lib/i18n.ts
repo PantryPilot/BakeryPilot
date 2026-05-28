@@ -38,6 +38,7 @@ const en = {
   "sidebar.flowsight": "FlowSight",
   "sidebar.inventory": "Inventory",
   "sidebar.production": "Production",
+  "sidebar.retailers": "Retailers",
   "sidebar.suppliers": "Suppliers",
   "sidebar.schedule": "Schedule",
   "sidebar.settings": "Settings",
@@ -160,6 +161,10 @@ const en = {
   "schedule.col_start": "Start",
   "schedule.col_end": "End",
 
+  // Retailers page
+  "retailers.title": "Retailer orders",
+  "retailers.subtitle": "Firm POs from retailers · new orders trigger a production schedule proposal",
+
   // Scorecard / Suppliers page
   "scorecard.title": "Scorecard",
   "scorecard.tab_suppliers": "Suppliers",
@@ -247,6 +252,7 @@ const fr: Dictionary = {
   "sidebar.flowsight": "FlowSight",
   "sidebar.inventory": "Inventaire",
   "sidebar.production": "Production",
+  "sidebar.retailers": "Détaillants",
   "sidebar.suppliers": "Fournisseurs",
   "sidebar.schedule": "Calendrier",
   "sidebar.settings": "Paramètres",
@@ -371,6 +377,10 @@ const fr: Dictionary = {
   "schedule.after": "Après",
   "schedule.col_start": "Début",
   "schedule.col_end": "Fin",
+
+  // Retailers page
+  "retailers.title": "Commandes détaillants",
+  "retailers.subtitle": "Bons de commande fermes · une nouvelle commande déclenche une proposition de calendrier de production",
 
   // Scorecard / Suppliers page
   "scorecard.title": "Tableau de bord",

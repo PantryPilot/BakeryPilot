@@ -352,9 +352,10 @@ export function useRetailers(): Result<BackendRetailer[]> {
   return useBackend(fetchRetailers, []);
 }
 
-export function useRetailerOrders(status?: string): Result<BackendRetailerOrder[]> {
+export function useRetailerOrders(status?: string): Result<BackendRetailerOrder[]> & { refetch: () => void } {
   const [data, setData] = useState<BackendRetailerOrder[]>([]);
   const [state, setState] = useState<BackendStatus>("loading");
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -372,9 +373,9 @@ export function useRetailerOrders(status?: string): Result<BackendRetailerOrder[
     return () => {
       alive = false;
     };
-  }, [status]);
+  }, [status, tick]);
 
-  return { data, status: state };
+  return { data, status: state, refetch: () => setTick(t => t + 1) };
 }
 
 export function useOutboundShipments(refreshKey = 0): Result<BackendOutboundShipment[]> {
