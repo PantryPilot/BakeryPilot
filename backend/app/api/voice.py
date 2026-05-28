@@ -10,6 +10,45 @@ from app.config import settings
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
 _DEEPGRAM_URL = "https://api.deepgram.com/v1/listen"
+_DEEPGRAM_GRANT_URL = "https://api.deepgram.com/v1/auth/grant"
+
+
+@router.post("/realtime_token")
+async def realtime_token() -> dict:
+    """Return a Deepgram access token for the browser to open a streaming
+    WebSocket. Prefers a short-lived scoped token from /v1/auth/grant; if
+    the master key lacks the keys:write permission needed for grant, falls
+    back to returning the master key (acceptable for local/demo use only)."""
+    api_key = (settings.deepgram_api_key or "").strip()
+    if not api_key:
+        raise HTTPException(503, "Deepgram is not configured (DEEPGRAM_API_KEY missing)")
+
+    model = settings.deepgram_model or "nova-3"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                _DEEPGRAM_GRANT_URL,
+                headers={"Authorization": f"Token {api_key}"},
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "access_token": data.get("access_token"),
+                "expires_in": data.get("expires_in"),
+                "model": model,
+                "kind": "scoped",
+            }
+    except httpx.HTTPError:
+        pass  # fall through to master-key fallback
+
+    # Fallback: master key. Browser uses it as the WS subprotocol header.
+    return {
+        "access_token": api_key,
+        "expires_in": None,
+        "model": model,
+        "kind": "master",
+    }
 
 
 def _route_verification(transcript: str) -> str:
