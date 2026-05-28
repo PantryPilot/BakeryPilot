@@ -186,11 +186,17 @@ body {
 [data-accent] .hover\:text-blue-400:hover {
   color: var(--bp-accent-hover) !important;
 }
+[data-accent] button.text-blue-950,
+[data-accent] a.text-blue-950,
+[data-accent] button .text-blue-950,
+[data-accent] a .text-blue-950 {
+  color: #ffffff !important;
+}
 [data-accent] .text-blue-950 {
   color: var(--bp-accent-foreground) !important;
 }
 [data-accent] .bg-blue-500.text-white {
-  color: var(--bp-accent-foreground) !important;
+  color: #ffffff !important;
 }
 [data-accent] .border-blue-500,
 [data-accent] .border-blue-500\/20,
