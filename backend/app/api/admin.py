@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import json
+
 from app.config import settings
 from app.db.session import get_db
 from app.models.chat import ChatModelInfo
@@ -35,6 +37,20 @@ class TableRowsResponse(BaseModel):
     page: int
     per_page: int
     active_filters: dict[str, str] = {}
+    primary_keys: list[str] = []
+
+
+class RowUpdateRequest(BaseModel):
+    key: dict[str, object]
+    values: dict[str, object]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, object]
+
+
+class RowUpdateResponse(BaseModel):
+    row: dict
 
 
 class TableFilterOption(BaseModel):
@@ -171,6 +187,26 @@ async def _table_columns(db: AsyncSession, table_name: str) -> list[ColumnInfo]:
     return [ColumnInfo(name=r[0], type=r[1]) for r in result.fetchall()]
 
 
+async def _table_primary_keys(db: AsyncSession, table_name: str) -> list[str]:
+    result = await db.execute(
+        text(
+            """
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'PRIMARY KEY'
+              AND tc.table_schema = 'public'
+              AND tc.table_name = :table
+            ORDER BY kcu.ordinal_position
+            """
+        ),
+        {"table": table_name},
+    )
+    return [r[0] for r in result.fetchall()]
+
+
 def _parse_table_filters(table_name: str, query_params) -> dict[str, str]:
     allowed = filter_columns_for_table(table_name)
     if not allowed:
@@ -276,7 +312,10 @@ async def list_table_rows(
     offset = (page - 1) * per_page
     query_params = {**filter_params, "lim": per_page, "off": offset}
     result = await db.execute(
-        text(f"SELECT * FROM \"{table_name}\"{where_sql}{order_clause} LIMIT :lim OFFSET :off"),  # noqa: S608
+        text(
+            f'SELECT t.*, t.ctid::text AS "__row_ctid" '
+            f'FROM "{table_name}" t{where_sql}{order_clause} LIMIT :lim OFFSET :off'
+        ),  # noqa: S608
         query_params,
     )
     raw_rows = result.fetchall()
@@ -286,6 +325,8 @@ async def list_table_rows(
     for row in raw_rows:
         rows.append({col_keys[i]: _serialize(row[i]) for i in range(len(col_keys))})
 
+    primary_keys = await _table_primary_keys(db, table_name)
+
     return TableRowsResponse(
         table=table_name,
         columns=columns,
@@ -294,7 +335,190 @@ async def list_table_rows(
         page=page,
         per_page=per_page,
         active_filters=active_filters,
+        primary_keys=primary_keys,
     )
+
+
+def _parse_input(value: object, pg_type: str) -> object:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    if pg_type == "boolean":
+        if isinstance(value, bool):
+            return value
+        return str(value).lower() in ("true", "t", "1", "yes")
+    if pg_type in ("integer", "bigint", "smallint"):
+        return int(value)  # type: ignore[arg-type]
+    if pg_type in ("double precision", "numeric", "real"):
+        return float(value)  # type: ignore[arg-type]
+    if pg_type in ("json", "jsonb"):
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return value
+
+
+def _set_expr(column: str, pg_type: str, param: str) -> str:
+    if pg_type in ("json", "jsonb"):
+        return f'"{column}" = CAST(:{param} AS jsonb)'
+    if pg_type == "uuid":
+        return f'"{column}" = CAST(:{param} AS uuid)'
+    if pg_type in ("timestamp with time zone", "timestamp without time zone", "date"):
+        return f'"{column}" = CAST(:{param} AS {pg_type})'
+    return f'"{column}" = :{param}'
+
+
+def _insert_value_expr(pg_type: str, param: str) -> str:
+    if pg_type in ("json", "jsonb"):
+        return f"CAST(:{param} AS jsonb)"
+    if pg_type == "uuid":
+        return f"CAST(:{param} AS uuid)"
+    if pg_type in ("timestamp with time zone", "timestamp without time zone", "date"):
+        return f"CAST(:{param} AS {pg_type})"
+    return f":{param}"
+
+
+def _row_where_clause(
+    pk_cols: list[str], key: dict[str, object]
+) -> tuple[str, dict[str, object]]:
+    if pk_cols:
+        missing = [c for c in pk_cols if c not in key]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing primary key fields in key: {', '.join(missing)}",
+            )
+        parts = [f'"{c}" = :key_{c}' for c in pk_cols]
+        params = {f"key_{c}": key[c] for c in pk_cols}
+        return " AND ".join(parts), params
+    if "__row_ctid" not in key:
+        raise HTTPException(
+            status_code=400,
+            detail="Table has no primary key; include __row_ctid in key",
+        )
+    return 'ctid = CAST(:__row_ctid AS tid)', {"__row_ctid": key["__row_ctid"]}
+
+
+@router.patch("/tables/{table_name}/rows", response_model=RowUpdateResponse)
+async def update_table_row(
+    table_name: str,
+    req: RowUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> RowUpdateResponse:
+    valid_tables = await _public_table_names(db)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    if not req.values:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    columns = await _table_columns(db, table_name)
+    column_types = {c.name: c.type for c in columns}
+    column_names = set(column_types)
+
+    pk_cols = await _table_primary_keys(db, table_name)
+    where_sql, where_params = _row_where_clause(pk_cols, req.key)
+
+    set_parts: list[str] = []
+    set_params: dict[str, object] = {}
+    for i, (column, raw_val) in enumerate(req.values.items()):
+        if column not in column_names or column == "__row_ctid":
+            raise HTTPException(
+                status_code=400, detail=f"Unknown column '{column}' on '{table_name}'"
+            )
+        param = f"set_{i}"
+        pg_type = column_types[column]
+        parsed = _parse_input(raw_val, pg_type)
+        set_parts.append(_set_expr(column, pg_type, param))
+        set_params[param] = parsed
+
+    sql = (
+        f'UPDATE "{table_name}" SET {", ".join(set_parts)} '
+        f"WHERE {where_sql} "
+        f'RETURNING *, ctid::text AS "__row_ctid"'
+    )
+    try:
+        result = await db.execute(text(sql), {**set_params, **where_params})  # noqa: S608
+        updated = result.fetchone()
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Row not found")
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    col_keys = list(result.keys())
+    row = {col_keys[i]: _serialize(updated[i]) for i in range(len(col_keys))}
+    return RowUpdateResponse(row=row)
+
+
+@router.post("/tables/{table_name}/rows", response_model=RowUpdateResponse)
+async def insert_table_row(
+    table_name: str,
+    req: RowInsertRequest,
+    db: AsyncSession = Depends(get_db),
+) -> RowUpdateResponse:
+    valid_tables = await _public_table_names(db)
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+    if not req.values:
+        raise HTTPException(status_code=400, detail="No fields to insert")
+
+    columns = await _table_columns(db, table_name)
+    column_types = {c.name: c.type for c in columns}
+    column_names = set(column_types)
+
+    insert_cols: list[str] = []
+    value_exprs: list[str] = []
+    insert_params: dict[str, object] = {}
+    param_idx = 0
+    for column, raw_val in req.values.items():
+        if column not in column_names or column == "__row_ctid":
+            raise HTTPException(
+                status_code=400, detail=f"Unknown column '{column}' on '{table_name}'"
+            )
+        pg_type = column_types[column]
+        parsed = _parse_input(raw_val, pg_type)
+        if parsed is None:
+            continue
+        param = f"ins_{param_idx}"
+        param_idx += 1
+        insert_cols.append(f'"{column}"')
+        value_exprs.append(_insert_value_expr(pg_type, param))
+        insert_params[param] = parsed
+
+    if not insert_cols:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one non-empty field is required (empty fields use DB defaults)",
+        )
+
+    sql = (
+        f'INSERT INTO "{table_name}" ({", ".join(insert_cols)}) '
+        f"VALUES ({', '.join(value_exprs)}) "
+        f'RETURNING *, ctid::text AS "__row_ctid"'
+    )
+    try:
+        result = await db.execute(text(sql), insert_params)  # noqa: S608
+        inserted = result.fetchone()
+        if inserted is None:
+            raise HTTPException(status_code=500, detail="Insert failed")
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    col_keys = list(result.keys())
+    row = {col_keys[i]: _serialize(inserted[i]) for i in range(len(col_keys))}
+    return RowUpdateResponse(row=row)
 
 
 def _serialize(value: object) -> object:

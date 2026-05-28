@@ -57,6 +57,7 @@ _INTENT_STATUS = {
     "esg":             "ESGAgent · computing waste & CO₂e",
     "weekly_plan":     "WeeklyPlanAgent · composing weekly plan",
     "weekly_summary":  "SummaryAgent · generating report",
+    "demo":            "DemoAgent · generating sample orders & schedules",
 }
 
 

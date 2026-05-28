@@ -12,6 +12,8 @@ import {
   fetchAdminTableFilters,
   fetchAdminCopilotModel,
   updateAdminCopilotModel,
+  updateAdminTableRow,
+  createAdminTableRow,
   fetchAdminDataSources,
   refreshAdminDataSource,
   setAdminDataSourceInterval,
@@ -25,6 +27,11 @@ import {
 
 type SortState = { column: string; order: "asc" | "desc" } | null;
 type AdminView = "copilot" | "data-sources" | "tables";
+
+type RowModalState =
+  | { mode: "edit"; row: Record<string, unknown> }
+  | { mode: "add" }
+  | null;
 
 export default function AdminPage() {
   const { t } = useApp();
@@ -41,6 +48,8 @@ export default function AdminPage() {
   const [tableFilterSpecs, setTableFilterSpecs] = useState<AdminTableFilter[]>([]);
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [rowSearch, setRowSearch] = useState("");
+  const [rowModal, setRowModal] = useState<RowModalState>(null);
+  const [savingRow, setSavingRow] = useState(false);
 
   const perPage = 50;
 
@@ -88,6 +97,7 @@ export default function AdminPage() {
     setPage(1);
     setSort(null);
     setExpandedCell(null);
+    setRowModal(null);
     setSearch("");
     setActiveFilters({});
     setTableFilterSpecs([]);
@@ -132,6 +142,29 @@ export default function AdminPage() {
     setPage(1);
     setExpandedCell(null);
     loadRows(activeTable, 1, newSort, activeFilters);
+  };
+
+  const handleSaveRow = async (values: Record<string, unknown>) => {
+    if (!activeTable || !tableData || !rowModal) return;
+    setSavingRow(true);
+    let result;
+    if (rowModal.mode === "add") {
+      result = await createAdminTableRow(activeTable, values);
+    } else {
+      const pk = tableData.primary_keys ?? [];
+      const key =
+        pk.length > 0
+          ? Object.fromEntries(pk.map(col => [col, rowModal.row[col]]))
+          : { __row_ctid: rowModal.row.__row_ctid };
+      result = await updateAdminTableRow(activeTable, key, values);
+    }
+    setSavingRow(false);
+    if (!result.ok) {
+      window.alert(result.error);
+      return;
+    }
+    setRowModal(null);
+    await loadRows(activeTable, page, sort, activeFilters);
   };
 
   const totalPages = tableData ? Math.max(1, Math.ceil(tableData.total / perPage)) : 1;
@@ -251,6 +284,7 @@ export default function AdminPage() {
               table={activeTable}
               total={tableData?.total ?? 0}
               loading={dataLoading}
+              onAddRow={() => setRowModal({ mode: "add" })}
             />
             <TableFilterBar
               filters={tableFilterSpecs}
@@ -275,9 +309,22 @@ export default function AdminPage() {
                   onExpandCell={setExpandedCell}
                   rowSearch={rowSearch}
                   activeFilters={activeFilters}
+                  onEditRow={row => setRowModal({ mode: "edit", row })}
                 />
               ) : null}
             </div>
+            {rowModal && tableData && (
+              <RowFormModal
+                mode={rowModal.mode}
+                table={activeTable!}
+                columns={tableData.columns}
+                row={rowModal.mode === "edit" ? rowModal.row : undefined}
+                primaryKeys={tableData.primary_keys ?? []}
+                saving={savingRow}
+                onClose={() => setRowModal(null)}
+                onSave={handleSaveRow}
+              />
+            )}
             {tableData && (
               <Pagination
                 page={page}
@@ -484,10 +531,12 @@ function TableHeader({
   table,
   total,
   loading,
+  onAddRow,
 }: {
   table: string;
   total: number;
   loading: boolean;
+  onAddRow: () => void;
 }) {
   return (
     <div className="h-14 shrink-0 flex items-center gap-3 px-5 border-b border-slate-800/80">
@@ -503,6 +552,14 @@ function TableHeader({
           refreshing…
         </span>
       )}
+      <div className="flex-1" />
+      <button
+        type="button"
+        onClick={onAddRow}
+        className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold"
+      >
+        Add row
+      </button>
     </div>
   );
 }
@@ -516,6 +573,7 @@ function DataGrid({
   onExpandCell,
   rowSearch,
   activeFilters,
+  onEditRow,
 }: {
   columns: AdminColumnInfo[];
   rows: Record<string, unknown>[];
@@ -525,6 +583,7 @@ function DataGrid({
   onExpandCell: (key: string | null) => void;
   rowSearch?: string;
   activeFilters?: Record<string, string>;
+  onEditRow: (row: Record<string, unknown>) => void;
 }) {
   const visibleRows = rowSearch
     ? rows.filter((row) =>
@@ -546,6 +605,9 @@ function DataGrid({
     <table className="bp-admin-table bp-data-table w-full text-[12px] border-collapse">
       <thead className="sticky top-0 z-10">
         <tr className="bg-[#0a0d14] border-b border-slate-700/80 shadow-[0_1px_0_0_rgba(15,23,42,0.6)]">
+          <th className="text-left px-2 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 w-16 border-r border-slate-700/50">
+            Edit
+          </th>
           {columns.map((col) => {
             const sortActive = sort?.column === col.name;
             const filterActive = !!(activeFilters?.[col.name]);
@@ -581,6 +643,15 @@ function DataGrid({
                 : "bg-slate-900/45 hover:bg-slate-800/50"
             }`}
           >
+            <td className="px-2 py-2 border-r border-slate-800/25 align-top">
+              <button
+                type="button"
+                onClick={() => onEditRow(row)}
+                className="px-2 py-1 rounded-md text-[11px] font-medium border border-slate-700 text-slate-300 hover:border-blue-500/50 hover:text-blue-300 hover:bg-blue-500/10 transition"
+              >
+                Edit
+              </button>
+            </td>
             {columns.map((col) => {
               const cellKey = `${rowIdx}-${col.name}`;
               const val = row[col.name];
@@ -688,6 +759,183 @@ function CellValue({
   }
 
   return <span className="text-slate-300">{str}</span>;
+}
+
+function valueToEditString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function parseDraftValues(
+  draft: Record<string, string>,
+  columns: AdminColumnInfo[],
+  originalRow?: Record<string, unknown>,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const col of columns) {
+    const next = draft[col.name];
+    if (originalRow !== undefined) {
+      const orig = valueToEditString(originalRow[col.name]);
+      if (next === orig) continue;
+    } else if (next.trim() === "") {
+      continue;
+    }
+    if (next.trim() === "") {
+      values[col.name] = null;
+    } else if (
+      col.type === "json" ||
+      col.type === "jsonb" ||
+      next.trim().startsWith("{") ||
+      next.trim().startsWith("[")
+    ) {
+      try {
+        values[col.name] = JSON.parse(next);
+      } catch {
+        values[col.name] = next;
+      }
+    } else if (col.type === "boolean") {
+      values[col.name] = next.toLowerCase() === "true";
+    } else {
+      values[col.name] = next;
+    }
+  }
+  return values;
+}
+
+function RowFormModal({
+  mode,
+  table,
+  columns,
+  row,
+  primaryKeys,
+  saving,
+  onClose,
+  onSave,
+}: {
+  mode: "edit" | "add";
+  table: string;
+  columns: AdminColumnInfo[];
+  row?: Record<string, unknown>;
+  primaryKeys: string[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (values: Record<string, unknown>) => void;
+}) {
+  const editableColumns = columns.filter(c => c.name !== "__row_ctid");
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      editableColumns.map(c => [
+        c.name,
+        row ? valueToEditString(row[c.name]) : "",
+      ]),
+    ),
+  );
+
+  const handleField = (name: string, value: string) => {
+    setDraft(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleApply = () => {
+    const values = parseDraftValues(draft, editableColumns, row);
+    if (mode === "edit" && Object.keys(values).length === 0) {
+      onClose();
+      return;
+    }
+    if (mode === "add" && Object.keys(values).length === 0) {
+      window.alert("Enter at least one field (leave others blank for DB defaults).");
+      return;
+    }
+    onSave(values);
+  };
+
+  const pkLabel =
+    mode === "edit" && row
+      ? primaryKeys.length > 0
+        ? primaryKeys.map(k => `${k}=${String(row[k] ?? "null")}`).join(", ")
+        : `ctid=${String(row.__row_ctid ?? "?")}`
+      : "Leave blank any column that should use a database default";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold text-slate-100 font-mono truncate">
+              {mode === "add" ? "Add row" : "Edit row"} · {table}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5 font-mono truncate" title={pkLabel}>
+              {pkLabel}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400">
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {editableColumns.map(col => {
+            const isLong =
+              col.type === "json" ||
+              col.type === "jsonb" ||
+              col.type === "ARRAY" ||
+              (draft[col.name]?.length ?? 0) > 80;
+            return (
+              <label key={col.name} className="block">
+                <span className="text-[11px] uppercase tracking-wider text-slate-500 font-mono">
+                  {col.name}
+                  <span className="ml-2 lowercase text-slate-600">{col.type}</span>
+                  {primaryKeys.includes(col.name) && (
+                    <span className="ml-2 text-amber-500/80 normal-case">PK</span>
+                  )}
+                </span>
+                {isLong ? (
+                  <textarea
+                    value={draft[col.name] ?? ""}
+                    onChange={e => handleField(col.name, e.target.value)}
+                    rows={4}
+                    placeholder={mode === "add" ? "optional" : undefined}
+                    className="mt-1 w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-2 text-[12px] font-mono text-slate-100 focus:outline-none focus:border-blue-500/60 resize-y"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={draft[col.name] ?? ""}
+                    onChange={e => handleField(col.name, e.target.value)}
+                    placeholder={mode === "add" ? "optional" : undefined}
+                    className="mt-1 w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-2 text-[12px] font-mono text-slate-100 focus:outline-none focus:border-blue-500/60"
+                  />
+                )}
+              </label>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={saving}
+            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-[13px]"
+          >
+            {saving
+              ? mode === "add"
+                ? "Inserting…"
+                : "Applying…"
+              : mode === "add"
+                ? "Insert row"
+                : "Apply changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Pagination({

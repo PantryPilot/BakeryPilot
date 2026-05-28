@@ -1,5 +1,7 @@
 """Order models."""
 
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -45,7 +47,7 @@ class RetailerOrderRequest(BaseModel):
     retailer_id: str
     sku_id: str
     quantity: int
-    requested_delivery_date: str
+    requested_delivery_date: date
 
 
 class RetailerOrder(BaseModel):

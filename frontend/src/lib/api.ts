@@ -698,6 +698,66 @@ export interface AdminTableRowsResponse {
   page: number;
   per_page: number;
   active_filters?: Record<string, string>;
+  primary_keys?: string[];
+}
+
+export type AdminRowUpdateResult =
+  | { ok: true; row: Record<string, unknown> }
+  | { ok: false; error: string };
+
+function adminRowMutationError(body: unknown, fallback: string): string {
+  const detail = (body as { detail?: unknown })?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: { msg?: string }) => d.msg)
+      .filter(Boolean)
+      .join("; ") || fallback;
+  }
+  return fallback;
+}
+
+async function adminRowMutation(
+  table: string,
+  method: "PATCH" | "POST",
+  payload: Record<string, unknown>,
+  fallbackError: string,
+): Promise<AdminRowUpdateResult> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/admin/tables/${encodeURIComponent(table)}/rows`,
+      {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: adminRowMutationError(body, fallbackError) || `HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, row: body.row as Record<string, unknown> };
+  } catch {
+    return { ok: false, error: "Network error — is the backend running?" };
+  }
+}
+
+export async function updateAdminTableRow(
+  table: string,
+  key: Record<string, unknown>,
+  values: Record<string, unknown>,
+): Promise<AdminRowUpdateResult> {
+  return adminRowMutation(table, "PATCH", { key, values }, "Update failed");
+}
+
+export async function createAdminTableRow(
+  table: string,
+  values: Record<string, unknown>,
+): Promise<AdminRowUpdateResult> {
+  return adminRowMutation(table, "POST", { values }, "Insert failed");
 }
 
 export interface AdminTableFilterOption {

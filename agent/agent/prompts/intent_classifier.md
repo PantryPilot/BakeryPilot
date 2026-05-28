@@ -1,6 +1,6 @@
 Classify the user message into exactly one of the following labels. Output only the label — no punctuation, no explanation.
 
-Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summary, general
+Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summary, demo, general
 
 ---
 
@@ -11,6 +11,7 @@ yield — actual vs planned output, waste per shift, equipment anomalies, mainte
 esg — waste avoidance totals, CO2e, Scope 3 reports, sustainability patterns
 weekly_plan — requests to plan the week, optimise operations across all domains, get a full operations overview, weekly briefing
 weekly_summary — requests to send or generate a weekly summary or report to stakeholders, email the weekly report, share this week's summary
+demo — requests to generate demo/mock/sample data, populate the UI with random orders and schedules, seed the schedule page for exploration
 general — greetings, help requests, questions that do not fit the above
 
 ---
@@ -85,3 +86,12 @@ Label: weekly_summary
 
 User: Email this week's operations report to stakeholders.
 Label: weekly_summary
+
+User: Generate demo orders and schedules so I can explore the app.
+Label: demo
+
+User: Populate mock data for the schedule page.
+Label: demo
+
+User: Create random retailer and supplier orders.
+Label: demo

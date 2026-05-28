@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.memory import InMemoryStore
 
+from agent.agents.demo import DemoAgent
 from agent.agents.esg import ESGAgent
 from agent.agents.inventory import InventoryAgent
 from agent.agents.orchestrator import classify_intent
@@ -36,6 +37,7 @@ _yield_agent = YieldAgent()
 _esg_agent = ESGAgent()
 _weekly_plan_agent = WeeklyPlanAgent()
 _summary_agent = SummaryAgent()
+_demo_agent = DemoAgent()
 
 
 def _route_intent(state: AgentState) -> str:
@@ -48,6 +50,7 @@ def _route_intent(state: AgentState) -> str:
         "esg": "esg_agent",
         "weekly_plan": "weekly_plan_agent",
         "weekly_summary": "summary_agent",
+        "demo": "demo_agent",
     }
     return routes.get(intent, "weekly_plan_agent")
 
@@ -90,6 +93,11 @@ def _weekly_plan_node(state: AgentState) -> AgentState:
 @opik.track(name="summary_agent_node")
 def _summary_node(state: AgentState) -> AgentState:
     return _summary_agent.run(state)
+
+
+@opik.track(name="demo_agent_node")
+def _demo_node(state: AgentState) -> AgentState:
+    return _demo_agent.run(state)
 
 
 @opik.track(name="respond_node")
@@ -139,6 +147,7 @@ def create_graph():
     builder.add_node("esg_agent", _esg_node)
     builder.add_node("weekly_plan_agent", _weekly_plan_node)
     builder.add_node("summary_agent", _summary_node)
+    builder.add_node("demo_agent", _demo_node)
     builder.add_node("respond", _respond_node)
 
     builder.add_edge(START, "classify_intent")
@@ -153,6 +162,7 @@ def create_graph():
             "esg_agent": "esg_agent",
             "weekly_plan_agent": "weekly_plan_agent",
             "summary_agent": "summary_agent",
+            "demo_agent": "demo_agent",
             "respond": "respond",
         },
     )
@@ -163,6 +173,7 @@ def create_graph():
     builder.add_edge("esg_agent", "respond")
     builder.add_edge("weekly_plan_agent", "respond")
     builder.add_edge("summary_agent", "respond")
+    builder.add_edge("demo_agent", "respond")
     builder.add_edge("respond", END)
 
     return builder.compile(checkpointer=_checkpointer, store=_store)
@@ -192,6 +203,7 @@ if __name__ == "__main__":
         ("how much waste have we avoided this quarter?", "esg"),
         ("plan my week across all operations", "weekly_plan"),
         ("send the weekly summary to the team", "weekly_summary"),
+        ("generate demo orders and schedules", "demo"),
     ]
     for msg, expected_intent in test_messages:
         thread = str(uuid.uuid4())

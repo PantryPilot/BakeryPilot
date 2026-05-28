@@ -31,6 +31,10 @@ def test_create_retailer_order(client):
         "retailer_id": "r-cc",
         "sku_id": "sku_blueberry_muffin",
         "quantity": 100,
+        "requested_delivery_date": "2026-06-04",
     }
     r = client.post("/api/retailer_orders", json=payload)
-    assert r.status_code in (200, 201, 422)
+    assert r.status_code == 200
+    body = r.json()
+    assert "order_id" in body
+    assert "action_card_id" in body

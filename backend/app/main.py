@@ -12,6 +12,7 @@ from app.api import (
     chat,
     commodity_prices,
     dashboard,
+    demo,
     disruptions,
     esg,
     events,
@@ -125,5 +126,6 @@ for _router in [
     facilities.router,
     retailers.router,
     dashboard.router,
+    demo.router,
 ]:
     app.include_router(_router)
