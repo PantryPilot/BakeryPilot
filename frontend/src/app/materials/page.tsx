@@ -553,9 +553,6 @@ function LotSlideIn({
 
 // ── Finished Products Tab ─────────────────────────────────────────────────────
 
-const FACILITY_ID_TO_SHORT: Record<string, string> = {
-  "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
-};
 const FACILITY_SHORT_TO_ID: Record<string, string> = {
   p1: "plant-toronto", p2: "plant-mississauga", p3: "plant-hamilton", p4: "plant-montreal",
 };
@@ -1107,7 +1104,7 @@ export default function MaterialsPage() {
                     <span className="block truncate" title={l.id}>{l.id.slice(0, 12)}…</span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-100">{l.ingredient}</td>
-                  <td className="px-3 py-2.5 font-mono text-slate-300">{FACILITY_NAME[l.facility] ?? l.facility}</td>
+                  <td className="px-3 py-2.5 text-slate-300">{FACILITY_NAME[l.facility] ?? l.facility}</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{l.qty.toLocaleString()}</td>
                   <td className="px-3 py-2.5 font-mono text-slate-400">{l.expiry}</td>
                   <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${l.daysLeft <= 2 ? "text-red-300" : l.daysLeft <= 5 ? "text-amber-300" : "text-slate-300"}`}>{l.daysLeft}d</td>
