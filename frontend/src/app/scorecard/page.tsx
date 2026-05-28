@@ -1073,6 +1073,9 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const searchParams = useSearchParams();
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
   const [supplierClosing, setSupplierClosing] = useState(false);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState("All");
+  const [supplierTierFilter, setSupplierTierFilter] = useState("All");
   const [placePOTarget, setPlacePOTarget] = useState<Supplier | null>(null);
   const [poContext, setPoContext] = useState<QuickPOContext | null>(null);
   const [addSupplierOpen, setAddSupplierOpen] = useState(false);
@@ -1094,6 +1097,22 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       .filter(s => !deletedSupplierIds.has(s.id));
     return [...addedSuppliers, ...base];
   }, [backendSuppliers, supplierOverrides, addedSuppliers, deletedSupplierIds]);
+
+  const filteredSuppliers = useMemo(() => {
+    let s = suppliers.slice();
+    if (supplierQuery.trim()) {
+      const q = supplierQuery.toLowerCase();
+      s = s.filter(x => x.name.toLowerCase().includes(q));
+    }
+    if (supplierStatusFilter !== "All") {
+      const map: Record<string, string> = { "Healthy": "ok", "Watch": "warn", "Disrupted": "disrupt" };
+      s = s.filter(x => x.status === map[supplierStatusFilter]);
+    }
+    if (supplierTierFilter !== "All") {
+      s = s.filter(x => String(x.tier) === supplierTierFilter);
+    }
+    return s;
+  }, [suppliers, supplierQuery, supplierStatusFilter, supplierTierFilter]);
 
   const quickPoContext = useMemo<QuickPOContext | null>(() => {
     if (searchParams.get("source") !== "production_shortfall") return null;
@@ -1182,7 +1201,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       )}
       {/* Mobile card list */}
       <div className="sm:hidden space-y-2 mb-6">
-        {suppliers.map(s => (
+        {filteredSuppliers.map(s => (
           <div
             key={s.id}
             onClick={() => setActiveSupplier(s)}
@@ -1219,8 +1238,38 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
         ))}
       </div>
       <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500">Supplier roster</div>
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-800">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mr-1">Supplier roster</div>
+          <div className="flex items-center gap-1.5 rounded-md border border-slate-800 px-2 h-8 flex-1 min-w-[160px] max-w-[240px]">
+            <Icon name="search" size={12} className="text-slate-500"/>
+            <input
+              value={supplierQuery}
+              onChange={e => setSupplierQuery(e.target.value)}
+              placeholder="Search supplier…"
+              className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
+            />
+          </div>
+          <select
+            value={supplierStatusFilter}
+            onChange={e => setSupplierStatusFilter(e.target.value)}
+            className={`h-8 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${supplierStatusFilter !== "All" ? "border-blue-500/50 text-blue-300" : "border-slate-800"}`}
+          >
+            <option value="All">All statuses</option>
+            <option value="Healthy">Healthy</option>
+            <option value="Watch">Watch</option>
+            <option value="Disrupted">Disrupted</option>
+          </select>
+          <select
+            value={supplierTierFilter}
+            onChange={e => setSupplierTierFilter(e.target.value)}
+            className={`h-8 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${supplierTierFilter !== "All" ? "border-blue-500/50 text-blue-300" : "border-slate-800"}`}
+          >
+            <option value="All">All tiers</option>
+            <option value="1">Tier 1</option>
+            <option value="2">Tier 2</option>
+            <option value="3">Tier 3</option>
+          </select>
+          <div className="flex-1"/>
           <button onClick={() => setAddSupplierOpen(true)}
             className="px-3 py-1 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px]">
             + Add supplier
@@ -1236,7 +1285,7 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
             </tr>
           </thead>
           <tbody>
-            {suppliers.map(s => {
+            {filteredSuppliers.map(s => {
               const rowTone = s.status === "disrupt" ? "bg-red-500/[0.06]" : s.status === "warn" ? "bg-amber-500/[0.04]" : "";
               return (
                 <tr key={s.id} onClick={() => setActiveSupplier(s)} className={`border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition ${rowTone}`}>

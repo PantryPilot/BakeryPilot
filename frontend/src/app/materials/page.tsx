@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
@@ -694,8 +694,11 @@ export default function MaterialsPage() {
   const [facility, setFacility] = useState("all");
   const [storage, setStorage] = useState("All");
   const [risk, setRisk] = useState("All");
+  const [daysFilter, setDaysFilter] = useState("All");
   const [sort, setSort] = useState("risk");
   const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
   const [lotClosing, setLotClosing] = useState(false);
@@ -744,6 +747,22 @@ export default function MaterialsPage() {
     showToast(`Lot transferred to ${updated.facility.toUpperCase()}.`, "success");
   }, [showToast]);
 
+  const suggestions = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase();
+    const names = [...new Set(mergedLots.map(l => l.ingredient))];
+    return names.filter(n => n.toLowerCase().includes(q)).slice(0, 8);
+  }, [mergedLots, query]);
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSuggestions(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
   const filtered = useMemo(() => {
     let l = mergedLots.slice();
     if (facility !== "all") l = l.filter(x => x.facility === facility);
@@ -751,6 +770,10 @@ export default function MaterialsPage() {
     if (risk !== "All") {
       const map: Record<string, string> = { "OK": "ok", "At Risk": "warn", "Critical": "critical", "Expired": "expired" };
       l = l.filter(x => x.status === map[risk]);
+    }
+    if (daysFilter !== "All") {
+      const max = parseInt(daysFilter);
+      l = l.filter(x => x.daysLeft <= max);
     }
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -761,7 +784,7 @@ export default function MaterialsPage() {
     if (sort === "qty")      l.sort((a, b) => b.qty - a.qty);
     if (sort === "facility") l.sort((a, b) => a.facility.localeCompare(b.facility));
     return l;
-  }, [mergedLots, facility, storage, risk, sort, query]);
+  }, [mergedLots, facility, storage, risk, daysFilter, sort, query]);
 
   const horizon = useMemo(() => {
     const groups: Record<string, { ingredient: string; total: number; lots: number; expiring3d: number; expiring7d: number; lotsData: { qty: number; daysLeft: number }[] }> = {};
@@ -853,14 +876,36 @@ export default function MaterialsPage() {
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 mb-4">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-9 flex-1 min-w-[220px]">
-              <Icon name="search" size={13} className="text-slate-500"/>
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search ingredient or lot ID"
-                className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
-              />
+            <div ref={searchRef} className="relative flex-1 min-w-[220px]">
+              <div className="flex items-center gap-2 rounded-md border border-slate-800 px-2 h-9">
+                <Icon name="search" size={13} className="text-slate-500"/>
+                <input
+                  value={query}
+                  onChange={e => { setQuery(e.target.value); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  placeholder="Search ingredient or lot ID"
+                  className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
+                />
+                {query && (
+                  <button onClick={() => { setQuery(""); setShowSuggestions(false); }} className="text-slate-500 hover:text-slate-300">
+                    <Icon name="x" size={11}/>
+                  </button>
+                )}
+              </div>
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 rounded-md border border-slate-700 bg-slate-900 shadow-xl z-30 overflow-hidden">
+                  {suggestions.map(name => (
+                    <button
+                      key={name}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setQuery(name); setShowSuggestions(false); }}
+                      className="w-full text-left px-3 py-1.5 text-[12px] text-slate-200 hover:bg-slate-800 transition"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               onClick={() => setFiltersOpen(v => !v)}
@@ -874,6 +919,7 @@ export default function MaterialsPage() {
                 setFacility("all");
                 setStorage("All");
                 setRisk("All");
+                setDaysFilter("All");
                 setSort("risk");
                 setQuery("");
               }}
@@ -884,35 +930,49 @@ export default function MaterialsPage() {
           </div>
 
           <div className={`${filtersOpen ? "max-h-96 opacity-100 mt-3" : "max-h-0 opacity-0 mt-0"} sm:max-h-none sm:opacity-100 sm:mt-3 overflow-hidden transition-all duration-300 ease-out`}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              <label className="text-[11px] text-slate-500">
-                Facility
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              <label className={`text-[11px] font-medium ${facility !== "all" ? "text-blue-400" : "text-slate-500"}`}>
+                Facility{facility !== "all" && " ●"}
                 <select
                   value={facility}
                   onChange={e => setFacility(e.target.value)}
-                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                  className={`mt-1 w-full h-9 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${facility !== "all" ? "border-blue-500/50" : "border-slate-800"}`}
                 >
                   {FILTER_FACILITY.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                 </select>
               </label>
-              <label className="text-[11px] text-slate-500">
-                Storage
+              <label className={`text-[11px] font-medium ${storage !== "All" ? "text-blue-400" : "text-slate-500"}`}>
+                Storage{storage !== "All" && " ●"}
                 <select
                   value={storage}
                   onChange={e => setStorage(e.target.value)}
-                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                  className={`mt-1 w-full h-9 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${storage !== "All" ? "border-blue-500/50" : "border-slate-800"}`}
                 >
                   {FILTER_STORAGE.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               </label>
-              <label className="text-[11px] text-slate-500">
-                Risk
+              <label className={`text-[11px] font-medium ${risk !== "All" ? "text-blue-400" : "text-slate-500"}`}>
+                Risk{risk !== "All" && " ●"}
                 <select
                   value={risk}
                   onChange={e => setRisk(e.target.value)}
-                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
+                  className={`mt-1 w-full h-9 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${risk !== "All" ? "border-blue-500/50" : "border-slate-800"}`}
                 >
                   {FILTER_RISK.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </label>
+              <label className={`text-[11px] font-medium ${daysFilter !== "All" ? "text-blue-400" : "text-slate-500"}`}>
+                Days left{daysFilter !== "All" && " ●"}
+                <select
+                  value={daysFilter}
+                  onChange={e => setDaysFilter(e.target.value)}
+                  className={`mt-1 w-full h-9 bg-slate-900 border rounded-md px-2 text-[12px] text-slate-200 ${daysFilter !== "All" ? "border-blue-500/50" : "border-slate-800"}`}
+                >
+                  <option value="All">All</option>
+                  <option value="2">≤ 2 days</option>
+                  <option value="5">≤ 5 days</option>
+                  <option value="7">≤ 7 days</option>
+                  <option value="14">≤ 14 days</option>
                 </select>
               </label>
               <label className="text-[11px] text-slate-500">
@@ -976,8 +1036,21 @@ export default function MaterialsPage() {
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                {["Lot ID", "Ingredient", "Facility", "Qty (kg)", "Expiry", "Days left", "Storage", "Risk score", "Status", "Actions"].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-left font-semibold ${[3, 5].includes(i) ? "text-right" : ""}`}>{h}</th>
+                {[
+                  { label: "Lot ID",     right: false, active: false },
+                  { label: "Ingredient", right: false, active: !!query.trim() },
+                  { label: "Facility",   right: false, active: facility !== "all" },
+                  { label: "Qty (kg)",   right: true,  active: sort === "qty" },
+                  { label: "Expiry",     right: false, active: sort === "expiry" },
+                  { label: "Days left",  right: true,  active: daysFilter !== "All" || sort === "expiry" },
+                  { label: "Storage",    right: false, active: storage !== "All" },
+                  { label: "Risk score", right: false, active: sort === "risk" },
+                  { label: "Status",     right: false, active: risk !== "All" },
+                  { label: "Actions",    right: false, active: false },
+                ].map((h, i) => (
+                  <th key={i} className={`px-3 py-2 text-left font-semibold ${h.right ? "text-right" : ""} ${h.active ? "text-blue-400" : ""}`}>
+                    {h.label}{h.active && <span className="ml-1 text-blue-400">↑</span>}
+                  </th>
                 ))}
               </tr>
             </thead>

@@ -265,7 +265,7 @@ function userInitials(name: string): string {
 }
 
 export function TopBar() {
-  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user, theme, setTheme } = useApp();
+  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user, theme, setTheme, notifications, hideToast } = useApp();
   const [facilityOpen, setFacilityOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -284,7 +284,10 @@ export function TopBar() {
   }, []);
 
   const handleNotifToggle = () => {
-    if (!notifOpen) markNotificationsRead();
+    if (!notifOpen) {
+      markNotificationsRead();
+      notifications.forEach(n => { if (!n.toastHidden) hideToast(n.ref_id); });
+    }
     setNotifOpen(o => !o);
     setUserOpen(false);
   };

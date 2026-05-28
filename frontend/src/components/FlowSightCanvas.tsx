@@ -510,7 +510,7 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
 
 function FlowLegend() {
   const { data: esg, status: esgStatus } = useEsgCounter();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const liveEsg = esgStatus === "live";
   const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()         : "--";
   const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`           : "--";
