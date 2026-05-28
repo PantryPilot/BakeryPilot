@@ -348,15 +348,6 @@ export function TopBar() {
 
         <div className="flex-1"/>
 
-        {/* Live status badge */}
-        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-emerald-500/30 bg-emerald-500/5">
-          <span className="relative flex w-2 h-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"/>
-          </span>
-          <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">{t("topbar.live")}</span>
-          <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
-        </div>
 
         {/* Language toggle (EN ⇄ FR) */}
         <button
