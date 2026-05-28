@@ -1,46 +1,109 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
+import { CanadaMap } from "./CanadaMap";
 import type { Supplier, Disruption } from "../lib/data";
 import type { BackendYieldTelemetryPoint } from "../lib/api";
 import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter } from "../lib/hooks";
+import {
+  CANVAS_H,
+  CANVAS_W,
+  FALLBACK_RETAILER_POS,
+  FALLBACK_SUPPLIER_POS,
+  PLANT_GEO,
+  RETAILER_GEO,
+  SUPPLIER_GEO,
+  project,
+} from "../lib/geo";
 
-const CANVAS_W = 1280, CANVAS_H = 720;
-const SUPPLIER_X = 180;
-const PLANT_CX = 690;
-const RETAILER_X = 1200;
+const PLANT_META = {
+  p1: { status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
+  p2: { status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
+  p3: { status: "warn", util: { frozen: 0.91, ref: 0.78, dry: 0.55 } },
+  p4: { status: "ok",   util: { frozen: 0.60, ref: 0.71, dry: 0.45 } },
+} as const;
 
-const PLANT_POS = [
-  { id: "p1", name: "Toronto",     city: "Toronto, ON",     x: PLANT_CX + 30,  y: 390, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
-  { id: "p2", name: "Mississauga", city: "Mississauga, ON", x: PLANT_CX - 30,  y: 440, status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
-  { id: "p3", name: "Hamilton",    city: "Hamilton, ON",    x: PLANT_CX - 80,  y: 480, status: "warn", util: { frozen: 0.91, ref: 0.78, dry: 0.55 } },
-  { id: "p4", name: "Montreal",    city: "Montreal, QC",    x: PLANT_CX + 220, y: 350, status: "ok",   util: { frozen: 0.60, ref: 0.71, dry: 0.45 } },
-] as const;
+const PLANT_POS = (Object.keys(PLANT_GEO) as Array<keyof typeof PLANT_GEO>).map((id) => {
+  const g = PLANT_GEO[id];
+  const p = project(g.lng, g.lat);
+  const meta = PLANT_META[id as keyof typeof PLANT_META];
+  return {
+    id,
+    name: g.city,
+    city: `${g.city}, ${g.province}`,
+    x: p.x,
+    y: p.y,
+    status: meta.status,
+    util: meta.util,
+  };
+});
+
+// Spread overlapping GTA plants (Toronto/Mississauga/Hamilton are within ~80 km)
+// so the nodes don't visually collapse onto each other.
+function spreadCluster(plants: typeof PLANT_POS, minDist = 60): typeof PLANT_POS {
+  const out = plants.map((p) => ({ ...p }));
+  for (let i = 0; i < out.length; i++) {
+    for (let j = i + 1; j < out.length; j++) {
+      const dx = out[j].x - out[i].x;
+      const dy = out[j].y - out[i].y;
+      const d = Math.hypot(dx, dy);
+      if (d < minDist && d > 0) {
+        const push = (minDist - d) / 2;
+        const ux = dx / d;
+        const uy = dy / d;
+        out[i].x -= ux * push;
+        out[i].y -= uy * push;
+        out[j].x += ux * push;
+        out[j].y += uy * push;
+      }
+    }
+  }
+  return out;
+}
+
+const PLANT_POS_SPREAD = spreadCluster(PLANT_POS);
 
 type PlantData = { id: string; name: string; city: string; x: number; y: number; status: string; util: { frozen: number; ref: number; dry: number } };
 
-// UI visual config — retailer lane positions only; po_ratio / shelf_risk come
-// from the backend (see useRetailers). FALLBACK is used until the API responds
-// or when the backend is unreachable.
-const RETAILER_LANES_Y = [386, 434, 482, 530];
-const RETAILER_POS_FALLBACK = [
-  { id: "r1", name: "Costco",  poRatio: 1.28, shelfRisk: "amber" as const, x: RETAILER_X, y: 386 },
-  { id: "r2", name: "Walmart", poRatio: 0.94, shelfRisk: "green" as const, x: RETAILER_X, y: 434 },
-  { id: "r3", name: "Loblaws", poRatio: 0.88, shelfRisk: "green" as const, x: RETAILER_X, y: 482 },
-  { id: "r4", name: "Metro",   poRatio: 1.05, shelfRisk: "red" as const,   x: RETAILER_X, y: 530 },
-];
-type RetailerPos = (typeof RETAILER_POS_FALLBACK)[number];
+type RetailerPos = {
+  id: string;
+  name: string;
+  poRatio: number;
+  shelfRisk: "red" | "amber" | "green";
+  x: number;
+  y: number;
+};
 
-const FLOWS = [
-  { id: "f1", from: { x: SUPPLIER_X, y: 130 }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "inbound",  cargo: "wheat T55 · 4,200 kg" },
-  { id: "f2", from: { x: SUPPLIER_X, y: 330 }, to: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, kind: "inbound",  cargo: "blueberries · 1,800 kg" },
-  { id: "f3", from: { x: SUPPLIER_X, y: 530 }, to: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, kind: "inbound",  cargo: "butter · 920 kg" },
-  { id: "f4", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 386 }, kind: "outbound", cargo: "white bread · 8.4k u" },
-  { id: "f5", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 482 }, kind: "outbound", cargo: "naan · 12k u" },
-  { id: "f6", from: { x: PLANT_POS[3].x, y: PLANT_POS[3].y }, to: { x: RETAILER_X, y: 578 }, kind: "outbound", cargo: "focaccia · 14.2k u" },
-  { id: "f7", from: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "transfer", cargo: "interplant balance · 400 kg" },
-];
+// Pick a retailer's canvas position from its backend id or fallback by index.
+function retailerPosition(id: string, name: string, idx: number): { x: number; y: number } {
+  const key = id.toLowerCase();
+  const exact = RETAILER_GEO[key];
+  if (exact) return project(exact.lng, exact.lat);
+  const nameMatch = Object.keys(RETAILER_GEO).find((k) => name.toLowerCase().includes(k));
+  if (nameMatch) {
+    const g = RETAILER_GEO[nameMatch];
+    return project(g.lng, g.lat);
+  }
+  const fb = FALLBACK_RETAILER_POS[idx % FALLBACK_RETAILER_POS.length];
+  return project(fb.lng, fb.lat);
+}
+
+function supplierPosition(id: string, idx: number): { x: number; y: number } {
+  const exact = SUPPLIER_GEO[id];
+  if (exact) return project(exact.lng, exact.lat);
+  const fb = FALLBACK_SUPPLIER_POS[idx % FALLBACK_SUPPLIER_POS.length];
+  return project(fb.lng, fb.lat);
+}
+
+// Build a geographic flow between two points with a kind label and cargo text.
+interface Flow {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  kind: "inbound" | "outbound" | "transfer";
+  cargo: string;
+}
 
 const LAYERS_DEF = [
   { id: "risk",     name: "Risk",        count: 3,  defaultOn: true,  desc: "Disruption signals + supplier halos" },
@@ -64,7 +127,7 @@ function haloColor(s: Supplier) {
   return s.status === "disrupt" ? "#ef4444" : s.onTime >= 0.95 ? "#22c55e" : s.onTime >= 0.85 ? "#f59e0b" : "#ef4444";
 }
 
-function TruckSprite({ flow, dur = 14 }: { flow: typeof FLOWS[number]; dur?: number }) {
+function TruckSprite({ flow, dur = 14 }: { flow: Flow; dur?: number }) {
   const color = flow.kind === "inbound" ? "#3b82f6" : flow.kind === "outbound" ? "#f97316" : "#94a3b8";
   const path = arcPath(flow.from, flow.to, flow.kind === "transfer" ? 0.32 : 0.18);
   return (
@@ -587,19 +650,82 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
   const { data: retailers } = useRetailers();
-  const supplierPos = suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
 
-  // Map backend retailers to canvas lanes, falling back to demo positions.
-  const retailerPos: RetailerPos[] = retailers.length > 0
-    ? retailers.slice(0, RETAILER_LANES_Y.length).map((r, i) => ({
+  const supplierPos = useMemo(
+    () => suppliers.map((s, i) => {
+      const p = supplierPosition(s.id, i);
+      return { ...s, x: p.x, y: p.y };
+    }),
+    [suppliers],
+  );
+
+  const retailerPos: RetailerPos[] = useMemo(() => {
+    if (retailers.length === 0) {
+      return [
+        { id: "costco",  name: "Costco",  poRatio: 1.28, shelfRisk: "amber" as const },
+        { id: "walmart", name: "Walmart", poRatio: 0.94, shelfRisk: "green" as const },
+        { id: "loblaws", name: "Loblaws", poRatio: 0.88, shelfRisk: "green" as const },
+        { id: "metro",   name: "Metro",   poRatio: 1.05, shelfRisk: "red"   as const },
+      ].map((r, i) => {
+        const p = retailerPosition(r.id, r.name, i);
+        return { ...r, x: p.x, y: p.y };
+      });
+    }
+    return retailers.map((r, i) => {
+      const p = retailerPosition(r.retailer_id, r.name, i);
+      return {
         id: r.retailer_id,
         name: r.name,
         poRatio: r.po_ratio || 1,
         shelfRisk: r.shelf_risk,
-        x: RETAILER_X,
-        y: RETAILER_LANES_Y[i],
-      }))
-    : RETAILER_POS_FALLBACK;
+        x: p.x,
+        y: p.y,
+      };
+    });
+  }, [retailers]);
+
+  // Build geographic flows: each supplier → nearest plant; each plant → assigned retailer; inter-plant transfer.
+  const flows: Flow[] = useMemo(() => {
+    const out: Flow[] = [];
+    supplierPos.forEach((s, i) => {
+      const nearestPlant = PLANT_POS_SPREAD.reduce((best, p) => {
+        const d = Math.hypot(p.x - s.x, p.y - s.y);
+        return d < best.d ? { p, d } : best;
+      }, { p: PLANT_POS_SPREAD[0], d: Infinity }).p;
+      out.push({
+        id: `in-${s.id}`,
+        from: { x: s.x, y: s.y },
+        to: { x: nearestPlant.x, y: nearestPlant.y },
+        kind: "inbound",
+        cargo: `inbound · ${s.name}`,
+      });
+      // sanity: avoid duplicate listing
+      if (i < 0) return;
+    });
+    retailerPos.forEach((r, i) => {
+      const sourcePlant = PLANT_POS_SPREAD[i % PLANT_POS_SPREAD.length];
+      out.push({
+        id: `out-${r.id}`,
+        from: { x: sourcePlant.x, y: sourcePlant.y },
+        to: { x: r.x, y: r.y },
+        kind: "outbound",
+        cargo: `outbound · ${r.name}`,
+      });
+    });
+    // Inter-plant transfer between p2 (Mississauga) and p3 (Hamilton) as before
+    const pTo = PLANT_POS_SPREAD.find((p) => p.id === "p3");
+    const pFrom = PLANT_POS_SPREAD.find((p) => p.id === "p2");
+    if (pTo && pFrom) {
+      out.push({
+        id: "transfer-p2-p3",
+        from: { x: pFrom.x, y: pFrom.y },
+        to: { x: pTo.x, y: pTo.y },
+        kind: "transfer",
+        cargo: "interplant balance · 400 kg",
+      });
+    }
+    return out;
+  }, [supplierPos, retailerPos]);
 
   return (
     <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">
@@ -617,37 +743,30 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.5"/>
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
           </radialGradient>
-          <linearGradient id="canadaTint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.4"/>
-            <stop offset="100%" stopColor="#1e293b" stopOpacity="0.6"/>
-          </linearGradient>
         </defs>
-        <path d="M 250 200 Q 350 170, 480 200 T 700 180 T 920 200 L 980 320 Q 940 360, 850 360 L 700 380 Q 600 380, 480 360 L 320 340 Q 240 320, 220 280 Z"
-              fill="url(#canadaTint)" stroke="#334155" strokeOpacity="0.4" strokeWidth="1" strokeDasharray="3 4"/>
-        <text x={PLANT_CX} y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
-        <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">SUPPLIERS ›</text>
-        <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">‹ RETAILERS</text>
 
-        {layers.procure && FLOWS.filter(f => f.kind === "inbound").map(f => (
+        <CanadaMap />
+
+        {layers.procure && flows.filter(f => f.kind === "inbound").map(f => (
           <path key={"a-" + f.id} d={arcPath(f.from, f.to, 0.18)} stroke="#3b82f6" strokeOpacity="0.25" strokeWidth="1" fill="none" strokeDasharray="3 4"/>
         ))}
-        {FLOWS.filter(f => f.kind === "outbound").map(f => (
+        {flows.filter(f => f.kind === "outbound").map(f => (
           <path key={"b-" + f.id} d={arcPath(f.from, f.to, 0.18)} stroke="#f97316" strokeOpacity="0.18" strokeWidth="1" fill="none" strokeDasharray="3 4"/>
         ))}
-        {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => (
+        {layers.network && flows.filter(f => f.kind === "transfer").map(f => (
           <path key={"c-" + f.id} d={arcPath(f.from, f.to, 0.32)} stroke="#94a3b8" strokeOpacity="0.3" strokeWidth="1" fill="none" strokeDasharray="2 3"/>
         ))}
         {layers.forecast && retailerPos.map((rr, i) => (
-          <path key={"fc-" + rr.id} d={arcPath(rr, PLANT_POS[i % PLANT_POS.length], -0.14)} stroke="#a855f7" strokeOpacity="0.18" strokeWidth="3" fill="none"/>
+          <path key={"fc-" + rr.id} d={arcPath(rr, PLANT_POS_SPREAD[i % PLANT_POS_SPREAD.length], -0.14)} stroke="#a855f7" strokeOpacity="0.18" strokeWidth="3" fill="none"/>
         ))}
-        {layers.procure && FLOWS.filter(f => f.kind === "inbound").map((f, idx) => <TruckSprite key={"t-" + f.id} flow={f} dur={12 + idx * 2}/>)}
-        {FLOWS.filter(f => f.kind === "outbound").map((f, idx) => <TruckSprite key={"to-" + f.id} flow={f} dur={14 + idx * 2}/>)}
-        {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => <TruckSprite key={"tx-" + f.id} flow={f} dur={18}/>)}
+        {layers.procure && flows.filter(f => f.kind === "inbound").map((f, idx) => <TruckSprite key={"t-" + f.id} flow={f} dur={12 + idx * 2}/>)}
+        {flows.filter(f => f.kind === "outbound").map((f, idx) => <TruckSprite key={"to-" + f.id} flow={f} dur={14 + idx * 2}/>)}
+        {layers.network && flows.filter(f => f.kind === "transfer").map(f => <TruckSprite key={"tx-" + f.id} flow={f} dur={18}/>)}
 
         {supplierPos.map(s => (
           <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
         ))}
-        {PLANT_POS.map((p: PlantData) => (
+        {PLANT_POS_SPREAD.map((p: PlantData) => (
           <PlantNode key={p.id} p={p} onClick={() => setActivePlant(p)}
             scheduleOn={layers.schedule} esgOn={layers.esg} yieldOn={layers.yield} shelfOn={layers.shelf}/>
         ))}
