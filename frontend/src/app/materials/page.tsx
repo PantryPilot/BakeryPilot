@@ -1067,11 +1067,11 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/15 hover:text-blue-300 text-slate-300 transition">Used in</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-slate-300 transition">Used in</button>
                 <button
                   onClick={() => setTransferLotTarget(l)}
                   disabled={l.status === "expired"}
-                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >Transfer</button>
                 <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 transition">Write-off</button>
               </div>
@@ -1114,11 +1114,11 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/15 hover:text-blue-300 text-slate-300 transition">Used in</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-slate-300 transition">Used in</button>
                       <button
                         onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
                         disabled={l.status === "expired"}
-                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/20 hover:text-blue-300 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
                       >Transfer</button>
                       <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 transition">Write-off</button>
                       <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-red-500/30 hover:border-red-500/60 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition">Delete</button>
