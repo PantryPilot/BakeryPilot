@@ -20,6 +20,18 @@ import {
   isAccentColor,
   isThemeMode,
 } from "./theme";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_STORAGE_KEY,
+  SUPPORTED_LANGUAGES,
+  translate,
+  type Language,
+  type TranslationKey,
+} from "./i18n";
+
+function isLanguage(value: unknown): value is Language {
+  return typeof value === "string" && (SUPPORTED_LANGUAGES as string[]).includes(value);
+}
 
 export interface NotificationPrefs {
   toast: boolean;
@@ -76,6 +88,9 @@ interface AppState {
   setTheme: (theme: ThemeMode) => void;
   accent: AccentColor;
   setAccent: (accent: AccentColor) => void;
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  t: (key: TranslationKey) => string;
   facility: FacilityId;
   setFacility: (f: FacilityId) => void;
   chatOpen: boolean;
@@ -116,6 +131,17 @@ function getInitialTheme(): ThemeMode {
     if (isThemeMode(stored)) return stored;
   } catch {}
   return DEFAULT_THEME;
+}
+
+function getInitialLanguage(): Language {
+  if (typeof window === "undefined") return DEFAULT_LANGUAGE;
+  const domLang = document.documentElement.dataset.lang;
+  if (isLanguage(domLang)) return domLang;
+  try {
+    const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (isLanguage(stored)) return stored;
+  } catch {}
+  return DEFAULT_LANGUAGE;
 }
 
 function getInitialAccent(): AccentColor {
@@ -170,6 +196,7 @@ function userToInfo(u: BackendUser): AppUserInfo {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(getInitialTheme);
   const [accent, setAccentState] = useState<AccentColor>(getInitialAccent);
+  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
   const [facility, setFacility] = useState<FacilityId>("all");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatContext, setChatContext] = useState<string | null>(null);
@@ -202,6 +229,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       void updateUserSettings({ accent: next });
     }
   }, []);
+
+  const setLanguage = useCallback((next: Language) => {
+    setLanguageState(next);
+  }, []);
+
+  const t = useCallback(
+    (key: TranslationKey) => translate(key, language),
+    [language],
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.lang = language;
+    root.lang = language;
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    } catch {}
+  }, [language]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -327,6 +372,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       theme, setTheme,
       accent, setAccent,
+      language, setLanguage, t,
       facility, setFacility,
       chatOpen, setChatOpen,
       chatContext, setChatContext,
