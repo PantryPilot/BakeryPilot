@@ -362,6 +362,26 @@ export async function fetchSchedules(): Promise<BackendSchedule[] | null> {
   return safeFetch<BackendSchedule[]>("/api/schedules");
 }
 
+export interface CreateScheduleInput {
+  facility_id: string;
+  line_id: string;
+  sku_id: string;
+  start_at: string;
+  end_at: string;
+  quantity_units: number;
+  status?: string;
+  waste_avoided_kg?: number;
+}
+
+export async function createSchedule(
+  input: CreateScheduleInput,
+): Promise<BackendSchedule | null> {
+  return safeFetch<BackendSchedule>("/api/schedules", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function fetchMoqTax(
   supplierId: string,
 ): Promise<BackendMoqTaxEntry[] | null> {

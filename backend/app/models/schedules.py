@@ -37,3 +37,14 @@ class ScheduleDiff(BaseModel):
 class WhatIfRequest(BaseModel):
     schedule_id: str
     change_description: str
+
+
+class CreateScheduleRequest(BaseModel):
+    facility_id: str
+    line_id: str
+    sku_id: str
+    start_at: str
+    end_at: str
+    quantity_units: int
+    status: str = "approved"
+    waste_avoided_kg: float = 0

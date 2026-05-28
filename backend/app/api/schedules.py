@@ -12,12 +12,13 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.models.schedules import (
+    CreateScheduleRequest,
     ProductionSchedule,
     ScheduleDiff,
     ScheduleRun,
     WhatIfRequest,
 )
-from app.services.schedule_apply import resolve_schedule, utc_iso
+from app.services.schedule_apply import parse_iso_dt, resolve_schedule, utc_iso
 from app.services.schedule_propose import (
     build_schedule_change_payload,
     build_schedule_diff,
@@ -74,6 +75,40 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
         await db.execute(select(ScheduleORM).order_by(ScheduleORM.start_at.desc()))
     ).scalars().all()
     return [_to_model(s) for s in schedules]
+
+
+@router.post("", response_model=ProductionSchedule, status_code=201)
+async def create_schedule(
+    req: CreateScheduleRequest, db: AsyncSession = Depends(get_db)
+) -> ProductionSchedule:
+    """Insert a production_schedules row (manual planner entry)."""
+    if req.status not in ("suggested", "approved", "complete"):
+        raise HTTPException(422, "status must be suggested, approved, or complete")
+    if req.quantity_units <= 0:
+        raise HTTPException(422, "quantity_units must be positive")
+    try:
+        start_at = parse_iso_dt(req.start_at)
+        end_at = parse_iso_dt(req.end_at)
+    except ValueError as exc:
+        raise HTTPException(422, f"invalid datetime: {exc}") from exc
+    if end_at <= start_at:
+        raise HTTPException(422, "end_at must be after start_at")
+
+    row = ScheduleORM(
+        facility_id=req.facility_id,
+        line_id=req.line_id,
+        sku_id=req.sku_id,
+        start_at=start_at,
+        end_at=end_at,
+        quantity_units=req.quantity_units,
+        status=req.status,
+        waste_avoided_kg=req.waste_avoided_kg,
+        version=1,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _to_model(row)
 
 
 @router.get("/{schedule_id}", response_model=ProductionSchedule)

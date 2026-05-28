@@ -5,38 +5,36 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, SectionHeader, ActionCard, type ActionCardData } from "../../components/atoms";
 import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
-import type { BackendSchedule, BackendScheduleDiff, BackendScheduleDiffRun } from "../../lib/api";
 import {
   adaptActionCard,
   confirmActionCard,
+  createSchedule,
   fetchActionCard,
+  fetchFacilities,
   fetchPendingScheduleChangeCard,
+  fetchProductionLines,
+  fetchProducts,
   fetchScheduleDiff,
   formatScheduleWindow,
   rejectActionCard,
+  type BackendFacility,
+  type BackendProduct,
+  type BackendProductionLine,
 } from "../../lib/api";
 import { useSchedules } from "../../lib/hooks";
+import type { BackendSchedule, BackendScheduleDiff, BackendScheduleDiffRun } from "../../lib/api";
 
 const FACILITY_MAP: Record<string, string> = {
   "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
   plant_1: "p1", plant_2: "p2", plant_3: "p3", plant_4: "p4",
 };
 
-// Static demo runs — shown when backend returns no data (e.g. unseeded DB in production)
-const STATIC_RUNS: ProductionRun[] = [
-  { id: "s-p1-l1-a", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1400, start: 6,    end: 8,    allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l1-b", plant: "p1", line: 1, sku: "sku-wonder-classic-white-loaf",      qty: 1200, start: 8.5,  end: 10.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l2-a", plant: "p1", line: 2, sku: "sku-stonefire-pizza-crust-2pk",      qty: 900,  start: 9,    end: 10.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p1-l3-a", plant: "p1", line: 3, sku: "sku-stonefire-mini-naan-8pk",        qty: 1800, start: 9.5,  end: 13,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l1-a", plant: "p2", line: 1, sku: "sku-d-italiano-hot-dog-buns-8pk",   qty: 1500, start: 9,    end: 12,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l2-a", plant: "p2", line: 2, sku: "sku-ace-rustic-italian-oval",        qty: 1100, start: 6,    end: 9,    allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p2-l2-b", plant: "p2", line: 2, sku: "sku-ace-sourdough-bistro",           qty: 1400, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l1-a", plant: "p3", line: 1, sku: "sku-country-harvest-12-grain-loaf", qty: 1100, start: 9,    end: 11,   allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l2-a", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 6,    end: 8.5,  allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p3-l2-b", plant: "p3", line: 2, sku: "sku-stonefire-naan-dippers-original",qty: 1600, start: 9,    end: 11.5, allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p4-l1-a", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 6,    end: 9.5,  allergen: "none", risk: "ok",  lots: [] },
-  { id: "s-p4-l1-b", plant: "p4", line: 1, sku: "sku-ace-rosemary-focaccia",          qty: 800,  start: 9.5,  end: 11,   allergen: "none", risk: "ok",  lots: [] },
-];
+const PLANT_TO_FACILITY: Record<string, string> = {
+  p1: "plant-toronto",
+  p2: "plant-mississauga",
+  p3: "plant-hamilton",
+  p4: "plant-montreal",
+};
 
 const LANE_H = 44;
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
@@ -125,13 +123,16 @@ function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
   return runs;
 }
 
-// Default lanes to always show, even when a line has no runs today
-const ALL_LANES: Array<{ plant: string; line: number }> = [
-  { plant: "p1", line: 1 }, { plant: "p1", line: 2 }, { plant: "p1", line: 3 },
-  { plant: "p2", line: 1 }, { plant: "p2", line: 2 },
-  { plant: "p3", line: 1 }, { plant: "p3", line: 2 },
-  { plant: "p4", line: 1 }, { plant: "p4", line: 2 },
-];
+function lineNumberFromId(lineId: string): number {
+  return parseInt(lineId.replace(/\D/g, ""), 10) || 1;
+}
+
+function utcIsoFromDateAndTime(dateKey: string, time: string): string {
+  const [hh, mm] = time.split(":").map(v => parseInt(v, 10));
+  const d = new Date(`${dateKey}T00:00:00.000Z`);
+  d.setUTCHours(hh || 0, mm || 0, 0, 0);
+  return d.toISOString();
+}
 
 function RunHoverCard({
   run,
@@ -291,8 +292,8 @@ function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; 
   );
 }
 
-function skuLabel(skuId: string): string {
-  return SKUS.find(s => s.id === skuId)?.name || skuId.replace(/^sku-/, "").replace(/-/g, " ");
+function skuLabel(skuId: string, productNames?: Map<string, string>): string {
+  return productNames?.get(skuId) ?? SKUS.find(s => s.id === skuId)?.name ?? skuId.replace(/^sku-/, "").replace(/-/g, " ");
 }
 
 function diffRunToMini(run: BackendScheduleDiffRun, state: string, lane = "Line") {
@@ -479,6 +480,175 @@ function ScheduleProposalPanel({
   );
 }
 
+function AddScheduleModal({
+  activeDate,
+  defaultFacilityId,
+  facilities,
+  lines,
+  products,
+  onClose,
+  onSuccess,
+}: {
+  activeDate: string;
+  defaultFacilityId: string;
+  facilities: BackendFacility[];
+  lines: BackendProductionLine[];
+  products: BackendProduct[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [facilityId, setFacilityId] = useState(defaultFacilityId || facilities[0]?.facility_id || "");
+  const [lineId, setLineId] = useState("");
+  const [skuId, setSkuId] = useState(products[0]?.sku_id || "");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("13:00");
+  const [quantity, setQuantity] = useState("1000");
+  const [status, setStatus] = useState<"approved" | "suggested">("approved");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const linesForFacility = useMemo(
+    () => lines.filter(l => l.facility_id === facilityId),
+    [lines, facilityId],
+  );
+
+  useEffect(() => {
+    if (linesForFacility.length === 0) {
+      setLineId("");
+      return;
+    }
+    if (!linesForFacility.some(l => l.line_id === lineId)) {
+      setLineId(linesForFacility[0].line_id);
+    }
+  }, [linesForFacility, lineId]);
+
+  useEffect(() => {
+    if (defaultFacilityId) setFacilityId(defaultFacilityId);
+  }, [defaultFacilityId]);
+
+  const handleSubmit = async () => {
+    setError(null);
+    if (!facilityId || !lineId || !skuId) {
+      setError("Choose facility, line, and product.");
+      return;
+    }
+    const qty = parseInt(quantity, 10);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError("Quantity must be a positive number.");
+      return;
+    }
+    const start_at = utcIsoFromDateAndTime(activeDate, startTime);
+    const end_at = utcIsoFromDateAndTime(activeDate, endTime);
+    if (new Date(end_at) <= new Date(start_at)) {
+      setError("End time must be after start time.");
+      return;
+    }
+    setSaving(true);
+    const created = await createSchedule({
+      facility_id: facilityId,
+      line_id: lineId,
+      sku_id: skuId,
+      start_at,
+      end_at,
+      quantity_units: qty,
+      status,
+    });
+    setSaving(false);
+    if (!created) {
+      setError("Could not save schedule run. Check backend is up and master data is seeded.");
+      return;
+    }
+    onSuccess();
+    onClose();
+  };
+
+  const inputCls =
+    "w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-2 text-[13px] text-slate-100 focus:outline-none focus:border-blue-500/60";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-[#0c111c] shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div>
+            <div className="text-[14px] font-semibold text-slate-100">Add schedule run</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{formatDateLabel(activeDate)} · UTC times</div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400">
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Facility</span>
+            <select value={facilityId} onChange={e => setFacilityId(e.target.value)} className={`mt-1 ${inputCls}`}>
+              {facilities.map(f => (
+                <option key={f.facility_id} value={f.facility_id}>{f.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Line</span>
+            <select value={lineId} onChange={e => setLineId(e.target.value)} className={`mt-1 ${inputCls}`} disabled={linesForFacility.length === 0}>
+              {linesForFacility.length === 0 ? (
+                <option value="">No lines — run make schema.seed</option>
+              ) : (
+                linesForFacility.map(l => (
+                  <option key={l.line_id} value={l.line_id}>{l.name}</option>
+                ))
+              )}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Product (SKU)</span>
+            <select value={skuId} onChange={e => setSkuId(e.target.value)} className={`mt-1 ${inputCls}`}>
+              {products.map(p => (
+                <option key={p.sku_id} value={p.sku_id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Start (UTC)</span>
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">End (UTC)</span>
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Quantity (units)</span>
+              <input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} className={`mt-1 ${inputCls}`} />
+            </label>
+            <label className="block">
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Status</span>
+              <select value={status} onChange={e => setStatus(e.target.value as "approved" | "suggested")} className={`mt-1 ${inputCls}`}>
+                <option value="approved">Approved</option>
+                <option value="suggested">Suggested</option>
+              </select>
+            </label>
+          </div>
+          {error && <p className="text-[12px] text-red-400">{error}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-800">
+          <button type="button" onClick={onClose} className="px-3 py-2 rounded-md border border-slate-700 text-slate-300 text-[13px] hover:border-slate-500">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving || linesForFacility.length === 0 || !skuId}
+            className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-[13px]"
+          >
+            {saving ? "Saving…" : "Add run"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WhatIfPanel({ onClose }: { onClose: () => void }) {
   const SimRun = ({ label, y, waste, cost, delta, active, risk }: { label: string; y: string; waste: string; cost: string; delta?: string; active?: boolean; risk?: boolean }) => (
     <div className={`rounded-md border p-2 flex items-center gap-2 ${active ? "border-purple-500/40 bg-purple-500/[0.06]" : risk ? "border-red-500/30 bg-red-500/[0.04]" : "border-slate-800 bg-slate-900/40"}`}>
@@ -545,8 +715,20 @@ export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [facilities, setFacilities] = useState<BackendFacility[]>([]);
+  const [productionLines, setProductionLines] = useState<BackendProductionLine[]>([]);
+  const [products, setProducts] = useState<BackendProduct[]>([]);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const { data: backendSchedules, status: scheduleStatus } = useSchedules(scheduleRefreshKey);
+
+  useEffect(() => {
+    Promise.all([fetchFacilities(), fetchProductionLines(), fetchProducts()]).then(([f, l, p]) => {
+      if (f) setFacilities(f);
+      if (l) setProductionLines(l);
+      if (p) setProducts(p);
+    });
+  }, [scheduleRefreshKey]);
 
   useEffect(() => {
     if (showScheduleProposal || pendingScheduleCardId) {
@@ -562,15 +744,10 @@ export default function SchedulePage() {
   }, []);
 
   const allRuns = useMemo<ScheduledRun[]>(() => {
-    if (scheduleStatus === "loading") {
-      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-    }
-    if (scheduleStatus === "fallback" || backendSchedules.length === 0) {
-      return STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-    }
-    const runs = backendSchedulesToRuns(backendSchedules);
-    return runs.length > 0 ? runs : STATIC_RUNS.map(r => ({ ...r, dateKey: todayKey }));
-  }, [backendSchedules, scheduleStatus, todayKey]);
+    if (scheduleStatus === "loading") return [];
+    if (scheduleStatus === "fallback") return [];
+    return backendSchedulesToRuns(backendSchedules);
+  }, [backendSchedules, scheduleStatus]);
 
   const activeDate = selectedDate ?? todayKey;
 
@@ -598,20 +775,32 @@ export default function SchedulePage() {
   }, [allRuns, activeDate, plant]);
 
   const lanes = useMemo(() => {
-    const visiblePlants = new Set(plant === "all" ? ALL_LANES.map(l => l.plant) : [plant]);
+    const visiblePlants = new Set(
+      plant === "all"
+        ? [...new Set(productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id)), ...runs.map(r => r.plant)]
+        : [plant],
+    );
     const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
-    // Pre-populate all standard lanes so empty lines still appear
-    ALL_LANES.filter(l => visiblePlants.has(l.plant)).forEach(l => {
-      const key = `${l.plant}-L${l.line}`;
-      byKey[key] = { key, plant: l.plant, line: l.line, runs: [] };
+
+    productionLines.forEach(ln => {
+      const plantId = FACILITY_MAP[ln.facility_id] ?? ln.facility_id;
+      if (!visiblePlants.has(plantId)) return;
+      const lineNum = lineNumberFromId(ln.line_id);
+      const key = `${plantId}-L${lineNum}`;
+      byKey[key] = { key, plant: plantId, line: lineNum, runs: [] };
     });
+
     runs.forEach(r => {
       const key = `${r.plant}-L${r.line}`;
       if (!byKey[key]) byKey[key] = { key, plant: r.plant, line: r.line, runs: [] };
       byKey[key].runs.push(r);
     });
+
     return Object.values(byKey).sort((a, b) => (a.plant + a.line).localeCompare(b.plant + b.line));
-  }, [runs, plant]);
+  }, [runs, plant, productionLines]);
+
+  const defaultFacilityForAdd =
+    plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
 
   return (
     <div className="h-full overflow-y-auto">
@@ -621,6 +810,13 @@ export default function SchedulePage() {
           sub="Production runs across all plants · changeovers minimized by OR-Tools"
           right={
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold flex items-center gap-2"
+              >
+                <Icon name="calendar" size={13} className="text-white" /> Add run
+              </button>
               <button onClick={() => openChatContext("Schedule · optimise")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
                 <Icon name="chat" size={13}/> Ask copilot to optimise
               </button>
@@ -713,7 +909,27 @@ export default function SchedulePage() {
           </button>
         </div>
 
-        {runs.length === 0 && (
+        {scheduleStatus === "loading" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
+            Loading schedules from API…
+          </div>
+        )}
+
+        {scheduleStatus === "fallback" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.06] text-[12px] text-amber-200/90">
+            Could not reach the schedule API. Add runs once the backend is available, or seed data with{" "}
+            <span className="font-mono text-amber-100">make schema.seed</span>.
+          </div>
+        )}
+
+        {scheduleStatus === "live" && allRuns.length === 0 && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/[0.06] text-[12px] text-slate-300">
+            No schedule runs in the database yet. Use <span className="text-slate-100 font-medium">Add run</span> to
+            plan production manually, or ask copilot to optimize.
+          </div>
+        )}
+
+        {runs.length === 0 && allRuns.length > 0 && (
           <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
             No production runs scheduled for {formatDateLabel(activeDate)}.
             {scheduledDates.length > 0 && (
@@ -722,6 +938,13 @@ export default function SchedulePage() {
           </div>
         )}
 
+        {lanes.length === 0 && scheduleStatus === "live" && (
+          <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
+            No production lines found. Run <span className="font-mono text-slate-300">make schema.seed</span> to load facilities and lines.
+          </div>
+        )}
+
+        {lanes.length > 0 && (
         <div className="rounded-xl border border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)] shadow-sm overflow-hidden ring-1 ring-white/[0.03]">
           <div className="flex min-w-0">
             <div className="w-44 shrink-0 border-r border-[var(--bp-border-soft)] bg-[var(--bp-surface-soft)]">
@@ -772,6 +995,7 @@ export default function SchedulePage() {
             </div>
           </div>
         </div>
+        )}
 
         {showDiff && (
           <ScheduleProposalPanel
@@ -788,6 +1012,17 @@ export default function SchedulePage() {
           />
         )}
         {whatIfOpen && <WhatIfPanel onClose={() => setWhatIfOpen(false)}/>}
+        {addOpen && (
+          <AddScheduleModal
+            activeDate={activeDate}
+            defaultFacilityId={defaultFacilityForAdd}
+            facilities={facilities}
+            lines={productionLines}
+            products={products}
+            onClose={() => setAddOpen(false)}
+            onSuccess={() => bumpScheduleRefresh()}
+          />
+        )}
       </div>
     </div>
   );

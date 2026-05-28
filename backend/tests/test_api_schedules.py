@@ -26,3 +26,18 @@ def test_schedules_list_schema(client):
     for sched in schedules:
         assert "schedule_id" in sched
         assert "facility_id" in sched
+
+
+def test_create_schedule_validation(client):
+    r = client.post(
+        "/api/schedules",
+        json={
+            "facility_id": "plant-toronto",
+            "line_id": "line-toronto-1",
+            "sku_id": "sku-wonder-classic-white-loaf",
+            "start_at": "2026-05-27T18:00:00Z",
+            "end_at": "2026-05-27T14:00:00Z",
+            "quantity_units": 100,
+        },
+    )
+    assert r.status_code == 422
