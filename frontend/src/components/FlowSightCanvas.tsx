@@ -41,23 +41,29 @@ const PLANT_POS = (Object.keys(PLANT_GEO) as Array<keyof typeof PLANT_GEO>).map(
 
 // Spread overlapping GTA plants (Toronto/Mississauga/Hamilton are within ~80 km)
 // so the nodes don't visually collapse onto each other.
-function spreadCluster(plants: typeof PLANT_POS, minDist = 60): typeof PLANT_POS {
+function spreadCluster(plants: typeof PLANT_POS, minDist = 110): typeof PLANT_POS {
   const out = plants.map((p) => ({ ...p }));
-  for (let i = 0; i < out.length; i++) {
-    for (let j = i + 1; j < out.length; j++) {
-      const dx = out[j].x - out[i].x;
-      const dy = out[j].y - out[i].y;
-      const d = Math.hypot(dx, dy);
-      if (d < minDist && d > 0) {
-        const push = (minDist - d) / 2;
-        const ux = dx / d;
-        const uy = dy / d;
-        out[i].x -= ux * push;
-        out[i].y -= uy * push;
-        out[j].x += ux * push;
-        out[j].y += uy * push;
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (let i = 0; i < out.length; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        const dx = out[j].x - out[i].x;
+        const dy = out[j].y - out[i].y;
+        const d = Math.hypot(dx, dy);
+        if (d < minDist) {
+          const safeD = d > 0.1 ? d : 0.1;
+          const ux = d > 0.1 ? dx / safeD : Math.cos(i * 1.7);
+          const uy = d > 0.1 ? dy / safeD : Math.sin(i * 1.7);
+          const push = (minDist - d) / 2;
+          out[i].x -= ux * push;
+          out[i].y -= uy * push;
+          out[j].x += ux * push;
+          out[j].y += uy * push;
+          moved = true;
+        }
       }
     }
+    if (!moved) break;
   }
   return out;
 }
@@ -75,14 +81,19 @@ type RetailerPos = {
   y: number;
 };
 
-// Pick a retailer's canvas position from its backend id or fallback by index.
+// Pick a retailer's canvas position. Matches the brand by normalized name first
+// (more reliable than backend ids), then falls back to a spread of distinct
+// cities so retailers never pile on top of plants.
 function retailerPosition(id: string, name: string, idx: number): { x: number; y: number } {
-  const key = id.toLowerCase();
-  const exact = RETAILER_GEO[key];
-  if (exact) return project(exact.lng, exact.lat);
-  const nameMatch = Object.keys(RETAILER_GEO).find((k) => name.toLowerCase().includes(k));
-  if (nameMatch) {
-    const g = RETAILER_GEO[nameMatch];
+  const norm = name.toLowerCase().replace(/[^a-z]/g, "");
+  const idNorm = id.toLowerCase().replace(/[^a-z]/g, "");
+  const allKeys = Object.keys(RETAILER_GEO);
+  const match = allKeys.find((k) => {
+    const kNorm = k.replace(/[^a-z]/g, "");
+    return norm.includes(kNorm) || idNorm.includes(kNorm);
+  });
+  if (match) {
+    const g = RETAILER_GEO[match];
     return project(g.lng, g.lat);
   }
   const fb = FALLBACK_RETAILER_POS[idx % FALLBACK_RETAILER_POS.length];
@@ -728,11 +739,9 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   }, [supplierPos, retailerPos]);
 
   return (
-    <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">
-      <div className="absolute inset-0 opacity-[0.18]" style={{
-        backgroundImage: "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px)",
-        backgroundSize: "32px 32px",
-      }}/>
+    <div className="bp-flow-canvas relative w-full h-full overflow-hidden" style={{
+      background: "radial-gradient(ellipse at 50% 35%, #0d1424 0%, #080b14 70%)",
+    }}>
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>
         <span className="text-[11px] text-slate-500 font-mono">live · {supplierPos.length} suppliers · {PLANT_POS.length} plants · {retailerPos.length} retailers</span>
