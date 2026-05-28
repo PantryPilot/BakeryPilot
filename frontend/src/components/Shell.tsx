@@ -362,7 +362,7 @@ export function TopBar() {
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
           aria-label={theme === "dark" ? t("topbar.toggle_theme_to_light") : t("topbar.toggle_theme_to_dark")}
           suppressHydrationWarning
         >
@@ -374,7 +374,7 @@ export function TopBar() {
         {/* Tour button */}
         <button
           onClick={startTour}
-          className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 transition-colors"
           aria-label={t("topbar.start_tour")}
           title={t("topbar.start_tour")}
         >
@@ -389,7 +389,7 @@ export function TopBar() {
           <button
             ref={notifBellRef}
             onClick={handleNotifToggle}
-            className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
+            className="relative w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
             aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
           >
             <Icon name="bell" size={18}/>
