@@ -180,11 +180,11 @@ The init dir runs SQL only. To regenerate 180 ingredient lots via Faker:
 
 ```bash
 # Easiest: run on the host with uv installed
-uv run infra/seed_lots.py
+uv run backend/scripts/seed_lots.py
 
-# Or from inside the backend container, after copying infra/ in
+# Or from inside the backend container (scripts ship with the backend image)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  exec backend uv run /app/infra/seed_lots.py
+  exec backend uv run scripts/seed_lots.py
 ```
 
 ---

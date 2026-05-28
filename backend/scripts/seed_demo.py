@@ -106,7 +106,7 @@ STAKEHOLDER_MAP: dict[str, str] = {
 
 
 def _load_mock_data():
-    path = Path(__file__).parent.parent / "backend" / "app" / "mock_data.py"
+    path = Path(__file__).resolve().parent.parent / "app" / "mock_data.py"
     spec = importlib.util.spec_from_file_location("mock_data", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

@@ -1,6 +1,6 @@
 """JSON snapshot cache for fetcher results.
 
-Layout: `infra/data/cache/{source}/{key}.json`
+Layout: `backend/scripts/data/cache/{source}/{key}.json`
 Snapshot shape:
     {
       "fetched_at": "2026-05-26T19:30:00Z",
@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-# CACHE_ROOT is determined at import time. infra/fetchers/cache.py -> infra/data/cache.
+# CACHE_ROOT is determined at import time. backend/scripts/fetchers/cache.py -> backend/scripts/data/cache.
 CACHE_ROOT = Path(__file__).resolve().parent.parent / "data" / "cache"
 
 

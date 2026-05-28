@@ -5,7 +5,7 @@ Everything you need to stand up the local data layer: **Postgres** (relational s
 Sources of truth:
 
 - Postgres schema → `[supabase/schema.sql](supabase/schema.sql)`
-- Postgres seed → `[supabase/seed.sql](supabase/seed.sql)` + `[seed_lots.py](seed_lots.py)`
+- Postgres seed → `[supabase/seed.sql](supabase/seed.sql)` + `[../backend/scripts/seed_lots.py](../backend/scripts/seed_lots.py)`
 - MongoDB collection → seeded by `[../agent/agent/prompts/seed.py](../agent/agent/prompts/seed.py)` from the `.md` files in `[../agent/agent/prompts/](../agent/agent/prompts/)`
 
 Schema-change rules (additive vs. breaking) live in `[../CONTRIBUTING.md](../CONTRIBUTING.md)`.
@@ -49,7 +49,7 @@ On a **fresh volume**, Postgres auto-applies everything in `infra/supabase/` (mo
 Then run the lots generator separately (it needs Python, not just Postgres):
 
 ```bash
-uv run infra/seed_lots.py  # 180 ingredient lots, deterministic via FAKER_SEED=42
+uv run backend/scripts/seed_lots.py  # 180 ingredient lots, deterministic via FAKER_SEED=42
 ```
 
 Verify:
@@ -77,7 +77,7 @@ These are idempotent — safe to run repeatedly.
 ```bash
 make reset                                              # wipes ALL volumes
 make up                                                 # postgres auto-init fires again
-uv run infra/seed_lots.py                               # re-generate lots
+uv run backend/scripts/seed_lots.py                               # re-generate lots
 docker compose up -d mongo                              # bring mongo back
 cd agent && uv run python -m agent.prompts.seed         # re-seed the prompts collection
 ```

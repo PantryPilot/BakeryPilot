@@ -51,6 +51,6 @@
     "title": "Global price of Sugar, No. 11, World",
     "units": "U.S. Cents per Pound"
   },
-  "fetched_at": "2026-05-27T19:06:07Z",
+  "fetched_at": "2026-05-28T01:13:25Z",
   "source_url": "https://api.stlouisfed.org/fred/series/observations?series_id=PSUGAISAUSDM&api_key=e011e6d55abbfa131be6b5b8a7d6be83&file_type=json&observation_start=2025-05-27&observation_end=2026-05-27&sort_order=asc"
 }

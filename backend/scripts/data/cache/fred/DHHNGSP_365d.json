@@ -975,6 +975,6 @@
     "title": "Henry Hub Natural Gas Spot Price",
     "units": "Dollars per Million BTU"
   },
-  "fetched_at": "2026-05-27T19:06:01Z",
+  "fetched_at": "2026-05-28T01:13:19Z",
   "source_url": "https://api.stlouisfed.org/fred/series/observations?series_id=DHHNGSP&api_key=e011e6d55abbfa131be6b5b8a7d6be83&file_type=json&observation_start=2025-05-27&observation_end=2026-05-27&sort_order=asc"
 }

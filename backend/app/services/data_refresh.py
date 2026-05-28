@@ -1,14 +1,14 @@
 """Data-source refresh service.
 
-Catalogs the live-fetched data sources backed by `infra/seed_*.py` scripts,
-runs them on demand (manual refresh button) or on a schedule (auto refresh
-interval), and persists last-run metadata to `app_settings` so the admin
-UI can show last-refreshed time / status / row count.
+Catalogs the live-fetched data sources backed by `backend/scripts/seed_*.py`
+scripts, runs them on demand (manual refresh button) or on a schedule (auto
+refresh interval), and persists last-run metadata to `app_settings` so the
+admin UI can show last-refreshed time / status / row count.
 
-Each refresh shells out to `python -m uv run infra/<script>.py` via
-`asyncio.create_subprocess_exec` so the event loop isn't blocked. The
-seed scripts are PEP 723 inline-deps scripts and own their own venvs;
-the backend's venv lacks psycopg v3 + faker so in-process import isn't
+Each refresh shells out to `uv run scripts/<script>.py` from the backend
+root via `asyncio.to_thread(subprocess.run, ...)` so the event loop isn't
+blocked. The seed scripts are PEP 723 inline-deps scripts and own their own
+deps; the backend's venv lacks psycopg v3 + faker so in-process import isn't
 viable.
 
 Concurrency: an in-memory `asyncio.Lock` keyed by source_id prevents two
@@ -50,7 +50,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         label="Commodity Prices",
         description="Daily OHLCV for CBOT wheat, ICE sugar, CBOT corn, soybean oil, "
                     "NYMEX natural gas, and WTI crude futures from Yahoo Finance.",
-        script_relpath="infra/seed_commodity_prices.py",
+        script_relpath="scripts/seed_commodity_prices.py",
         target_tables=("commodity_prices",),
         default_interval_seconds=0,
         typical_runtime_seconds=15,
@@ -61,7 +61,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         description="Daily CAD/USD and CAD/EUR reference rates from the Bank of "
                     "Canada Valet API. Lands in commodity_prices with FX-shaped "
                     "commodity_ids.",
-        script_relpath="infra/seed_fx_rates.py",
+        script_relpath="scripts/seed_fx_rates.py",
         target_tables=("commodity_prices",),
         default_interval_seconds=0,
         typical_runtime_seconds=10,
@@ -71,7 +71,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         label="Weather Risk Signals",
         description="21-day forecast per facility from Open-Meteo, classified "
                     "into heat/frost/heavy_rain/wind disruption_signals rows.",
-        script_relpath="infra/seed_weather_signals.py",
+        script_relpath="scripts/seed_weather_signals.py",
         target_tables=("disruption_signals",),
         default_interval_seconds=0,
         typical_runtime_seconds=15,
@@ -81,7 +81,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         label="News Risk Signals (GDELT)",
         description="Negative-tone news articles for supply-chain keywords from "
                     "GDELT 2.0 DOC API. Lands as 'news' kind disruption_signals.",
-        script_relpath="infra/seed_news_signals.py",
+        script_relpath="scripts/seed_news_signals.py",
         target_tables=("disruption_signals",),
         default_interval_seconds=0,
         typical_runtime_seconds=70,  # 8s pacing × 7 keywords + retries
@@ -92,7 +92,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         description="Daily ECB reference rates for 8 USD pairs (EUR, GBP, JPY, CHF, "
                     "CAD, MXN, CNY, AUD) via Frankfurter.app. Documented public API, "
                     "no auth. Lands in commodity_prices with fx-usd-* commodity_ids.",
-        script_relpath="infra/seed_fx_world.py",
+        script_relpath="scripts/seed_fx_world.py",
         target_tables=("commodity_prices",),
         default_interval_seconds=0,
         typical_runtime_seconds=8,
@@ -103,7 +103,7 @@ DATA_SOURCES: dict[str, DataSource] = {
         description="Official US Federal Reserve commodity + macro series (WTI crude, "
                     "Henry Hub natgas, gasoline, IMF wheat/sugar, US food CPI, CAD/USD). "
                     "Requires FRED_API_KEY in .env (free signup).",
-        script_relpath="infra/seed_fred_prices.py",
+        script_relpath="scripts/seed_fred_prices.py",
         target_tables=("commodity_prices",),
         default_interval_seconds=0,
         typical_runtime_seconds=20,
@@ -129,9 +129,9 @@ def is_running(source_id: str) -> bool:
 
 # --- Project root ---------------------------------------------------------
 
-def _project_root() -> Path:
-    # backend/app/services/data_refresh.py -> project root is 3 levels up.
-    return Path(__file__).resolve().parents[3]
+def _backend_root() -> Path:
+    # backend/app/services/data_refresh.py -> backend root is 2 levels up.
+    return Path(__file__).resolve().parents[2]
 
 
 # --- Subprocess runner ----------------------------------------------------
@@ -188,7 +188,7 @@ async def _run_script(script_relpath: str) -> tuple[int, str, str]:
     """
     import subprocess  # local import — only needed here
 
-    root = _project_root()
+    root = _backend_root()
     script = root / script_relpath
     if not script.exists():
         return 127, "", f"script not found: {script}"
