@@ -45,6 +45,29 @@ const FILTER_FACILITY = [
 const FILTER_STORAGE = ["All", "Frozen", "Refrigerated", "Dry"];
 const FILTER_RISK = ["All", "OK", "At Risk", "Critical", "Expired"];
 
+// ── Sortable column header ─────────────────────────────────────────────────────
+function SortTh({
+  label, col, activeCol, dir, onSort, right,
+}: {
+  label: string; col: string; activeCol: string;
+  dir: "asc" | "desc"; onSort: (col: string) => void; right?: boolean;
+}) {
+  const active = col === activeCol;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`px-3 py-2 font-semibold cursor-pointer select-none group transition-colors hover:text-slate-300 ${right ? "text-right" : "text-left"}`}
+    >
+      <span className={`inline-flex items-center gap-1 ${right ? "flex-row-reverse" : ""}`}>
+        {label}
+        <span className={`text-[10px] leading-none ${active ? "text-blue-400" : "text-slate-700 group-hover:text-slate-500"}`}>
+          {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </span>
+    </th>
+  );
+}
+
 // ── Write-off modal ───────────────────────────────────────────────────────────
 function WriteOffModal({ lot, onClose, onSuccess }: {
   lot: Lot; onClose: () => void; onSuccess: (updated: Lot) => void;
@@ -552,6 +575,8 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [fpSortKey, setFpSortKey] = useState("produced");
+  const [fpSortDir, setFpSortDir] = useState<"asc" | "desc">("desc");
 
   const facilityId = facilityFilter !== "all" ? (FACILITY_SHORT_TO_ID[facilityFilter] ?? undefined) : undefined;
 
@@ -565,11 +590,35 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
     });
   }, [facilityId]);
 
+  function handleFpSort(key: string) {
+    if (key === fpSortKey) {
+      setFpSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setFpSortKey(key);
+      setFpSortDir(["qty", "produced"].includes(key) ? "desc" : "asc");
+    }
+  }
+
   const filtered = useMemo(() => {
-    if (!query.trim()) return pallets;
-    const q = query.toLowerCase();
-    return pallets.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
-  }, [pallets, query]);
+    let result = pallets.slice();
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      result = result.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
+    }
+    const mult = fpSortDir === "asc" ? 1 : -1;
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (fpSortKey === "name")     cmp = a.sku_name.localeCompare(b.sku_name);
+      if (fpSortKey === "sku")      cmp = a.sku_id.localeCompare(b.sku_id);
+      if (fpSortKey === "facility") cmp = a.facility_id.localeCompare(b.facility_id);
+      if (fpSortKey === "qty")      cmp = a.quantity - b.quantity;
+      if (fpSortKey === "shelf")    cmp = a.days_remaining - b.days_remaining;
+      if (fpSortKey === "produced") cmp = new Date(a.produced_at).getTime() - new Date(b.produced_at).getTime();
+      if (fpSortKey === "status")   cmp = a.status.localeCompare(b.status);
+      return cmp * mult;
+    });
+    return result;
+  }, [pallets, query, fpSortKey, fpSortDir]);
 
   const STATUS_COLOR: Record<string, string> = {
     in_warehouse: "text-emerald-300 bg-emerald-900/30 border-emerald-700/50",
@@ -644,13 +693,13 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                <th className="text-left px-4 py-2.5 font-semibold">Product</th>
-                <th className="text-left px-4 py-2.5 font-semibold">SKU</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Facility</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Qty</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Shelf life</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Produced</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Status</th>
+                <SortTh label="Product"    col="name"     activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="SKU"        col="sku"      activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Facility"   col="facility" activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Qty"        col="qty"      activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort} right/>
+                <SortTh label="Shelf life" col="shelf"    activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort} right/>
+                <SortTh label="Produced"   col="produced" activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Status"     col="status"   activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
               </tr>
             </thead>
             <tbody>
@@ -694,7 +743,8 @@ export default function MaterialsPage() {
   const [facility, setFacility] = useState("all");
   const [storage, setStorage] = useState("All");
   const [risk, setRisk] = useState("All");
-  const [sort, setSort] = useState("risk");
+  const [sortKey, setSortKey] = useState("risk");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeLot, setActiveLot] = useState<Lot | null>(null);
@@ -744,6 +794,15 @@ export default function MaterialsPage() {
     showToast(`Lot transferred to ${updated.facility.toUpperCase()}.`, "success");
   }, [showToast]);
 
+  function handleIngSort(key: string) {
+    if (key === sortKey) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(["risk", "qty"].includes(key) ? "desc" : "asc");
+    }
+  }
+
   const filtered = useMemo(() => {
     let l = mergedLots.slice();
     if (facility !== "all") l = l.filter(x => x.facility === facility);
@@ -756,12 +815,20 @@ export default function MaterialsPage() {
       const q = query.toLowerCase();
       l = l.filter(x => x.ingredient.toLowerCase().includes(q) || x.id.toLowerCase().includes(q));
     }
-    if (sort === "risk")     l.sort((a, b) => b.risk - a.risk);
-    if (sort === "expiry")   l.sort((a, b) => a.daysLeft - b.daysLeft);
-    if (sort === "qty")      l.sort((a, b) => b.qty - a.qty);
-    if (sort === "facility") l.sort((a, b) => a.facility.localeCompare(b.facility));
+    const mult = sortDir === "asc" ? 1 : -1;
+    l.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "risk")       cmp = a.risk - b.risk;
+      if (sortKey === "expiry")     cmp = a.daysLeft - b.daysLeft;
+      if (sortKey === "qty")        cmp = a.qty - b.qty;
+      if (sortKey === "facility")   cmp = a.facility.localeCompare(b.facility);
+      if (sortKey === "ingredient") cmp = a.ingredient.localeCompare(b.ingredient);
+      if (sortKey === "status")     cmp = a.status.localeCompare(b.status);
+      if (sortKey === "storage")    cmp = a.storage.localeCompare(b.storage);
+      return cmp * mult;
+    });
     return l;
-  }, [mergedLots, facility, storage, risk, sort, query]);
+  }, [mergedLots, facility, storage, risk, sortKey, sortDir, query]);
 
   const horizon = useMemo(() => {
     const groups: Record<string, { ingredient: string; total: number; lots: number; expiring3d: number; expiring7d: number; lotsData: { qty: number; daysLeft: number }[] }> = {};
@@ -874,7 +941,8 @@ export default function MaterialsPage() {
                 setFacility("all");
                 setStorage("All");
                 setRisk("All");
-                setSort("risk");
+                setSortKey("risk");
+                setSortDir("desc");
                 setQuery("");
               }}
               className="h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] hover:border-slate-500 transition"
@@ -884,7 +952,7 @@ export default function MaterialsPage() {
           </div>
 
           <div className={`${filtersOpen ? "max-h-96 opacity-100 mt-3" : "max-h-0 opacity-0 mt-0"} sm:max-h-none sm:opacity-100 sm:mt-3 overflow-hidden transition-all duration-300 ease-out`}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label className="text-[11px] text-slate-500">
                 Facility
                 <select
@@ -913,19 +981,6 @@ export default function MaterialsPage() {
                   className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
                 >
                   {FILTER_RISK.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-              </label>
-              <label className="text-[11px] text-slate-500">
-                Sort
-                <select
-                  value={sort}
-                  onChange={e => setSort(e.target.value)}
-                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
-                >
-                  <option value="risk">Spoilage Risk</option>
-                  <option value="expiry">Expiry Date</option>
-                  <option value="qty">Quantity</option>
-                  <option value="facility">Facility</option>
                 </select>
               </label>
             </div>
@@ -976,9 +1031,16 @@ export default function MaterialsPage() {
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                {["Lot ID", "Ingredient", "Facility", "Qty (kg)", "Expiry", "Days left", "Storage", "Risk score", "Status", "Actions"].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-left font-semibold ${[3, 5].includes(i) ? "text-right" : ""}`}>{h}</th>
-                ))}
+                <th className="px-3 py-2 text-left font-semibold">Lot ID</th>
+                <SortTh label="Ingredient"  col="ingredient" activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Facility"    col="facility"   activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Qty (kg)"    col="qty"        activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
+                <SortTh label="Expiry"      col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Days left"   col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
+                <SortTh label="Storage"     col="storage"    activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Risk score"  col="risk"       activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Status"      col="status"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <th className="px-3 py-2 text-left font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
