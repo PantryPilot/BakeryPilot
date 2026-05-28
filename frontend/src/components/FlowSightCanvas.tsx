@@ -3,54 +3,334 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
-import type { BackendYieldTelemetryPoint } from "../lib/api";
-import { useSuppliers, useDisruptions, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter } from "../lib/hooks";
+import { FACILITIES } from "../lib/data";
+import type {
+  BackendYieldTelemetryPoint,
+  BackendFacility,
+  BackendFacilityUtilization,
+  BackendOrder,
+} from "../lib/api";
+import { fetchFacilityUtilization, isActiveSupplierOrder, isActiveOutboundShipment } from "../lib/api";
+import {
+  useSuppliers,
+  useDisruptions,
+  useNewsDisruptionFeed,
+  useRetailers,
+  useFacilities,
+  useFacilityUtilization,
+  useActiveRuns,
+  useYieldTelemetry,
+  useEsgCounter,
+  useAllSupplierOrders,
+  useOutboundShipments,
+} from "../lib/hooks";
+import { useApp } from "../lib/context";
+
+const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
+  p1: "plant-toronto",
+  p2: "plant-mississauga",
+  p3: "plant-hamilton",
+  p4: "plant-montreal",
+};
 
 const CANVAS_W = 1280, CANVAS_H = 720;
-const SUPPLIER_X = 180;
-const PLANT_CX = 690;
-const RETAILER_X = 1200;
+const SUPPLIER_X = 200;
+const PLANT_CX = 640;
+const RETAILER_X = 1080;
+const COL_DIVIDER_L = 320;
+const COL_DIVIDER_R = 860;
+const COL_LABEL_Y = 92;
+const PLANT_RADIUS = 44;
+const PLANT_ROW_GAP = 112;
+const SUPPLIER_ROW_START = 130;
+const SUPPLIER_ROW_GAP = 100;
 
-const PLANT_POS = [
-  { id: "p1", name: "Toronto",     city: "Toronto, ON",     x: PLANT_CX + 30,  y: 390, status: "warn", util: { frozen: 0.74, ref: 0.62, dry: 0.81 } },
-  { id: "p2", name: "Mississauga", city: "Mississauga, ON", x: PLANT_CX - 30,  y: 440, status: "ok",   util: { frozen: 0.51, ref: 0.45, dry: 0.62 } },
-  { id: "p3", name: "Hamilton",    city: "Hamilton, ON",    x: PLANT_CX - 80,  y: 480, status: "warn", util: { frozen: 0.91, ref: 0.78, dry: 0.55 } },
-  { id: "p4", name: "Montreal",    city: "Montreal, QC",    x: PLANT_CX + 220, y: 350, status: "ok",   util: { frozen: 0.60, ref: 0.71, dry: 0.45 } },
-] as const;
+type PlantData = {
+  id: string;
+  facilityId: string;
+  name: string;
+  city: string;
+  x: number;
+  y: number;
+  status: string;
+  util: { frozen: number; ref: number; dry: number };
+};
 
-type PlantData = { id: string; name: string; city: string; x: number; y: number; status: string; util: { frozen: number; ref: number; dry: number } };
+type InboundFlow = {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  orderId: string;
+  supplierName: string;
+  plantName: string;
+  deliveryDate: string;
+  status: string;
+  items: BackendOrder["items"];
+  totalKg: number;
+  cargo: string;
+};
 
-// UI visual config — retailer lane positions only; po_ratio / shelf_risk come
-// from the backend (see useRetailers). FALLBACK is used until the API responds
-// or when the backend is unreachable.
-const RETAILER_LANES_Y = [386, 434, 482, 530];
-const RETAILER_POS_FALLBACK = [
-  { id: "r1", name: "Costco",  poRatio: 1.28, shelfRisk: "amber" as const, x: RETAILER_X, y: 386 },
-  { id: "r2", name: "Walmart", poRatio: 0.94, shelfRisk: "green" as const, x: RETAILER_X, y: 434 },
-  { id: "r3", name: "Loblaws", poRatio: 0.88, shelfRisk: "green" as const, x: RETAILER_X, y: 482 },
-  { id: "r4", name: "Metro",   poRatio: 1.05, shelfRisk: "red" as const,   x: RETAILER_X, y: 530 },
-];
-type RetailerPos = (typeof RETAILER_POS_FALLBACK)[number];
+type OutboundFlow = {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  shipmentId: string;
+  plantName: string;
+  retailerName: string;
+  skuName: string;
+  quantityUnits: number;
+  deliveryDate: string;
+  status: string;
+};
 
-const FLOWS = [
-  { id: "f1", from: { x: SUPPLIER_X, y: 130 }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "inbound",  cargo: "wheat T55 · 4,200 kg" },
-  { id: "f2", from: { x: SUPPLIER_X, y: 330 }, to: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, kind: "inbound",  cargo: "blueberries · 1,800 kg" },
-  { id: "f3", from: { x: SUPPLIER_X, y: 530 }, to: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, kind: "inbound",  cargo: "butter · 920 kg" },
-  { id: "f4", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 386 }, kind: "outbound", cargo: "white bread · 8.4k u" },
-  { id: "f5", from: { x: PLANT_POS[0].x, y: PLANT_POS[0].y }, to: { x: RETAILER_X, y: 482 }, kind: "outbound", cargo: "naan · 12k u" },
-  { id: "f6", from: { x: PLANT_POS[3].x, y: PLANT_POS[3].y }, to: { x: RETAILER_X, y: 578 }, kind: "outbound", cargo: "focaccia · 14.2k u" },
-  { id: "f7", from: { x: PLANT_POS[1].x, y: PLANT_POS[1].y }, to: { x: PLANT_POS[2].x, y: PLANT_POS[2].y }, kind: "transfer", cargo: "interplant balance · 400 kg" },
-];
+function formatIngredientLabel(id: string): string {
+  return id.replace(/^ing_/, "").replace(/_/g, " ");
+}
+
+function OrderStatusBadge({ status }: { status: string }) {
+  const pending = status === "draft" || status === "pending_confirm";
+  const confirmed = status === "confirmed";
+  const bg = pending ? "rgb(245 158 11 / 0.14)" : confirmed ? "rgb(59 130 246 / 0.14)" : "var(--bp-surface-muted)";
+  const color = pending ? "#b45309" : confirmed ? "#2563eb" : "var(--bp-text-muted)";
+  const border = pending ? "rgb(245 158 11 / 0.35)" : confirmed ? "rgb(59 130 246 / 0.35)" : "var(--bp-border-soft)";
+  return (
+    <span
+      className="shrink-0 inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize"
+      style={{ background: bg, color, border: `1px solid ${border}` }}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function FlowOrderTooltip({ flow, x, y }: { flow: InboundFlow; x: number; y: number }) {
+  const pad = 14;
+  const maxW = 308;
+  const maxH = 240;
+  const left = typeof window !== "undefined"
+    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
+    : x + pad;
+  const top = typeof window !== "undefined"
+    ? Math.min(Math.max(y + pad, 8), window.innerHeight - maxH - 8)
+    : y + pad;
+  const lineTotal = flow.items.reduce((s, it) => s + it.quantity_kg * it.unit_price, 0);
+  const pending = flow.status === "draft" || flow.status === "pending_confirm";
+  const accentRgb = pending ? "245 158 11" : "59 130 246";
+
+  return (
+    <div
+      className="fixed z-50 pointer-events-none w-[300px] rounded-xl overflow-hidden"
+      style={{
+        left,
+        top,
+        background: "var(--bp-surface-strong)",
+        border: "1px solid var(--bp-border)",
+        boxShadow: "0 18px 44px rgb(var(--bp-bg-rgb) / 0.2), 0 0 0 1px var(--bp-border-soft)",
+      }}
+      role="tooltip"
+    >
+      <div
+        className="h-1"
+        style={{ background: `linear-gradient(90deg, rgb(${accentRgb} / 0.95), rgb(${accentRgb} / 0.15))` }}
+      />
+      <div className="px-4 pt-3.5 pb-2.5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--bp-text-subtle)] mb-1">
+            Supplier order
+          </p>
+          <p className="text-[15px] font-semibold text-[var(--bp-text-primary)] leading-snug truncate">
+            {flow.supplierName}
+          </p>
+          <p className="text-[12px] text-[var(--bp-text-muted)] mt-1 truncate">
+            Delivering to{" "}
+            <span className="font-medium text-[var(--bp-text-secondary)]">{flow.plantName}</span>
+          </p>
+        </div>
+        <OrderStatusBadge status={flow.status} />
+      </div>
+
+      <div
+        className="mx-3 mb-3 rounded-lg px-3 py-2.5 space-y-2"
+        style={{
+          background: "var(--bp-surface-muted)",
+          border: "1px solid var(--bp-border-soft)",
+        }}
+      >
+        {flow.items.map(it => (
+          <div key={it.ingredient_id} className="flex items-center justify-between gap-3">
+            <span className="text-[12.5px] text-[var(--bp-text-secondary)] capitalize truncate">
+              {formatIngredientLabel(it.ingredient_id)}
+            </span>
+            <span className="text-[12px] font-mono tabular-nums font-medium text-[var(--bp-text-primary)] shrink-0">
+              {it.quantity_kg.toLocaleString()} kg
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5"
+        style={{
+          borderTop: "1px solid var(--bp-border-soft)",
+          background: "var(--bp-surface-soft)",
+        }}
+      >
+        {([
+          ["Total quantity", `${flow.totalKg.toLocaleString()} kg`],
+          ["Line value", `$${lineTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`],
+          ["Delivery date", flow.deliveryDate || "—"],
+          ["PO reference", flow.orderId.slice(0, 8).toUpperCase()],
+        ] as const).map(([label, value]) => (
+          <div key={label}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--bp-text-subtle)]">{label}</div>
+            <div
+              className="text-[12px] font-mono tabular-nums text-[var(--bp-text-primary)] mt-0.5 truncate"
+              title={label === "PO reference" ? flow.orderId : undefined}
+            >
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OutboundFlowTooltip({ flow, x, y }: { flow: OutboundFlow; x: number; y: number }) {
+  const pad = 14;
+  const maxW = 300;
+  const left = typeof window !== "undefined"
+    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
+    : x + pad;
+  const top = typeof window !== "undefined"
+    ? Math.min(Math.max(y + pad, 8), window.innerHeight - 200 - 8)
+    : y + pad;
+  const inTransit = flow.status === "in_transit";
+
+  return (
+    <div
+      className="fixed z-50 pointer-events-none w-[288px] rounded-xl overflow-hidden"
+      style={{
+        left,
+        top,
+        background: "var(--bp-surface-strong)",
+        border: "1px solid var(--bp-border)",
+        boxShadow: "0 18px 44px rgb(var(--bp-bg-rgb) / 0.2), 0 0 0 1px var(--bp-border-soft)",
+      }}
+      role="tooltip"
+    >
+      <div
+        className="h-1"
+        style={{ background: "linear-gradient(90deg, rgb(249 115 22 / 0.95), rgb(249 115 22 / 0.15))" }}
+      />
+      <div className="px-4 pt-3.5 pb-2.5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--bp-text-subtle)] mb-1">
+            Outbound shipment
+          </p>
+          <p className="text-[15px] font-semibold text-[var(--bp-text-primary)] leading-snug truncate">
+            {flow.plantName}
+          </p>
+          <p className="text-[12px] text-[var(--bp-text-muted)] mt-1 truncate">
+            Warehouse →{" "}
+            <span className="font-medium text-[var(--bp-text-secondary)]">{flow.retailerName}</span>
+          </p>
+        </div>
+        <OrderStatusBadge status={flow.status} />
+      </div>
+      <div
+        className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5"
+        style={{
+          borderTop: "1px solid var(--bp-border-soft)",
+          background: "var(--bp-surface-soft)",
+        }}
+      >
+        {([
+          ["Product", flow.skuName],
+          ["Quantity", `${flow.quantityUnits.toLocaleString()} units`],
+          ["Delivery date", flow.deliveryDate || "—"],
+          ["Shipment", flow.shipmentId.slice(0, 8).toUpperCase()],
+        ] as const).map(([label, value]) => (
+          <div key={label}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--bp-text-subtle)]">{label}</div>
+            <div
+              className="text-[12px] font-mono tabular-nums text-[var(--bp-text-primary)] mt-0.5 truncate"
+              title={label === "Shipment" ? flow.shipmentId : undefined}
+            >
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+      {inTransit && (
+        <div className="px-4 pb-3 text-[11px] text-orange-300/90">In transit to retailer dock</div>
+      )}
+    </div>
+  );
+}
+
+// Retailer lane positions align with plant rows when facilities are loaded.
+const RETAILER_LANES_Y = [260, 340, 420, 500];
+
+type RetailerPos = {
+  id: string;
+  name: string;
+  poRatio: number;
+  shelfRisk: "green" | "amber" | "red";
+  x: number;
+  y: number;
+};
+
+function formatOrderCargo(order: BackendOrder): string {
+  const totalKg = order.items.reduce((s, it) => s + it.quantity_kg, 0);
+  const first = order.items[0]?.ingredient_id.replace(/_/g, " ") ?? "order";
+  const extra = order.items.length > 1 ? ` +${order.items.length - 1}` : "";
+  return `${first}${extra} · ${totalKg.toLocaleString()} kg`;
+}
+
+function plantStatusFromUtil(overallPct: number | undefined): string {
+  if (overallPct === undefined) return "ok";
+  if (overallPct >= 0.95) return "critical";
+  if (overallPct >= 0.85) return "warn";
+  return "ok";
+}
+
+function buildPlantPositions(
+  facilities: BackendFacility[],
+  utilByFacility: Map<string, BackendFacilityUtilization>,
+): PlantData[] {
+  const sorted = [...facilities].sort((a, b) => a.facility_id.localeCompare(b.facility_id));
+  const count = sorted.length;
+  const startY = count <= 1 ? CANVAS_H / 2 : (CANVAS_H - (count - 1) * PLANT_ROW_GAP) / 2;
+  return sorted.map((f, i) => {
+    const util = utilByFacility.get(f.facility_id);
+    const zoneMap = new Map(util?.zones.map(z => [z.zone, z]) ?? []);
+    const frozen = zoneMap.get("frozen")?.pct ?? 0.5;
+    const ref = zoneMap.get("refrigerated")?.pct ?? 0.5;
+    const dry = zoneMap.get("dry")?.pct ?? 0.5;
+    const city = [f.city, f.province].filter(Boolean).join(", ");
+    return {
+      id: f.short_code,
+      facilityId: f.facility_id,
+      name: f.name.replace(/^FGF\s+/i, "").split(" · ")[0] || f.name,
+      city: city || f.name,
+      x: PLANT_CX,
+      y: startY + i * PLANT_ROW_GAP,
+      status: plantStatusFromUtil(util?.overall_pct),
+      util: { frozen, ref, dry },
+    };
+  });
+}
 
 const LAYERS_DEF = [
-  { id: "risk",     name: "Risk",        count: 3,  defaultOn: true,  desc: "Disruption signals + supplier halos" },
-  { id: "yield",    name: "Yield",       count: 1,  defaultOn: false, desc: "Line variance glow on plants" },
-  { id: "shelf",    name: "Shelf-life",  count: 12, defaultOn: false, desc: "Expiry heat overlay" },
-  { id: "forecast", name: "Forecast",    count: 5,  defaultOn: false, desc: "Demand bands retailer→plant" },
-  { id: "procure",  name: "Procurement", count: 4,  defaultOn: true,  desc: "PO arcs plant→supplier" },
-  { id: "esg",      name: "ESG",         count: 4,  defaultOn: false, desc: "Waste-avoided per plant" },
-  { id: "schedule", name: "Schedule",    count: 9,  defaultOn: false, desc: "Active runs inside plants" },
-  { id: "network",  name: "Network",     count: 2,  defaultOn: false, desc: "Cross-plant transfer arcs" },
+  { id: "risk",     name: "Risk",        count: 0,  defaultOn: true,  desc: "Disruption signals + supplier halos" },
+  { id: "yield",    name: "Yield",       count: 0,  defaultOn: false, desc: "Line variance glow on plants" },
+  { id: "shelf",    name: "Shelf-life",  count: 0,  defaultOn: false, desc: "Expiry heat overlay" },
+  { id: "forecast", name: "Forecast",    count: 0,  defaultOn: false, desc: "Demand bands retailer→plant" },
+  { id: "procure",  name: "Procurement", count: 0,  defaultOn: true,  desc: "Open supplier PO arcs (not yet received)" },
+  { id: "esg",      name: "ESG",         count: 0,  defaultOn: false, desc: "Waste-avoided per plant" },
+  { id: "schedule", name: "Schedule",    count: 0,  defaultOn: true,  desc: "Outbound warehouse→retailer shipments + line runs in plants" },
+  { id: "network",  name: "Network",     count: 0,  defaultOn: false, desc: "Cross-plant transfer arcs" },
 ];
 
 function arcPath(from: { x: number; y: number }, to: { x: number; y: number }, bend = 0.18) {
@@ -60,23 +340,22 @@ function arcPath(from: { x: number; y: number }, to: { x: number; y: number }, b
   return `M ${from.x} ${from.y} Q ${mx + px} ${my + py} ${to.x} ${to.y}`;
 }
 
-function haloColor(s: Supplier) {
-  return s.status === "disrupt" ? "#ef4444" : s.onTime >= 0.95 ? "#22c55e" : s.onTime >= 0.85 ? "#f59e0b" : "#ef4444";
-}
-
-function TruckSprite({ flow, dur = 14 }: { flow: typeof FLOWS[number]; dur?: number }) {
-  const color = flow.kind === "inbound" ? "#3b82f6" : flow.kind === "outbound" ? "#f97316" : "#94a3b8";
-  const path = arcPath(flow.from, flow.to, flow.kind === "transfer" ? 0.32 : 0.18);
+function TruckSprite({ pathD, color, dur = 14 }: { pathD: string; color: string; dur?: number }) {
   return (
-    <g>
-      <path d={path} stroke={color} strokeOpacity="0.18" strokeWidth="1.2" fill="none" strokeDasharray="2 4"/>
+    <g pointerEvents="none">
       <g>
-        <rect width="14" height="9" x="-7" y="-4.5" rx="1.5" fill={color} stroke="#0a0d14" strokeWidth="0.6"/>
-        <rect width="4" height="5" x="-7" y="-2.5" fill="#0a0d14"/>
-        <animateMotion dur={`${dur}s`} repeatCount="indefinite" rotate="auto" path={path}/>
+        <rect width="14" height="9" x="-7" y="-4.5" rx="1.5" fill={color} stroke="#f8fafc" strokeWidth="0.75"/>
+        <rect width="4" height="5" x="-7" y="-2.5" rx="0.5" fill="#1e293b"/>
+        <circle cx="4.5" cy="3.5" r="1.1" fill="#1e293b"/>
+        <circle cx="-2.5" cy="3.5" r="1.1" fill="#1e293b"/>
+        <animateMotion dur={`${dur}s`} repeatCount="indefinite" rotate="auto" path={pathD}/>
       </g>
     </g>
   );
+}
+
+function haloColor(s: Supplier) {
+  return s.status === "disrupt" ? "#ef4444" : s.onTime >= 0.95 ? "#22c55e" : s.onTime >= 0.85 ? "#f59e0b" : "#ef4444";
 }
 
 function SupplierNode({ s, riskOn, onClick }: { s: Supplier & { x: number; y: number }; riskOn: boolean; onClick: () => void }) {
@@ -126,7 +405,7 @@ function SupplierNode({ s, riskOn, onClick }: { s: Supplier & { x: number; y: nu
 function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   p: PlantData; onClick: () => void; scheduleOn: boolean; esgOn: boolean; yieldOn: boolean; shelfOn: boolean;
 }) {
-  const r = 38;
+  const r = PLANT_RADIUS;
   const border = p.status === "warn" ? "#f59e0b" : p.status === "critical" ? "#ef4444" : "#22c55e";
   const segs = [
     { val: p.util.frozen, color: "#3b82f6" },
@@ -138,24 +417,24 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   return (
     <g transform={`translate(${p.x}, ${p.y})`} style={{ cursor: "pointer" }} onClick={onClick}>
       {p.status !== "ok" && (
-        <circle r={r + 14} fill={border} fillOpacity="0.08">
-          <animate attributeName="r" values={`${r + 10};${r + 18};${r + 10}`} dur="1.4s" repeatCount="indefinite"/>
+        <circle r={r + 18} fill={border} fillOpacity="0.08">
+          <animate attributeName="r" values={`${r + 14};${r + 24};${r + 14}`} dur="1.4s" repeatCount="indefinite"/>
           <animate attributeName="fill-opacity" values="0.15;0.04;0.15" dur="1.4s" repeatCount="indefinite"/>
         </circle>
       )}
-      {yieldOn && p.id === "p1" && <circle r={r + 8} fill="#ef4444" fillOpacity="0.25"/>}
+      {yieldOn && p.id === "p1" && <circle r={r + 10} fill="#ef4444" fillOpacity="0.25"/>}
       {shelfOn && (p.id === "p3" || p.id === "p1") && (
-        <circle r={r + 18} fill="url(#shelfHeat)" opacity={p.id === "p3" ? 0.9 : 0.5}/>
+        <circle r={r + 22} fill="url(#shelfHeat)" opacity={p.id === "p3" ? 0.9 : 0.5}/>
       )}
       {segs.map((seg, i) => {
         const offset = -segLen * i - segLen * 0.05;
         const dash = `${segLen * 0.9 * seg.val} ${2 * Math.PI * r - segLen * 0.9 * seg.val}`;
         return (
-          <circle key={i} r={r} fill="none" stroke={seg.color} strokeWidth="3.5"
+          <circle key={i} r={r} fill="none" stroke={seg.color} strokeWidth="4.5"
                   strokeDasharray={dash} strokeDashoffset={offset} transform={`rotate(${i * 120 - 90})`}/>
         );
       })}
-      <circle r={r} fill="#0c111c" stroke={border} strokeWidth="2"/>
+      <circle r={r} fill="#0c111c" stroke={border} strokeWidth="2.5"/>
       {p.status !== "ok" && (
         <circle r={r} fill="none" stroke={border} strokeWidth="2">
           <animate attributeName="stroke-opacity" values="1;0.4;1" dur="1.2s" repeatCount="indefinite"/>
@@ -164,23 +443,20 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
       {scheduleOn ? (
         <g>
           {[0, 1, 2].map(i => (
-            <rect key={i} x={-22 + i * 15} y={-3} width="12" height="6" rx="1" fill="#3b82f6" fillOpacity="0.6"/>
+            <rect key={i} x={-30 + i * 20} y={-4} width="16" height="8" rx="1" fill="#3b82f6" fillOpacity="0.6"/>
           ))}
-          <text textAnchor="middle" y="-12" fontSize="9" fill="#cbd5e1" fontFamily="ui-monospace, monospace">{p.name}</text>
+          <text textAnchor="middle" y="-16" fontSize="11" fill="#cbd5e1" fontFamily="ui-monospace, monospace">{p.name}</text>
         </g>
       ) : (
         <>
-          <text textAnchor="middle" y="-2" fontSize="14" fontWeight="700" fill="#e2e8f0">{p.name.split(" ")[1]}</text>
-          <text textAnchor="middle" y="12" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{p.city}</text>
+          <text textAnchor="middle" y="-3" fontSize="14" fontWeight="600" fill="#e2e8f0">{p.name}</text>
+          <text textAnchor="middle" y="14" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace">{Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100)}%</text>
         </>
       )}
-      <text textAnchor="middle" y={r + 16} fontSize="10" fill="#94a3b8" fontFamily="ui-monospace, monospace">
-        {Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100)}% util
-      </text>
       {esgOn && (
-        <g transform={`translate(0, ${r + 28})`}>
-          <rect x="-32" y="0" width="64" height="14" rx="3" fill="#022c22" stroke="#22c55e" strokeWidth="0.8"/>
-          <text x="0" y="10" textAnchor="middle" fontSize="9" fill="#86efac" fontFamily="ui-monospace, monospace">+${esgValue}</text>
+        <g transform={`translate(0, ${r + 34})`}>
+          <rect x="-36" y="0" width="72" height="16" rx="3" fill="#022c22" stroke="#22c55e" strokeWidth="0.8"/>
+          <text x="0" y="11" textAnchor="middle" fontSize="10" fill="#86efac" fontFamily="ui-monospace, monospace">+${esgValue}</text>
         </g>
       )}
     </g>
@@ -212,7 +488,11 @@ function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boole
   );
 }
 
-function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; setLayer: (id: string, on: boolean) => void }) {
+function LayerToggles({ layers, setLayer, layerCounts }: {
+  layers: Record<string, boolean>;
+  setLayer: (id: string, on: boolean) => void;
+  layerCounts: Record<string, number>;
+}) {
   const [collapsed, setCollapsed] = useState(true);
   const activeCount = Object.values(layers).filter(Boolean).length;
   return (
@@ -241,7 +521,9 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
                   <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? "left-3.5" : "left-0.5"}`}/>
                 </div>
                 <span className={`flex-1 text-left text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{l.name}</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>{l.count}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${on ? "bg-blue-500/15 text-blue-300" : "bg-slate-800 text-slate-500"}`}>
+                  {layerCounts[l.id] ?? l.count}
+                </span>
               </button>
             );
           })}
@@ -251,23 +533,41 @@ function LayerToggles({ layers, setLayer }: { layers: Record<string, boolean>; s
   );
 }
 
-function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
-  if (disruptions.length === 0) return null;
+const NEWS_HEADLINE_MS = 12_000;
+
+function NewsTicker({ items }: { items: Disruption[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [items[0]?.id]);
+
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const id = window.setInterval(
+      () => setIndex(i => (i + 1) % items.length),
+      NEWS_HEADLINE_MS,
+    );
+    return () => window.clearInterval(id);
+  }, [items.length]);
+
+  if (items.length === 0) return null;
+
+  const d = items[index];
   return (
     <div className="absolute left-0 right-0 bottom-[75px] h-7 bg-red-950/40 border-y border-red-900/40 overflow-hidden flex items-center z-10">
       <div className="shrink-0 px-3 h-full flex items-center gap-1.5 bg-red-900/60 border-r border-red-800/60">
         <Dot tone="red" pulse/>
-        <span className="text-[10px] uppercase tracking-wider text-red-200 font-mono">Disruption feed</span>
+        <span className="text-[10px] uppercase tracking-wider text-red-200 font-mono">News feed</span>
       </div>
-      <div className="ticker-wrap flex-1">
-        <div className="ticker font-mono text-[12px] text-red-200">
-          {disruptions.slice(0, 8).concat(disruptions.slice(0, 8)).map((d, i) => (
-            <span key={i} className="mx-8">
-              <span className="text-red-400">[{d.ts.slice(11)}]</span>{" "}
-              <span className="text-red-300">{d.src}</span> · {d.text}
-            </span>
-          ))}
-        </div>
+      <div className="flex-1 px-4 font-mono text-[12px] text-red-200 truncate transition-opacity duration-500">
+        <span className="text-red-400">[{d.ts.slice(11)}]</span>{" "}
+        <span className="text-red-300">{d.src}</span> · {d.text}
+        {items.length > 1 && (
+          <span className="ml-3 text-[10px] text-red-400/80 tabular-nums">
+            {index + 1}/{items.length}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -537,13 +837,22 @@ function FlowLegend() {
         className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? "max-h-0 opacity-0" : "max-h-[320px] opacity-100"}`}
       >
         <div className="px-3 py-2.5 flex flex-col gap-1.5">
-          <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Flow</span>
+          <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Supplier POs</span>
           {[
-            { color: "#3b82f6", label: "inbound" },
-            { color: "#f97316", label: "outbound" },
-            { color: "#94a3b8", label: "transfer" },
+            { color: "#3b82f6", label: "confirmed" },
+            { color: "#f59e0b", label: "draft / pending" },
           ].map((f, i) => (
             <div key={i} className="flex items-center gap-2">
+              <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+              <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
+            </div>
+          ))}
+          <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono mt-1">Outbound</span>
+          {[
+            { color: "#f97316", label: "scheduled" },
+            { color: "#ea580c", label: "in transit" },
+          ].map((f, i) => (
+            <div key={`out-${i}`} className="flex items-center gap-2">
               <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
               <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
             </div>
@@ -574,14 +883,16 @@ interface FlowSightCanvasProps {
 }
 
 export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
+  const { facility: facilityFilter } = useApp();
   const [layers, setLayers] = useState<Record<string, boolean>>(
     Object.fromEntries(LAYERS_DEF.map(l => [l.id, l.defaultOn]))
   );
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const [plantClosing, setPlantClosing] = useState(false);
-  const [suppliersCollapsed, setSuppliersCollapsed] = useState(false);
-  const [retailersCollapsed, setRetailersCollapsed] = useState(false);
+  const [hoveredInbound, setHoveredInbound] = useState<InboundFlow | null>(null);
+  const [hoveredOutbound, setHoveredOutbound] = useState<OutboundFlow | null>(null);
+  const [flowTooltipPos, setFlowTooltipPos] = useState({ x: 0, y: 0 });
   const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
   const closePlant = useCallback(() => {
@@ -589,38 +900,196 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     setTimeout(() => { setActivePlant(null); setPlantClosing(false); }, 280);
   }, []);
 
+  const activeFacilityBackendId = useMemo(
+    () => (facilityFilter === "all" ? null : SHORT_CODE_TO_FACILITY_ID[facilityFilter] ?? null),
+    [facilityFilter],
+  );
+
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
+  const { data: newsFeed } = useNewsDisruptionFeed();
   const { data: retailers } = useRetailers();
+  const { data: facilities } = useFacilities();
+  const { data: orders, status: ordersStatus } = useAllSupplierOrders();
+  const { data: outboundShipments, status: outboundStatus } = useOutboundShipments();
+  const [utilByFacility, setUtilByFacility] = useState<Map<string, BackendFacilityUtilization>>(new Map());
+
+  const facilityIdsKey = useMemo(() => {
+    if (activeFacilityBackendId) return activeFacilityBackendId;
+    return facilities.map(f => f.facility_id).sort().join("|");
+  }, [facilities, activeFacilityBackendId]);
+
+  useEffect(() => {
+    if (!facilityIdsKey) return;
+    const ids = facilityIdsKey.split("|");
+    let alive = true;
+    Promise.all(ids.map(id => fetchFacilityUtilization(id))).then(results => {
+      if (!alive) return;
+      const m = new Map<string, BackendFacilityUtilization>();
+      ids.forEach((id, i) => {
+        const u = results[i];
+        if (u) m.set(id, u);
+      });
+      setUtilByFacility(m);
+    });
+    return () => { alive = false; };
+  }, [facilityIdsKey]);
+
+  const allPlantPos = useMemo(
+    () => buildPlantPositions(facilities, utilByFacility),
+    [facilities, utilByFacility],
+  );
+
+  const plantPos = allPlantPos;
+
+  useEffect(() => {
+    if (facilityFilter !== "all" && activePlant && activePlant.id !== facilityFilter) {
+      setActivePlant(null);
+      setPlantClosing(false);
+    }
+  }, [facilityFilter, activePlant]);
+
+  const activeOrders = useMemo(() => {
+    const active = orders.filter(isActiveSupplierOrder);
+    if (!activeFacilityBackendId) return active;
+    return active.filter(o => o.facility_id === activeFacilityBackendId);
+  }, [orders, activeFacilityBackendId]);
+
+  const supplierBackendId = useCallback((frontendId: string) => frontendId.replace(/^s-/, "sup_"), []);
 
   const supplierPos = useMemo(
-    () => suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 })),
+    () => suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: SUPPLIER_ROW_START + i * SUPPLIER_ROW_GAP })),
     [suppliers],
   );
 
-  const retailerPos: RetailerPos[] = useMemo(
-    () => retailers.length > 0
-      ? retailers.slice(0, RETAILER_LANES_Y.length).map((r, i) => ({
-          id: r.retailer_id,
-          name: r.name,
-          poRatio: r.po_ratio || 1,
-          shelfRisk: r.shelf_risk,
-          x: RETAILER_X,
-          y: RETAILER_LANES_Y[i],
-        }))
-      : RETAILER_POS_FALLBACK,
+  const inboundFlows = useMemo((): InboundFlow[] => {
+    const plantByFacility = new Map(plantPos.map(p => [p.facilityId, p]));
+    const supplierByBackend = new Map(
+      supplierPos.map(s => [supplierBackendId(s.id), s]),
+    );
+    const flows: InboundFlow[] = [];
+    for (const order of activeOrders) {
+      const sup = supplierByBackend.get(order.supplier_id);
+      const plant = plantByFacility.get(order.facility_id);
+      if (!sup || !plant) continue;
+      flows.push({
+        id: order.order_id,
+        from: { x: sup.x, y: sup.y },
+        to: { x: plant.x, y: plant.y },
+        orderId: order.order_id,
+        supplierName: sup.name,
+        plantName: plant.name,
+        deliveryDate: order.delivery_date,
+        status: order.status,
+        items: order.items,
+        totalKg: order.items.reduce((s, it) => s + it.quantity_kg, 0),
+        cargo: formatOrderCargo(order),
+      });
+    }
+    return flows;
+  }, [activeOrders, plantPos, supplierPos, supplierBackendId]);
+
+  const activeOutbound = useMemo(() => {
+    const active = outboundShipments.filter(isActiveOutboundShipment);
+    if (!activeFacilityBackendId) return active;
+    return active.filter(s => s.facility_id === activeFacilityBackendId);
+  }, [outboundShipments, activeFacilityBackendId]);
+
+  const retailerById = useMemo(
+    () => new Map(retailers.map(r => [r.retailer_id, r])),
     [retailers],
   );
 
+  const resolveRetailerPos = useCallback(
+    (retailerId: string, plant: PlantData, base: RetailerPos[]): RetailerPos => {
+      const existing = base.find(r => r.id === retailerId);
+      if (existing) return existing;
+      const r = retailerById.get(retailerId);
+      return {
+        id: retailerId,
+        name: r?.name ?? retailerId.replace(/_/g, " "),
+        poRatio: r?.po_ratio ?? 1,
+        shelfRisk: r?.shelf_risk ?? "green",
+        x: RETAILER_X,
+        y: plant.y,
+      };
+    },
+    [retailerById],
+  );
+
+  const retailerPos: RetailerPos[] = useMemo(() => {
+    if (retailers.length === 0) return [];
+    const laneYs =
+      plantPos.length === 1
+        ? [plantPos[0].y]
+        : plantPos.length > 1
+          ? plantPos.map(p => p.y)
+          : RETAILER_LANES_Y;
+    const base = retailers.slice(0, laneYs.length).map((r, i) => ({
+      id: r.retailer_id,
+      name: r.name,
+      poRatio: r.po_ratio || 1,
+      shelfRisk: r.shelf_risk,
+      x: RETAILER_X,
+      y: laneYs[i % laneYs.length],
+    }));
+    const seen = new Set(base.map(r => r.id));
+    for (const s of activeOutbound) {
+      if (seen.has(s.retailer_id)) continue;
+      const plant = plantPos.find(p => p.facilityId === s.facility_id);
+      if (!plant) continue;
+      base.push(resolveRetailerPos(s.retailer_id, plant, base));
+      seen.add(s.retailer_id);
+    }
+    return base;
+  }, [retailers, plantPos, activeOutbound, resolveRetailerPos]);
+
+  const outboundFlows = useMemo((): OutboundFlow[] => {
+    const plantByFacility = new Map(plantPos.map(p => [p.facilityId, p]));
+    const flows: OutboundFlow[] = [];
+    for (const s of activeOutbound) {
+      const plant = plantByFacility.get(s.facility_id);
+      if (!plant) continue;
+      const retailer = resolveRetailerPos(s.retailer_id, plant, retailerPos);
+      flows.push({
+        id: s.shipment_id,
+        from: { x: plant.x, y: plant.y },
+        to: { x: retailer.x, y: retailer.y },
+        shipmentId: s.shipment_id,
+        plantName: s.facility_name ?? plant.name,
+        retailerName: s.retailer_name ?? retailer.name,
+        skuName: s.sku_name ?? s.sku_id.replace(/^sku-/, "").replace(/-/g, " "),
+        quantityUnits: s.quantity_units,
+        deliveryDate: s.requested_delivery_date ?? "",
+        status: s.status,
+      });
+    }
+    return flows;
+  }, [activeOutbound, plantPos, retailerPos, resolveRetailerPos]);
+
+  const layerCounts = useMemo(() => ({
+    risk: disruptions.length,
+    procure: inboundFlows.length,
+    forecast: retailers.length,
+    schedule: outboundFlows.length,
+  }), [disruptions.length, inboundFlows.length, retailers.length, outboundFlows.length]);
+
   return (
-    <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">
-      <div className="absolute inset-0 opacity-[0.18]" style={{
-        backgroundImage: "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px)",
-        backgroundSize: "32px 32px",
-      }}/>
+    <div className="bp-flow-canvas relative w-full h-full bg-[var(--bp-surface-soft)] overflow-hidden">
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
         <Pill tone="blue">FlowSight</Pill>
-        <span className="text-[11px] text-slate-500 font-mono">live · {supplierPos.length} suppliers · {PLANT_POS.length} plants · {retailerPos.length} retailers</span>
+        <span className="text-[11px] text-[var(--bp-text-muted)] font-mono">
+          {supplierPos.length} suppliers · {plantPos.length} plant{plantPos.length === 1 ? "" : "s"} · {retailerPos.length} retailers
+          {facilityFilter !== "all" && (
+            <> · {FACILITIES.find(f => f.id === facilityFilter)?.name ?? facilityFilter}</>
+          )}
+          {ordersStatus === "live" && activeOrders.length > 0 && (
+            <> · {activeOrders.length} active PO{activeOrders.length === 1 ? "" : "s"}</>
+          )}
+          {outboundStatus === "live" && activeOutbound.length > 0 && (
+            <> · {activeOutbound.length} outbound</>
+          )}
+        </span>
       </div>
       <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} preserveAspectRatio="xMidYMid meet" className="absolute inset-0 w-full h-full">
         <defs>
@@ -628,82 +1097,126 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
             <stop offset="0%" stopColor="#ef4444" stopOpacity="0.5"/>
             <stop offset="100%" stopColor="#ef4444" stopOpacity="0"/>
           </radialGradient>
-          <linearGradient id="canadaTint" x1="0" x2="1">
-            <stop offset="0%" stopColor="#1e293b" stopOpacity="0.4"/>
-            <stop offset="100%" stopColor="#1e293b" stopOpacity="0.6"/>
-          </linearGradient>
         </defs>
-        <path d="M 250 200 Q 350 170, 480 200 T 700 180 T 920 200 L 980 320 Q 940 360, 850 360 L 700 380 Q 600 380, 480 360 L 320 340 Q 240 320, 220 280 Z"
-              fill="url(#canadaTint)" stroke="#334155" strokeOpacity="0.4" strokeWidth="1" strokeDasharray="3 4"/>
-        <text x={PLANT_CX} y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
-        <g style={{ cursor: "pointer" }} onClick={() => setSuppliersCollapsed(c => !c)}>
-          <rect x={SUPPLIER_X - 52} y="68" width="104" height="18" rx="4" fill="#0c111c" stroke="#334155" strokeWidth="1"/>
-          <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontFamily="ui-monospace, monospace" letterSpacing="0.14em">
-            SUPPLIERS {suppliersCollapsed ? "›" : "‹"}
+        <line x1={COL_DIVIDER_L} y1={COL_LABEL_Y + 18} x2={COL_DIVIDER_L} y2={600} stroke="var(--bp-border-soft)" strokeWidth="1"/>
+        <line x1={COL_DIVIDER_R} y1={COL_LABEL_Y + 18} x2={COL_DIVIDER_R} y2={600} stroke="var(--bp-border-soft)" strokeWidth="1"/>
+        {[
+          { x: SUPPLIER_X, label: "Suppliers" },
+          { x: PLANT_CX, label: "Plants" },
+          { x: RETAILER_X, label: "Retailers" },
+        ].map(col => (
+          <text
+            key={col.label}
+            x={col.x}
+            y={COL_LABEL_Y}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--bp-text-subtle)"
+            fontFamily="ui-monospace, monospace"
+            letterSpacing="0.12em"
+          >
+            {col.label.toUpperCase()}
           </text>
-        </g>
-        <g style={{ cursor: "pointer" }} onClick={() => setRetailersCollapsed(c => !c)}>
-          <rect x={RETAILER_X - 52} y="346" width="104" height="18" rx="4" fill="#0c111c" stroke="#334155" strokeWidth="1"/>
-          <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontFamily="ui-monospace, monospace" letterSpacing="0.14em">
-            {retailersCollapsed ? "›" : "‹"} RETAILERS
-          </text>
-        </g>
+        ))}
 
-        {layers.procure && FLOWS.filter(f => f.kind === "inbound").map(f => (
-          <path key={"a-" + f.id} d={arcPath(f.from, f.to, 0.18)} stroke="#3b82f6" strokeOpacity="0.25" strokeWidth="1" fill="none" strokeDasharray="3 4"/>
-        ))}
-        {FLOWS.filter(f => f.kind === "outbound").map(f => (
-          <path key={"b-" + f.id} d={arcPath(f.from, f.to, 0.18)} stroke="#f97316" strokeOpacity="0.18" strokeWidth="1" fill="none" strokeDasharray="3 4"/>
-        ))}
-        {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => (
-          <path key={"c-" + f.id} d={arcPath(f.from, f.to, 0.32)} stroke="#94a3b8" strokeOpacity="0.3" strokeWidth="1" fill="none" strokeDasharray="2 3"/>
-        ))}
-        {layers.forecast && retailerPos.map((rr, i) => (
-          <path key={"fc-" + rr.id} d={arcPath(rr, PLANT_POS[i % PLANT_POS.length], -0.14)} stroke="#a855f7" strokeOpacity="0.18" strokeWidth="3" fill="none"/>
-        ))}
-        {layers.procure && FLOWS.filter(f => f.kind === "inbound").map((f, idx) => <TruckSprite key={"t-" + f.id} flow={f} dur={12 + idx * 2}/>)}
-        {FLOWS.filter(f => f.kind === "outbound").map((f, idx) => <TruckSprite key={"to-" + f.id} flow={f} dur={14 + idx * 2}/>)}
-        {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => <TruckSprite key={"tx-" + f.id} flow={f} dur={18}/>)}
+        {layers.procure && inboundFlows.map((f, idx) => {
+          const pending = f.status === "draft" || f.status === "pending_confirm";
+          const hovered = hoveredInbound?.id === f.id;
+          const pathD = arcPath(f.from, f.to, 0.12);
+          const stroke = pending ? "#d97706" : "#2563eb";
+          const truckDur = pending ? 18 + (idx % 3) * 2 : 12 + (idx % 4) * 2;
+          return (
+            <g key={f.id}>
+              <path
+                d={pathD}
+                stroke="transparent"
+                strokeWidth="16"
+                fill="none"
+                style={{ cursor: "pointer" }}
+                onMouseEnter={e => {
+                  setHoveredInbound(f);
+                  setHoveredOutbound(null);
+                  setFlowTooltipPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseMove={e => setFlowTooltipPos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredInbound(prev => (prev?.id === f.id ? null : prev))}
+              />
+              <path
+                d={pathD}
+                stroke={stroke}
+                strokeOpacity={hovered ? (pending ? 0.85 : 0.75) : pending ? 0.55 : 0.45}
+                strokeWidth={hovered ? 2.75 : 2}
+                fill="none"
+                strokeDasharray={pending ? "6 4" : undefined}
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+              <TruckSprite pathD={pathD} color={stroke} dur={truckDur} />
+            </g>
+          );
+        })}
+        {layers.schedule && outboundFlows.map((f, idx) => {
+          const inTransit = f.status === "in_transit";
+          const hovered = hoveredOutbound?.id === f.id;
+          const pathD = arcPath(f.from, f.to, 0.12);
+          const stroke = inTransit ? "#ea580c" : "#f97316";
+          const truckDur = 10 + (idx % 4) * 2;
+          return (
+            <g key={`out-${f.id}`}>
+              <path
+                d={pathD}
+                stroke="transparent"
+                strokeWidth="16"
+                fill="none"
+                style={{ cursor: "pointer" }}
+                onMouseEnter={e => {
+                  setHoveredOutbound(f);
+                  setHoveredInbound(null);
+                  setFlowTooltipPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseMove={e => setFlowTooltipPos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredOutbound(prev => (prev?.id === f.id ? null : prev))}
+              />
+              <path
+                d={pathD}
+                stroke={stroke}
+                strokeOpacity={hovered ? 0.85 : 0.55}
+                strokeWidth={hovered ? 2.75 : 2}
+                fill="none"
+                strokeDasharray={inTransit ? undefined : "5 4"}
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+              <TruckSprite pathD={pathD} color={stroke} dur={truckDur} />
+            </g>
+          );
+        })}
+        {layers.forecast && plantPos.length > 0 && retailerPos.map(rr => {
+          const plant = plantPos.length === 1 ? plantPos[0] : plantPos.find(p => p.y === rr.y) ?? plantPos[0];
+          return (
+            <path key={"fc-" + rr.id} d={arcPath(rr, plant, -0.1)} stroke="#a855f7" strokeOpacity="0.15" strokeWidth="2" fill="none"/>
+          );
+        })}
 
-        {/* count bubble — pops in from center when collapsed */}
-        <g transform={`translate(${SUPPLIER_X}, 300)`}>
-          <g style={{ transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease", transform: suppliersCollapsed ? "scale(1)" : "scale(0)", transformOrigin: "0px 0px", opacity: suppliersCollapsed ? 1 : 0, pointerEvents: suppliersCollapsed ? "auto" : "none" }}>
-            <circle r="22" fill="#0c111c" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2"/>
-            <text textAnchor="middle" dy="-4" fontSize="18" fontWeight="700" fill="#94a3b8">{supplierPos.length}</text>
-            <text textAnchor="middle" dy="10" fontSize="8" fill="#64748b" fontFamily="ui-monospace, monospace">suppliers</text>
-          </g>
-        </g>
-        {/* nodes — collapse/expand by scaling toward column center */}
-        <g style={{ transition: "transform 0.3s cubic-bezier(0.4,0,0.6,1), opacity 0.22s ease", transform: suppliersCollapsed ? "scale(0)" : "scale(1)", transformOrigin: `${SUPPLIER_X}px 330px`, opacity: suppliersCollapsed ? 0 : 1, pointerEvents: suppliersCollapsed ? "none" : "auto" }}>
-          {supplierPos.map(s => (
-            <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
-          ))}
-        </g>
-        {PLANT_POS.map((p: PlantData) => (
+        {supplierPos.map(s => (
+          <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
+        ))}
+        {plantPos.map(p => (
           <PlantNode key={p.id} p={p} onClick={() => setActivePlant(p)}
             scheduleOn={layers.schedule} esgOn={layers.esg} yieldOn={layers.yield} shelfOn={layers.shelf}/>
         ))}
-        {/* count bubble — pops in from center when collapsed */}
-        <g transform={`translate(${RETAILER_X}, 460)`}>
-          <g style={{ transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease", transform: retailersCollapsed ? "scale(1)" : "scale(0)", transformOrigin: "0px 0px", opacity: retailersCollapsed ? 1 : 0, pointerEvents: retailersCollapsed ? "auto" : "none" }}>
-            <circle r="22" fill="#0c111c" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2"/>
-            <text textAnchor="middle" dy="-4" fontSize="18" fontWeight="700" fill="#94a3b8">{retailerPos.length}</text>
-            <text textAnchor="middle" dy="10" fontSize="8" fill="#64748b" fontFamily="ui-monospace, monospace">retailers</text>
-          </g>
-        </g>
-        {/* nodes — collapse/expand by scaling toward column center */}
-        <g style={{ transition: "transform 0.3s cubic-bezier(0.4,0,0.6,1), opacity 0.22s ease", transform: retailersCollapsed ? "scale(0)" : "scale(1)", transformOrigin: `${RETAILER_X}px 482px`, opacity: retailersCollapsed ? 0 : 1, pointerEvents: retailersCollapsed ? "none" : "auto" }}>
-          {retailerPos.map(rr => (
-            <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
-          ))}
-        </g>
+        {retailerPos.map(rr => (
+          <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
+        ))}
       </svg>
-      {/* Legend panel — moves to left when FactoryView is open to avoid overlap */}
-      <div className={`absolute top-4 z-10 flex flex-col gap-3 transition-all duration-300 ${activePlant ? "left-2 sm:left-4" : "right-2 sm:right-4"}`}>
-        <LayerToggles layers={layers} setLayer={setLayer}/>
+      {hoveredInbound && <FlowOrderTooltip flow={hoveredInbound} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
+      {hoveredOutbound && <OutboundFlowTooltip flow={hoveredOutbound} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
+      {/* Legend panel — top-left, theme-aware */}
+      <div className="absolute top-4 right-2 sm:right-4 z-10 flex flex-col gap-3">
+        <LayerToggles layers={layers} setLayer={setLayer} layerCounts={layerCounts}/>
         <FlowLegend />
       </div>
-      {layers.risk && disruptions.length > 0 && <NewsTicker disruptions={disruptions}/>}
+      {layers.risk && newsFeed.length > 0 && <NewsTicker items={newsFeed}/>}
       <TimeScrubber live={live} setLive={setLive} disruptions={disruptions}/>
       {activePlant && (
         <>

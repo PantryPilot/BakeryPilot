@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     ActionCard as ActionCardORM,
     ProductionSchedule as ScheduleORM,
+    RetailerOrder,
 )
 from app.db.session import get_db
 from app.models.schedules import (
@@ -20,6 +22,11 @@ from app.models.schedules import (
     WhatIfRequest,
 )
 from app.services.schedule_apply import parse_iso_dt, resolve_schedule, utc_iso
+from app.services.schedule_fulfillment import (
+    mark_po_scheduled,
+    revert_po_if_unlinked,
+    validate_schedule_fulfillment,
+)
 from app.services.schedule_propose import (
     build_schedule_change_payload,
     build_schedule_diff,
@@ -50,7 +57,21 @@ def _schedule_not_found_detail(schedule_id: str) -> str:
     return f"schedule {schedule_id} not found.{hint}"
 
 
+def _retailer_fields(s: ScheduleORM) -> dict:
+    ro = s.retailer_order
+    retailer_name = ro.retailer.name if ro and ro.retailer else None
+    return {
+        "retailer_order_id": str(s.retailer_order_id) if s.retailer_order_id else None,
+        "retailer_id": ro.retailer_id if ro else None,
+        "retailer_name": retailer_name,
+        "requested_delivery_date": (
+            ro.requested_delivery_date.isoformat() if ro and ro.requested_delivery_date else None
+        ),
+    }
+
+
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
+    retailer = _retailer_fields(s)
     run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
@@ -58,6 +79,7 @@ def _to_model(s: ScheduleORM) -> ProductionSchedule:
         end_at=_utc_iso(s.end_at),
         quantity=s.quantity_units,
         lot_assignments=[],
+        **retailer,
     )
     return ProductionSchedule(
         schedule_id=str(s.schedule_id),
@@ -67,13 +89,22 @@ def _to_model(s: ScheduleORM) -> ProductionSchedule:
         runs=[run],
         waste_avoided_kg=float(s.waste_avoided_kg),
         status=s.status,
+        **retailer,
     )
+
+
+def _schedule_load_options():
+    return selectinload(ScheduleORM.retailer_order).selectinload(RetailerOrder.retailer)
 
 
 @router.get("", response_model=list[ProductionSchedule])
 async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionSchedule]:
     schedules = (
-        await db.execute(select(ScheduleORM).order_by(ScheduleORM.start_at.desc()))
+        await db.execute(
+            select(ScheduleORM)
+            .options(_schedule_load_options())
+            .order_by(ScheduleORM.start_at.desc())
+        )
     ).scalars().all()
     return [_to_model(s) for s in schedules]
 
@@ -82,7 +113,10 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
 async def create_schedule(
     req: CreateScheduleRequest, db: AsyncSession = Depends(get_db)
 ) -> ProductionSchedule:
-    """Insert a production_schedules row (manual planner entry)."""
+    """Insert a production_schedules row (line + SKU + time window).
+
+    ``retailer_order_id`` is optional — when provided, PO fulfillment rules apply.
+    """
     if req.status not in ("suggested", "approved", "complete"):
         raise HTTPException(422, "status must be suggested, approved, or complete")
     if req.quantity_units <= 0:
@@ -95,6 +129,17 @@ async def create_schedule(
     if end_at <= start_at:
         raise HTTPException(422, "end_at must be after start_at")
 
+    po = None
+    retailer_order_id: uuid.UUID | None = None
+    if req.retailer_order_id:
+        po = await validate_schedule_fulfillment(
+            db,
+            retailer_order_id=req.retailer_order_id,
+            sku_id=req.sku_id,
+            quantity_units=req.quantity_units,
+        )
+        retailer_order_id = po.retailer_order_id
+
     row = ScheduleORM(
         facility_id=req.facility_id,
         line_id=req.line_id,
@@ -104,11 +149,16 @@ async def create_schedule(
         quantity_units=req.quantity_units,
         status=req.status,
         waste_avoided_kg=req.waste_avoided_kg,
+        retailer_order_id=retailer_order_id,
         version=1,
     )
     db.add(row)
+    if po:
+        mark_po_scheduled(po)
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, ["retailer_order"])
+    if row.retailer_order:
+        await db.refresh(row.retailer_order, ["retailer"])
     return _to_model(row)
 
 
@@ -129,7 +179,13 @@ async def update_schedule(
         sid = uuid.UUID(schedule_id)
     except ValueError:
         raise HTTPException(404, _schedule_not_found_detail(schedule_id))
-    row = await db.get(ScheduleORM, sid)
+    row = (
+        await db.execute(
+            select(ScheduleORM)
+            .options(_schedule_load_options())
+            .where(ScheduleORM.schedule_id == sid)
+        )
+    ).scalars().first()
     if not row:
         raise HTTPException(404, _schedule_not_found_detail(schedule_id))
 
@@ -157,7 +213,9 @@ async def update_schedule(
     row.version += 1
 
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, ["retailer_order"])
+    if row.retailer_order:
+        await db.refresh(row.retailer_order, ["retailer"])
     return _to_model(row)
 
 
@@ -173,11 +231,15 @@ async def delete_schedule(
     row = await db.get(ScheduleORM, sid)
     if not row:
         raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    retailer_order_id = row.retailer_order_id
     await db.execute(
         text("UPDATE production_runs SET schedule_id = NULL WHERE schedule_id = :sid"),
         {"sid": sid},
     )
     await db.delete(row)
+    await db.flush()
+    if retailer_order_id:
+        await revert_po_if_unlinked(db, retailer_order_id)
     await db.commit()
     return Response(status_code=204)
 
@@ -189,6 +251,10 @@ async def get_schedule(
     s = await _resolve_schedule(db, schedule_id)
     if not s:
         raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    if s.retailer_order_id:
+        await db.refresh(s, ["retailer_order"])
+        if s.retailer_order:
+            await db.refresh(s.retailer_order, ["retailer"])
     return _to_model(s)
 
 
@@ -260,6 +326,7 @@ class ScheduleChangeDraftRequest(BaseModel):
     start_at: str | None = None
     end_at: str | None = None
     waste_avoided_kg: float | None = None
+    retailer_order_id: str | None = None
 
 
 @router.post("/draft_change", response_model=dict)
@@ -324,6 +391,8 @@ async def draft_schedule_change(
             payload["end_at"] = req.end_at
         if req.waste_avoided_kg is not None:
             payload["waste_avoided_kg"] = req.waste_avoided_kg
+    if req.retailer_order_id:
+        payload["retailer_order_id"] = req.retailer_order_id
 
     card = ActionCardORM(
         kind="schedule_change",

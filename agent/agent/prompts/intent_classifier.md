@@ -6,7 +6,7 @@ Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summa
 
 inventory — questions about ingredient lots, stock levels, spoilage risk, substitution candidates, cross-facility transfers, and recipe feasibility ("can I make N units of X with current stock?", "do we have enough flour for tomorrow's run?", "what's short?")
 procurement — supplier orders, prices, MOQ, delivery windows, negotiation, contracts, landed cost, supplier risk, on-time rates, disruption signals, supplier performance
-scheduler — production schedule timing, line assignment, allergen changeover, capacity windows, what-if reschedules. NOT for "do we have enough ingredients" — that is inventory.
+scheduler — production line schedule (bake/changeover/capacity/line assignment/what-if reschedule) OR outbound warehouse→retailer shipments (dock/stock/FEFO); disambiguate if unclear. NOT for "do we have enough ingredients" — that is inventory.
 yield — actual vs planned output, waste per shift, equipment anomalies, maintenance work orders
 esg — waste avoidance totals, CO2e, Scope 3 reports, sustainability patterns
 weekly_plan — requests to plan the week, optimise operations across all domains, get a full operations overview, weekly briefing
@@ -45,6 +45,12 @@ User: Show me the delivery performance and disruption signals for sup-northgrain
 Label: procurement
 
 User: Reschedule line 2 to avoid the dairy-gluten changeover on Thursday.
+Label: scheduler
+
+User: Schedule outbound shipments from Toronto warehouse to fulfill Costco POs this week.
+Label: scheduler
+
+User: Optimise our dock schedule — which finished goods should we ship to Walmart first?
 Label: scheduler
 
 User: Why is the suggested schedule running lemon poppy on Monday?

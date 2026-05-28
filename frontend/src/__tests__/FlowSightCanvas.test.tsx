@@ -9,8 +9,11 @@ jest.mock('../lib/hooks', () => ({
     ],
   }),
   useDisruptions: () => ({ data: [] }),
+  useNewsDisruptionFeed: () => ({ data: [], status: "live" }),
   useRetailers: () => ({ data: [] }),
   useFacilities: () => ({ data: [] }),
+  useAllSupplierOrders: () => ({ data: [], status: 'live' }),
+  useOutboundShipments: () => ({ data: [], status: 'live' }),
   useFacilityUtilization: () => ({ data: null }),
   useActiveRuns: () => ({ data: [], status: 'idle' }),
   useYieldTelemetry: () => ({ data: [] }),
@@ -20,38 +23,43 @@ jest.mock('../lib/hooks', () => ({
   }),
 }))
 
+const mockUseApp = jest.fn(() => ({
+  theme: 'dark' as const,
+  setTheme: jest.fn(),
+  facility: 'all' as const,
+  setFacility: jest.fn(),
+}))
+
 jest.mock('../lib/context', () => ({
-  useApp: () => ({
-    theme: 'dark',
-    setTheme: jest.fn(),
-  }),
+  useApp: () => mockUseApp(),
 }))
 
 // ---------- Flow legend overlay ----------
 
 describe('Flow legend overlay', () => {
-  test('renders inbound label', () => {
+  test('renders confirmed PO label', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('inbound')).toBeInTheDocument()
+    expect(screen.getByText('confirmed')).toBeInTheDocument()
   })
 
-  test('renders outbound label', () => {
+  test('renders draft PO label', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('outbound')).toBeInTheDocument()
+    expect(screen.getByText('draft / pending')).toBeInTheDocument()
   })
 
-  test('renders transfer label', () => {
+  test('renders outbound shipment legend labels', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('transfer')).toBeInTheDocument()
+    expect(screen.getByText('scheduled')).toBeInTheDocument()
+    expect(screen.getByText('in transit')).toBeInTheDocument()
   })
 
-  test('renders Flow section header', () => {
+  test('renders Supplier POs section header', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.getByText('Supplier POs')).toBeInTheDocument()
   })
 })
 
@@ -155,8 +163,8 @@ describe('LayerToggles', () => {
 
   test('shows active layer count', () => {
     render(<FlowSightCanvas />)
-    // Risk + Procurement are defaultOn=true → "2 on"
-    expect(screen.getByText('2 on')).toBeInTheDocument()
+    // Risk + Procurement + Schedule are defaultOn=true → "3 on"
+    expect(screen.getByText('3 on')).toBeInTheDocument()
   })
 
   test('toggling a layer updates the count', () => {
@@ -165,7 +173,7 @@ describe('LayerToggles', () => {
     fireEvent.click(layersBtn)
     const yieldBtn = screen.getByText('Yield').closest('button')!
     fireEvent.click(yieldBtn)
-    expect(screen.getByText('3 on')).toBeInTheDocument()
+    expect(screen.getByText('4 on')).toBeInTheDocument()
   })
 })
 
@@ -175,5 +183,27 @@ describe('FlowSightCanvas header', () => {
   test('renders FlowSight pill', () => {
     render(<FlowSightCanvas />)
     expect(screen.getByText('FlowSight')).toBeInTheDocument()
+  })
+})
+
+describe('FlowSightCanvas plant filter', () => {
+  beforeEach(() => {
+    mockUseApp.mockReturnValue({
+      theme: 'dark',
+      setTheme: jest.fn(),
+      facility: 'all',
+      setFacility: jest.fn(),
+    })
+  })
+
+  test('shows plant name in header when a single plant is selected', () => {
+    mockUseApp.mockReturnValue({
+      theme: 'dark',
+      setTheme: jest.fn(),
+      facility: 'p1',
+      setFacility: jest.fn(),
+    })
+    render(<FlowSightCanvas />)
+    expect(screen.getByText(/Toronto/)).toBeInTheDocument()
   })
 })

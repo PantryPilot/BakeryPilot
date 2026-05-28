@@ -65,6 +65,21 @@ def build_change_narration(
 
 def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
     """Build the optimizer diff for a schedule row (mock swap until OR-Tools lands)."""
+    retailer_fields: dict[str, str | None] = {}
+    retailer_note = ""
+    ro = getattr(s, "retailer_order", None)
+    if s.retailer_order_id and ro is not None:
+        retailer_name = ro.retailer.name if getattr(ro, "retailer", None) else ro.retailer_id
+        retailer_fields = {
+            "retailer_order_id": str(s.retailer_order_id),
+            "retailer_id": ro.retailer_id,
+            "retailer_name": retailer_name,
+            "requested_delivery_date": (
+                ro.requested_delivery_date.isoformat() if ro.requested_delivery_date else None
+            ),
+        }
+        retailer_note = f" Fulfills {retailer_name} retailer PO."
+
     before_run = ScheduleRun(
         run_id=str(s.schedule_id),
         sku_id=s.sku_id,
@@ -72,6 +87,7 @@ def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
         end_at=utc_iso(s.end_at),
         quantity=s.quantity_units,
         lot_assignments=[],
+        **retailer_fields,
     )
     after_run = ScheduleRun(
         run_id=str(s.schedule_id),
@@ -93,6 +109,7 @@ def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
                 narration=(
                     f"Reschedule run on {s.line_id}: {before_window} → {after_window} "
                     f"(product swap to sku-ace-sourdough-bistro, +1h start)."
+                    f"{retailer_note}"
                 ),
             )
         ],
@@ -157,6 +174,11 @@ async def build_schedule_change_payload(
         "rationale": rationale or change_summary,
         "title": f"{facility_name} · {before_name} → {after_name}",
         "agent": agent,
+        **(
+            {"retailer_order_id": str(s.retailer_order_id)}
+            if s.retailer_order_id
+            else {}
+        ),
     }
 
 

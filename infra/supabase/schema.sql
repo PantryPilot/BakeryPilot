@@ -576,3 +576,31 @@ CREATE TABLE IF NOT EXISTS supplier_messages (
 
 CREATE INDEX IF NOT EXISTS supplier_messages_supplier_sent_idx
   ON supplier_messages (supplier_id, sent_at DESC);
+
+-- F2.2 extension: link production_schedules to retailer fulfillment POs
+ALTER TABLE production_schedules
+  ADD COLUMN IF NOT EXISTS retailer_order_id uuid
+    REFERENCES retailer_orders(retailer_order_id);
+
+CREATE INDEX IF NOT EXISTS production_schedules_retailer_order_idx
+  ON production_schedules (retailer_order_id);
+
+-- Outbound: warehouse → retailer shipment windows (separate from production_schedules)
+CREATE TABLE IF NOT EXISTS outbound_shipments (
+  shipment_id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  facility_id         text NOT NULL REFERENCES facilities(facility_id),
+  retailer_order_id   uuid NOT NULL REFERENCES retailer_orders(retailer_order_id),
+  sku_id              text NOT NULL REFERENCES skus(sku_id),
+  quantity_units      int NOT NULL CHECK (quantity_units > 0),
+  start_at            timestamptz NOT NULL,
+  end_at              timestamptz NOT NULL,
+  status              text NOT NULL DEFAULT 'scheduled'
+                      CHECK (status IN ('scheduled','in_transit','delivered','cancelled')),
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS outbound_shipments_facility_start_idx
+  ON outbound_shipments (facility_id, start_at);
+
+CREATE INDEX IF NOT EXISTS outbound_shipments_retailer_order_idx
+  ON outbound_shipments (retailer_order_id);

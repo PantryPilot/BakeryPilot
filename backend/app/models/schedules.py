@@ -10,6 +10,10 @@ class ScheduleRun(BaseModel):
     end_at: str
     quantity: int
     lot_assignments: list[str]
+    retailer_order_id: str | None = None
+    retailer_id: str | None = None
+    retailer_name: str | None = None
+    requested_delivery_date: str | None = None
 
 
 class ProductionSchedule(BaseModel):
@@ -20,6 +24,10 @@ class ProductionSchedule(BaseModel):
     runs: list[ScheduleRun]
     waste_avoided_kg: float
     status: str
+    retailer_order_id: str | None = None
+    retailer_id: str | None = None
+    retailer_name: str | None = None
+    requested_delivery_date: str | None = None
 
 
 class ScheduleChange(BaseModel):
@@ -46,6 +54,7 @@ class CreateScheduleRequest(BaseModel):
     start_at: str
     end_at: str
     quantity_units: int
+    retailer_order_id: str | None = None
     status: str = "approved"
     waste_avoided_kg: float = 0
 

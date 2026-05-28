@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, SectionHeader, ActionCard, type ActionCardData } from "../../components/atoms";
+import { OutboundSchedulePanel } from "../../components/OutboundSchedulePanel";
 import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
 import {
   adaptActionCard,
@@ -58,6 +59,10 @@ type ScheduledRun = ProductionRun & {
   endAt: string;
   facilityId: string;
   lineId: string;
+  retailerOrderId?: string;
+  retailerId?: string;
+  retailerName?: string;
+  requestedDeliveryDate?: string;
 };
 
 type GanttLaneModel = { key: string; plant: string; line: number; label: string; runs: ScheduledRun[] };
@@ -148,6 +153,10 @@ function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
         endAt: r.end_at,
         facilityId: s.facility_id,
         lineId: s.line_id,
+        retailerOrderId: s.retailer_order_id ?? undefined,
+        retailerId: s.retailer_id ?? undefined,
+        retailerName: s.retailer_name ?? undefined,
+        requestedDeliveryDate: s.requested_delivery_date ?? undefined,
       });
     }
   }
@@ -201,7 +210,7 @@ function RunHoverCard({
   anchorEl,
   productNames,
 }: {
-  run: ProductionRun;
+  run: ScheduledRun;
   anchorEl: HTMLElement | null;
   productNames?: Map<string, string>;
 }) {
@@ -927,6 +936,12 @@ function AddScheduleModal({
   );
 
   useEffect(() => {
+    if (products.length > 0 && !products.some(p => p.sku_id === skuId)) {
+      setSkuId(products[0].sku_id);
+    }
+  }, [products, skuId]);
+
+  useEffect(() => {
     if (linesForFacility.length === 0) {
       setLineId("");
       return;
@@ -1013,7 +1028,7 @@ function AddScheduleModal({
             </select>
           </label>
           <label className="block">
-            <span className="text-[11px] uppercase tracking-wider text-slate-500">Product (SKU)</span>
+            <span className="text-[11px] uppercase tracking-wider text-slate-500">Product</span>
             <select value={skuId} onChange={e => setSkuId(e.target.value)} className={`mt-1 ${inputCls}`}>
               {products.map(p => (
                 <option key={p.sku_id} value={p.sku_id}>{p.name}</option>
@@ -1125,6 +1140,7 @@ export default function SchedulePage() {
     scheduleRefreshKey,
     bumpScheduleRefresh,
   } = useApp();
+  const [scheduleTab, setScheduleTab] = useState<"production" | "outbound">("production");
   const [plant, setPlant] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
@@ -1201,16 +1217,15 @@ export default function SchedulePage() {
   }, [allRuns, activeDate, plant]);
 
   const lanes = useMemo(() => {
-    const visiblePlants = new Set(
-      plant === "all"
-        ? [...new Set(productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id)), ...runs.map(r => r.plant)]
-        : [plant],
-    );
+    const stablePlants = new Set([
+      ...productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id),
+      ...allRuns.map(r => r.plant),
+    ]);
     const byKey: Record<string, GanttLaneModel> = {};
 
     productionLines.forEach(ln => {
       const plantId = FACILITY_MAP[ln.facility_id] ?? ln.facility_id;
-      if (!visiblePlants.has(plantId)) return;
+      if (!stablePlants.has(plantId)) return;
       const lineNum = lineNumberFromId(ln.line_id);
       const key = `${plantId}-L${lineNum}`;
       byKey[key] = {
@@ -1237,7 +1252,7 @@ export default function SchedulePage() {
     });
 
     return Object.values(byKey).sort((a, b) => a.label.localeCompare(b.label));
-  }, [runs, plant, productionLines, facilities]);
+  }, [runs, allRuns, productionLines, facilities]);
 
   const defaultFacilityForAdd =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
@@ -1274,27 +1289,68 @@ export default function SchedulePage() {
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Schedule"
-          sub="Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
+          sub={
+            scheduleTab === "production"
+              ? "Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
+              : "Warehouse → retailer shipments · drag bars to reschedule · right-click to cancel"
+          }
           right={
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setAddOpen(true)}
-                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold flex items-center gap-2"
-              >
-                <Icon name="calendar" size={13} className="text-white" /> Add run
-              </button>
-              <button onClick={() => openChatContext("Schedule · optimise")} className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2">
-                <Icon name="chat" size={13}/> Ask copilot to optimise
-              </button>
-              <button onClick={() => setWhatIfOpen(o => !o)} className={`px-3 py-1.5 rounded-md text-[12px] flex items-center gap-2 ${whatIfOpen ? "bg-purple-500/15 text-purple-200 border border-purple-500/40" : "border border-slate-700 hover:border-blue-500 text-slate-200"}`}>
-                <Icon name="spark" size={13}/> Run what-if
-              </button>
+              {scheduleTab === "production" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen(true)}
+                    className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold flex items-center gap-2"
+                  >
+                    <Icon name="calendar" size={13} className="text-white" /> Add run
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openChatContext("Schedule · production")}
+                    className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2"
+                  >
+                    <Icon name="chat" size={13} /> Optimise production
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWhatIfOpen(o => !o)}
+                    className={`px-3 py-1.5 rounded-md text-[12px] flex items-center gap-2 ${whatIfOpen ? "bg-purple-500/15 text-purple-200 border border-purple-500/40" : "border border-slate-700 hover:border-blue-500 text-slate-200"}`}
+                  >
+                    <Icon name="spark" size={13} /> Run what-if
+                  </button>
+                </>
+              )}
+              {scheduleTab === "outbound" && (
+                <button
+                  type="button"
+                  onClick={() => openChatContext("Schedule · outbound")}
+                  className="px-3 py-1.5 rounded-md border border-slate-700 hover:border-blue-500 text-[12px] text-slate-200 flex items-center gap-2"
+                >
+                  <Icon name="chat" size={13} /> Optimise outbound
+                </button>
+              )}
             </div>
           }
         />
 
         <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40">
+            <button
+              type="button"
+              onClick={() => setScheduleTab("production")}
+              className={`px-3 py-1 rounded-md text-[12px] font-medium ${scheduleTab === "production" ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
+            >
+              Production
+            </button>
+            <button
+              type="button"
+              onClick={() => setScheduleTab("outbound")}
+              className={`px-3 py-1 rounded-md text-[12px] font-medium flex items-center gap-1.5 ${scheduleTab === "outbound" ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
+            >
+              <Icon name="truck" size={12} /> Outbound
+            </button>
+          </div>
           <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40 overflow-x-auto">
             {[{ id: "all", label: "All" }, ...FACILITIES.filter(f => f.id !== "all").map(f => ({ id: f.id, label: f.name }))].map(t => (
               <button key={t.id} onClick={() => setPlant(t.id)} className={`px-2.5 py-1 rounded-md text-[12px] whitespace-nowrap ${plant === t.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
@@ -1366,16 +1422,31 @@ export default function SchedulePage() {
             />
           </div>
           <div className="text-[11px] font-mono text-slate-500 hidden md:block">
-            {runs.length} run{runs.length === 1 ? "" : "s"} on {formatDateLabel(activeDate)}
-            {isEmptyDate ? " · no runs" : ""}
+            {scheduleTab === "production"
+              ? `${runs.length} run${runs.length === 1 ? "" : "s"} on ${formatDateLabel(activeDate)}`
+              : `Outbound · ${formatDateLabel(activeDate)}`}
+            {scheduleTab === "production" && isEmptyDate ? " · no runs" : ""}
             {plant !== "all" ? ` · ${FACILITIES.find(f => f.id === plant)?.name ?? plant}` : ""}
           </div>
           <div className="flex-1"/>
+          {scheduleTab === "production" && (
           <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 whitespace-nowrap ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
             <Icon name="diff" size={12}/> {showDiff ? "Hide" : "Show"} agent proposal
           </button>
+          )}
         </div>
 
+        {scheduleTab === "outbound" ? (
+          <OutboundSchedulePanel
+            activeDate={activeDate}
+            plant={plant}
+            facilities={facilities}
+            products={products}
+            refreshKey={scheduleRefreshKey}
+            onRefresh={bumpScheduleRefresh}
+          />
+        ) : (
+        <>
         {scheduleStatus === "loading" && (
           <div className="mb-3 px-3 py-2 rounded-md border border-slate-800 bg-slate-900/40 text-[12px] text-slate-400">
             Loading schedules from API…
@@ -1384,7 +1455,10 @@ export default function SchedulePage() {
 
         {scheduleStatus === "fallback" && (
           <div className="mb-3 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.06] text-[12px] text-amber-200/90">
-            Could not reach the schedule API. Add runs once the backend is available, or seed data with{" "}
+            Could not load schedules from the API. Ensure the backend is running (
+            <span className="font-mono text-amber-100">make backend.run</span>
+            ). After pulling new code, run{" "}
+            <span className="font-mono text-amber-100">make schema.migrate</span> then refresh. Seed demo data with{" "}
             <span className="font-mono text-amber-100">make schema.seed</span>.
           </div>
         )}
@@ -1478,6 +1552,8 @@ export default function SchedulePage() {
           deletingId={deletingRunId}
           productNames={productNames}
         />
+        </>
+        )}
       </div>
     </div>
   );

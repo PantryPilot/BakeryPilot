@@ -54,7 +54,9 @@
         "end_at":        { "type": "string", "format": "date-time" },
         "quantity_units":{ "type": "integer", "minimum": 1 },
         "status":        { "type": "string", "enum": ["suggested", "approved", "complete"] },
-        "waste_avoided_kg": { "type": "number", "minimum": 0 }
+        "waste_avoided_kg": { "type": "number", "minimum": 0 },
+        "retailer_order_id": { "type": "string", "format": "uuid" },
+        "retailer_id":   { "type": "string" }
       },
       "additionalProperties": false
     },

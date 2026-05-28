@@ -17,7 +17,14 @@ from app.db.models import (
     SupplierOrder,
     SupplierOrderItem,
 )
+from app.services.outbound_fulfillment import apply_outbound_shipment
 from app.services.schedule_apply import apply_schedule_change
+from app.services.schedule_fulfillment import (
+    create_schedule_from_retailer_po,
+    load_retailer_order,
+    mark_po_scheduled,
+    validate_schedule_fulfillment,
+)
 from app.db.session import get_db
 from app.models.common import ActionCard
 
@@ -111,6 +118,10 @@ async def confirm_action_card(
 
         elif card.kind == "new_production_order":
             await _execute_new_production_order_card(card.payload, str(card.card_id), db)
+            flag_modified(card, "payload")
+
+        elif card.kind == "outbound_shipment":
+            await _execute_outbound_shipment_card(card.payload, db)
             flag_modified(card, "payload")
 
         elif card.kind == "notify":
@@ -258,22 +269,60 @@ async def _execute_transfer_card(payload: dict[str, Any], card_id: str, db: Asyn
 
 
 async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, db: AsyncSession) -> None:
-    """Reassign a production line to a substitute SKU.
+    """Reassign a production line to a substitute SKU, or fulfill a retailer PO.
 
     On confirm: supersedes the matching ``production_schedules`` row, inserts an
     approved replacement, cancels the active ``production_orders`` row for
     ``requested_by_sku_id``, and creates a new planned order for the substitute.
+
+    When ``trigger_order_id`` is present (new retailer PO), creates a schedule
+    row linked to that PO without a SKU substitution.
     """
+    trigger_order_id = payload.get("trigger_order_id")
     substitute_sku_id = payload.get("substitute_sku_id")
     requested_by_sku_id = payload.get("requested_by_sku_id")
     requested_units = int(payload.get("requested_units") or 0)
     facility_id = payload.get("facility_id")
+    now = datetime.now(timezone.utc)
+
+    if trigger_order_id and not substitute_sku_id:
+        new_schedule = await create_schedule_from_retailer_po(
+            db,
+            card_id=card_id,
+            trigger_order_id=str(trigger_order_id),
+            payload=payload,
+            now=now,
+        )
+        payload["executed_at"] = now.isoformat()
+        payload["new_schedule_id"] = str(new_schedule.schedule_id)
+        return
+
     if not (substitute_sku_id and facility_id and requested_units > 0):
         return
 
     substitute = await db.get(Sku, substitute_sku_id)
     if substitute is None:
         return
+
+    retailer_order_id = payload.get("retailer_order_id")
+    if retailer_order_id:
+        po = await validate_schedule_fulfillment(
+            db,
+            retailer_order_id=str(retailer_order_id),
+            sku_id=substitute_sku_id,
+            quantity_units=requested_units,
+        )
+        mark_po_scheduled(po)
+    elif trigger_order_id:
+        po = await load_retailer_order(db, str(trigger_order_id))
+        retailer_order_id = str(po.retailer_order_id)
+        await validate_schedule_fulfillment(
+            db,
+            retailer_order_id=retailer_order_id,
+            sku_id=substitute_sku_id,
+            quantity_units=requested_units,
+        )
+        mark_po_scheduled(po)
 
     # Find the most recent active order matching the original SKU at this facility.
     candidates = (
@@ -289,7 +338,6 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
     ).scalars().all()
 
     original = candidates[0] if candidates else None
-    now = datetime.now(timezone.utc)
     line_id: str | None = payload.get("line_id")
     if original:
         line_id = original.line_id
@@ -339,6 +387,7 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
         line_id=line_id,
         substitute_sku_id=substitute_sku_id,
         requested_units=requested_units,
+        retailer_order_id=str(retailer_order_id) if retailer_order_id else None,
         now=now,
     )
 
@@ -410,3 +459,27 @@ async def _execute_new_production_order_card(
 
     payload["executed_at"] = now.isoformat()
     payload["new_production_order_id"] = str(order.order_id)
+
+
+async def _execute_outbound_shipment_card(payload: dict[str, Any], db: AsyncSession) -> None:
+    """Book a warehouse → retailer shipment on confirm."""
+    facility_id = payload.get("facility_id")
+    retailer_order_id = payload.get("retailer_order_id")
+    sku_id = payload.get("sku_id")
+    quantity_units = int(payload.get("quantity_units") or 0)
+    start_at = payload.get("start_at")
+    end_at = payload.get("end_at")
+    if not all([facility_id, retailer_order_id, sku_id, start_at, end_at, quantity_units > 0]):
+        return
+
+    row = await apply_outbound_shipment(
+        db,
+        facility_id=str(facility_id),
+        retailer_order_id=str(retailer_order_id),
+        sku_id=str(sku_id),
+        quantity_units=quantity_units,
+        start_at=str(start_at),
+        end_at=str(end_at),
+    )
+    payload["executed_at"] = datetime.now(timezone.utc).isoformat()
+    payload["shipment_id"] = str(row.shipment_id)

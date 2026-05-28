@@ -43,6 +43,21 @@ def test_create_schedule_validation(client):
     assert r.status_code == 422
 
 
+def test_create_schedule_accepts_without_retailer_order(client):
+    r = client.post(
+        "/api/schedules",
+        json={
+            "facility_id": "plant-toronto",
+            "line_id": "line-toronto-1",
+            "sku_id": "sku-wonder-classic-white-loaf",
+            "start_at": "2026-06-01T09:00:00+00:00",
+            "end_at": "2026-06-01T13:00:00+00:00",
+            "quantity_units": 1000,
+        },
+    )
+    assert r.status_code == 201
+
+
 def test_delete_schedule_not_found(client):
     r = client.delete("/api/schedules/nonexistent_sched")
     assert r.status_code == 404

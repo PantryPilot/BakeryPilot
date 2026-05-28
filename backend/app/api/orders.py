@@ -32,6 +32,26 @@ from app.services.landed_cost import compute_landed_cost
 router = APIRouter(prefix="/api", tags=["orders"])
 
 
+def _order_to_model(order: SupplierOrder) -> SupplierOrderModel:
+    return SupplierOrderModel(
+        order_id=str(order.order_id),
+        supplier_id=order.supplier_id,
+        facility_id=order.facility_id,
+        items=[
+            OrderLineItem(
+                ingredient_id=i.ingredient_id,
+                quantity_kg=float(i.quantity_kg),
+                unit_price=float(i.unit_price),
+            )
+            for i in order.items
+        ],
+        delivery_date=order.delivery_date.isoformat() if order.delivery_date else "",
+        status=order.status,
+        confirmed_at=order.confirmed_at.isoformat() if order.confirmed_at else None,
+        action_card_id=str(order.action_card_id) if order.action_card_id else None,
+    )
+
+
 @router.post("/orders/draft", response_model=SupplierOrderDraftResponse)
 async def draft_supplier_order(
     req: SupplierOrderDraftRequest, db: AsyncSession = Depends(get_db)
@@ -123,26 +143,7 @@ async def list_orders(db: AsyncSession = Depends(get_db)) -> list[SupplierOrderM
             .order_by(SupplierOrder.created_at.desc())
         )
     ).scalars().all()
-    return [
-        SupplierOrderModel(
-            order_id=str(o.order_id),
-            supplier_id=o.supplier_id,
-            facility_id=o.facility_id,
-            items=[
-                OrderLineItem(
-                    ingredient_id=i.ingredient_id,
-                    quantity_kg=float(i.quantity_kg),
-                    unit_price=float(i.unit_price),
-                )
-                for i in o.items
-            ],
-            delivery_date=o.delivery_date.isoformat() if o.delivery_date else "",
-            status=o.status,
-            confirmed_at=o.confirmed_at.isoformat() if o.confirmed_at else None,
-            action_card_id=str(o.action_card_id) if o.action_card_id else None,
-        )
-        for o in orders
-    ]
+    return [_order_to_model(o) for o in orders]
 
 
 @router.post("/orders/{order_id}/receive", response_model=SupplierOrderModel)
@@ -201,32 +202,18 @@ async def receive_supplier_order(
     await db.commit()
     await db.refresh(order, ["items"])
 
-    return SupplierOrderModel(
-        order_id=str(order.order_id),
-        supplier_id=order.supplier_id,
-        facility_id=order.facility_id,
-        items=[
-            OrderLineItem(
-                ingredient_id=i.ingredient_id,
-                quantity_kg=float(i.quantity_kg),
-                unit_price=float(i.unit_price),
-            )
-            for i in order.items
-        ],
-        delivery_date=order.delivery_date.isoformat() if order.delivery_date else "",
-        status=order.status,
-        confirmed_at=order.confirmed_at.isoformat() if order.confirmed_at else None,
-        action_card_id=str(order.action_card_id) if order.action_card_id else None,
-    )
+    return _order_to_model(order)
 
 
 @router.get("/retailer_orders", response_model=list[RetailerOrder])
-async def list_retailer_orders(db: AsyncSession = Depends(get_db)) -> list[RetailerOrder]:
-    orders = (
-        await db.execute(
-            select(RetailerOrderORM).order_by(RetailerOrderORM.received_at.desc())
-        )
-    ).scalars().all()
+async def list_retailer_orders(
+    status: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[RetailerOrder]:
+    q = select(RetailerOrderORM).order_by(RetailerOrderORM.received_at.desc())
+    if status:
+        q = q.where(RetailerOrderORM.status == status)
+    orders = (await db.execute(q)).scalars().all()
     return [
         RetailerOrder(
             order_id=str(o.retailer_order_id),

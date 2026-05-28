@@ -31,7 +31,11 @@ def _schedule_id_for_api(schedule_id: str) -> str:
 def suggest_production_schedule(
     facility_id: Annotated[str | None, "Facility ID to filter schedules (optional)"] = None,
 ) -> list[dict]:
-    """Return current production schedules, optionally filtered by facility."""
+    """Return current **production line** schedules (manufacturing runs — NOT warehouse outbound).
+
+    Use for allergen changeovers, line capacity, and bake-time optimisation.
+    For warehouse → retailer shipments use suggest_outbound_shipments instead.
+    """
     params: dict = {}
     if facility_id:
         params["facility_id"] = facility_id
@@ -141,6 +145,7 @@ def draft_schedule_change(
     line_id: Annotated[str | None, "Production line ID, e.g. line-toronto-1"] = None,
     start_at: Annotated[str | None, "ISO start time for the new run (optional)"] = None,
     end_at: Annotated[str | None, "ISO end time for the new run (optional)"] = None,
+    retailer_order_id: Annotated[str | None, "Open retailer PO this run fulfills"] = None,
 ) -> dict:
     """Draft a schedule_change action card for human review.
 
@@ -165,6 +170,8 @@ def draft_schedule_change(
         body["start_at"] = start_at
     if end_at:
         body["end_at"] = end_at
+    if retailer_order_id:
+        body["retailer_order_id"] = retailer_order_id
     resp = httpx.post(
         f"{BACKEND_URL}/api/schedules/draft_change",
         json=body,
@@ -173,5 +180,100 @@ def draft_schedule_change(
     if resp.status_code != 200:
         raise ToolException(
             f"POST /api/schedules/draft_change returned {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
+
+
+@tool
+@opik.track(name="suggest_outbound_shipments")
+def suggest_outbound_shipments(
+    facility_id: Annotated[str | None, "Plant warehouse facility ID, e.g. plant-toronto (optional)"] = None,
+) -> list[dict]:
+    """Return scheduled warehouse → retailer outbound shipments (finished goods leaving the plant).
+
+    Use for dock windows, FEFO stock allocation, and retailer PO fulfillment from warehouse inventory.
+    NOT for production line scheduling — use suggest_production_schedule for that.
+    """
+    resp = httpx.get(f"{BACKEND_URL}/api/outbound_shipments", timeout=15)
+    if resp.status_code != 200:
+        raise ToolException(f"GET /api/outbound_shipments returned {resp.status_code}: {resp.text}")
+    rows = resp.json()
+    if facility_id:
+        rows = [r for r in rows if r.get("facility_id") == facility_id]
+    return rows
+
+
+@tool
+@opik.track(name="list_warehouse_stock")
+def list_warehouse_stock(
+    facility_id: Annotated[str, "Plant warehouse facility ID, e.g. plant-toronto"],
+) -> list[dict]:
+    """List finished goods SKUs currently in warehouse at a plant (uncommitted pallets, FEFO-eligible).
+
+    Required before proposing outbound shipments — quantity must not exceed available_units.
+    """
+    resp = httpx.get(
+        f"{BACKEND_URL}/api/outbound_shipments/warehouse_stock",
+        params={"facility_id": facility_id},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ToolException(
+            f"GET /api/outbound_shipments/warehouse_stock returned {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
+
+
+@tool
+@opik.track(name="list_open_retailer_orders")
+def list_open_retailer_orders(
+    sku_id: Annotated[str | None, "Filter to POs for this SKU (optional)"] = None,
+) -> list[dict]:
+    """List open retailer POs that outbound shipments can fulfill."""
+    resp = httpx.get(
+        f"{BACKEND_URL}/api/retailer_orders",
+        params={"status": "open"},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ToolException(f"GET /api/retailer_orders returned {resp.status_code}: {resp.text}")
+    rows = resp.json()
+    if sku_id:
+        rows = [r for r in rows if r.get("sku_id") == sku_id]
+    return rows
+
+
+@tool
+@opik.track(name="draft_outbound_shipment")
+def draft_outbound_shipment(
+    facility_id: Annotated[str, "Warehouse plant ID, e.g. plant-toronto"],
+    retailer_order_id: Annotated[str, "Open retailer PO UUID to fulfill"],
+    sku_id: Annotated[str, "SKU being shipped — must match PO and be in stock at facility"],
+    quantity_units: Annotated[int, "Units to ship — ≤ PO qty and ≤ warehouse available_units"],
+    start_at: Annotated[str, "ISO ship window start"],
+    end_at: Annotated[str, "ISO ship window end"],
+    rationale: Annotated[str, "One-line explanation (FEFO, delivery date, stock coverage)"],
+) -> dict:
+    """Draft an outbound_shipment action card for human review.
+
+    Reserves finished-goods pallets (FEFO) only after the operator confirms the card.
+    Surface the returned action_card_id in a ```action_card JSON fenced block.
+    """
+    resp = httpx.post(
+        f"{BACKEND_URL}/api/outbound_shipments/draft",
+        json={
+            "facility_id": facility_id,
+            "retailer_order_id": retailer_order_id,
+            "sku_id": sku_id,
+            "quantity_units": quantity_units,
+            "start_at": start_at,
+            "end_at": end_at,
+            "rationale": rationale,
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ToolException(
+            f"POST /api/outbound_shipments/draft returned {resp.status_code}: {resp.text}"
         )
     return resp.json()
