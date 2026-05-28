@@ -13,7 +13,7 @@ make reset            # wipe volumes (destructive)
 
 # Schema and seed
 make schema.migrate   # apply infra/supabase/schema.sql
-make schema.seed      # apply seed.sql + run infra/seed_lots.py (150+ ingredient lots)
+make schema.seed      # apply seed.sql + run backend/scripts/seed_lots.py (150+ ingredient lots)
 make seed.lots        # regenerate ingredient lots only
 make seed.events      # start Redis event stream publisher (infra/event_stream.py)
 
@@ -98,7 +98,7 @@ PostgreSQL 16 with pgvector (for SOP/formula RAG). Schema is in `infra/supabase/
 
 ### Simulated data
 
-- `infra/seed_lots.py` — generates 150+ ingredient lots with realistic expiry dates using Faker
+- `backend/scripts/seed_lots.py` — generates 150+ ingredient lots with realistic expiry dates using Faker
 - `infra/event_stream.py` — Redis publisher writing inventory deltas, yield readings, and supplier risk signals every few seconds (five suppliers with distinct personalities: reliable, cheap-but-late, high-MOQ, seasonally disrupted, new entrant)
 
 ## Key constraints

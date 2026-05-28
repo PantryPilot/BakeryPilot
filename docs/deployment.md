@@ -180,12 +180,33 @@ The init dir runs SQL only. To regenerate 180 ingredient lots via Faker:
 
 ```bash
 # Easiest: run on the host with uv installed
-uv run infra/seed_lots.py
+uv run backend/scripts/seed_lots.py
 
-# Or from inside the backend container, after copying infra/ in
+# Or from inside the backend container (scripts ship with the backend image)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  exec backend uv run /app/infra/seed_lots.py
+  exec backend uv run scripts/seed_lots.py
 ```
+
+### 9. Copilot schedule optimizer (required once)
+
+The schedule copilot reads **`production_schedules`** rows. CD re-applies `seed.sql` but does **not** run `seed_demo.py`. On a fresh VM you need either:
+
+```bash
+# Full demo bootstrap (facilities, lines, schedules, action cards, …)
+make schema.seed
+
+# Or schedules only (if facilities + production_lines already exist)
+cd /mnt/BakeryPilot/backend && uv run scripts/seed_demo.py
+```
+
+Verify:
+
+```bash
+curl -s http://localhost/api/schedules | jq 'length'   # expect >= 1
+curl -s http://localhost/api/schedules/current/diff | jq '.changes | length'
+```
+
+If copilot errors with `schedule … not found`, the agent was using a made-up ID — redeploy the latest backend (agent normalizes bad IDs to `current`) and ensure schedules exist as above.
 
 ---
 

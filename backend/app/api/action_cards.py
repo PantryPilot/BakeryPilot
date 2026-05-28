@@ -17,6 +17,7 @@ from app.db.models import (
     SupplierOrder,
     SupplierOrderItem,
 )
+from app.services.schedule_apply import apply_schedule_change
 from app.db.session import get_db
 from app.models.common import ActionCard
 
@@ -255,9 +256,9 @@ async def _execute_transfer_card(payload: dict[str, Any], card_id: str, db: Asyn
 async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, db: AsyncSession) -> None:
     """Reassign a production line to a substitute SKU.
 
-    Cancels the currently-planned/producing order driven by ``requested_by_sku_id``
-    on the operator's facility, and creates a new ``planned`` order for the
-    substitute SKU on the same line.
+    On confirm: supersedes the matching ``production_schedules`` row, inserts an
+    approved replacement, cancels the active ``production_orders`` row for
+    ``requested_by_sku_id``, and creates a new planned order for the substitute.
     """
     substitute_sku_id = payload.get("substitute_sku_id")
     requested_by_sku_id = payload.get("requested_by_sku_id")
@@ -285,7 +286,7 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
 
     original = candidates[0] if candidates else None
     now = datetime.now(timezone.utc)
-    line_id: str | None = None
+    line_id: str | None = payload.get("line_id")
     if original:
         line_id = original.line_id
         original.status = "cancelled"
@@ -326,7 +327,19 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
         line.status = "setup"
         line.current_order_id = new_order.order_id
 
+    new_schedule = await apply_schedule_change(
+        db,
+        payload=payload,
+        card_id=card_id,
+        facility_id=facility_id,
+        line_id=line_id,
+        substitute_sku_id=substitute_sku_id,
+        requested_units=requested_units,
+        now=now,
+    )
+
     payload["executed_at"] = now.isoformat()
     payload["new_production_order_id"] = str(new_order.order_id)
+    payload["new_schedule_id"] = str(new_schedule.schedule_id)
     if original:
         payload["cancelled_production_order_id"] = str(original.order_id)

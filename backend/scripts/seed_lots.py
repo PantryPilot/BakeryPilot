@@ -70,6 +70,9 @@ CURATED_STORAGE_ZONES: dict[str, str] = {
     "ing-yeast-instant":   "refrigerated",
     "ing-sugar-granulated": "dry",
     "ing-eggs-whole":      "refrigerated",
+    "ing-banana-fresh":    "refrigerated",
+    "ing-buttermilk":      "refrigerated",
+    "ing-lemon-fresh":     "refrigerated",
 }
 
 
@@ -117,6 +120,17 @@ CURATED_LOTS: list[dict] = [
     # yogurt" blocker that the agent and Materials page can both surface.
     dict(lot_code="L-DEMO-YOG-M01", facility="plant-mississauga", ingredient="ing-yogurt-plain",      qty=140,  days_to_expiry=14,  supplier="sup-valleydairy", unit_cost=2.15),
     dict(lot_code="L-DEMO-MLK-M01", facility="plant-mississauga", ingredient="ing-milk-whole",        qty=110,  days_to_expiry=10,  supplier="sup-valleydairy", unit_cost=1.20),
+    # Curated lots for perishable new-SKU ingredients (Faker bulk-fill uses
+    # 30-day minimum expiry which misrepresents shelf life for these).
+    dict(lot_code="L-DEMO-BAN-001", facility="plant-toronto",     ingredient="ing-banana-fresh",      qty=80,   days_to_expiry=7,   supplier="sup-coastalberry", unit_cost=1.10),
+    dict(lot_code="L-DEMO-BAN-002", facility="plant-mississauga", ingredient="ing-banana-fresh",      qty=60,   days_to_expiry=5,   supplier="sup-coastalberry", unit_cost=1.10),
+    dict(lot_code="L-DEMO-BAN-003", facility="plant-hamilton",    ingredient="ing-banana-fresh",      qty=50,   days_to_expiry=8,   supplier="sup-coastalberry", unit_cost=1.10),
+    dict(lot_code="L-DEMO-BTM-001", facility="plant-toronto",     ingredient="ing-buttermilk",        qty=90,   days_to_expiry=10,  supplier="sup-valleydairy", unit_cost=1.40),
+    dict(lot_code="L-DEMO-BTM-002", facility="plant-mississauga", ingredient="ing-buttermilk",        qty=75,   days_to_expiry=8,   supplier="sup-valleydairy", unit_cost=1.40),
+    dict(lot_code="L-DEMO-BTM-003", facility="plant-hamilton",    ingredient="ing-buttermilk",        qty=60,   days_to_expiry=11,  supplier="sup-valleydairy", unit_cost=1.40),
+    # Lemon (30-day shelf but small qtys used per batch)
+    dict(lot_code="L-DEMO-LMN-001", facility="plant-toronto",     ingredient="ing-lemon-fresh",       qty=40,   days_to_expiry=18,  supplier="sup-coastalberry", unit_cost=2.20),
+    dict(lot_code="L-DEMO-LMN-002", facility="plant-mississauga", ingredient="ing-lemon-fresh",       qty=35,   days_to_expiry=20,  supplier="sup-coastalberry", unit_cost=2.20),
 ]
 
 

@@ -4,7 +4,7 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
 import { FACILITIES, Lot } from "../../lib/data";
-import { useLots, useLotSubstitutions, useIngredients } from "../../lib/hooks";
+import { useLots, useLotUsedIn, useIngredients } from "../../lib/hooks";
 import {
   writeOffLot,
   transferLot,
@@ -15,7 +15,7 @@ import {
   deleteIngredient,
   fetchIngredients,
   fetchFinishedGoods,
-  type BackendSubstitutionCandidate,
+  type BackendFormulaUsage,
   type BackendIngredient,
   type BackendFinishedPallet,
 } from "../../lib/api";
@@ -44,6 +44,29 @@ const FILTER_FACILITY = [
 ];
 const FILTER_STORAGE = ["All", "Frozen", "Refrigerated", "Dry"];
 const FILTER_RISK = ["All", "OK", "At Risk", "Critical", "Expired"];
+
+// ── Sortable column header ─────────────────────────────────────────────────────
+function SortTh({
+  label, col, activeCol, dir, onSort, right,
+}: {
+  label: string; col: string; activeCol: string;
+  dir: "asc" | "desc"; onSort: (col: string) => void; right?: boolean;
+}) {
+  const active = col === activeCol;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`px-3 py-2 font-semibold cursor-pointer select-none group transition-colors hover:text-slate-300 ${right ? "text-right" : "text-left"}`}
+    >
+      <span className={`inline-flex items-center gap-1 ${right ? "flex-row-reverse" : ""}`}>
+        {label}
+        <span className={`text-[10px] leading-none ${active ? "text-blue-400" : "text-slate-700 group-hover:text-slate-500"}`}>
+          {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </span>
+    </th>
+  );
+}
 
 // ── Write-off modal ───────────────────────────────────────────────────────────
 function WriteOffModal({ lot, onClose, onSuccess }: {
@@ -457,17 +480,7 @@ function LotSlideIn({
   onLotUpdate?: (updated: Lot) => void;
 }) {
   const backendLotId = lot.id.toLowerCase();
-  const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
-
-  const substitutes = rawSubs.map((s: BackendSubstitutionCandidate, i: number) => ({
-    name: s.sku_name,
-    facility: s.facility_name ?? s.facility_id ?? "—",
-    qty: s.achievable_quantity,
-    compat: s.margin_score,
-    allergen: s.allergens && s.allergens.length > 0 ? s.allergens.join(", ") : "none",
-    rank: i + 1,
-    sku_id: s.sku_id,
-  }));
+  const { data: usedIn, status: usedInStatus } = useLotUsedIn(backendLotId);
 
   return (
     <div
@@ -498,29 +511,29 @@ function LotSlideIn({
 
         <div>
           <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">
-            Substitution candidates
-            {subsStatus === "live" && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+            Used in products
+            {usedInStatus === "live" && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
           </div>
-          {subsStatus === "loading" && (
+          {usedInStatus === "loading" && (
             <div className="text-[12px] text-slate-500 py-3">Loading…</div>
           )}
-          {subsStatus !== "loading" && substitutes.length === 0 && (
-            <div className="text-[12px] text-slate-500 py-3">No substitution candidates found for this lot.</div>
+          {usedInStatus !== "loading" && usedIn.length === 0 && (
+            <div className="text-[12px] text-slate-500 py-3">No recipes found for this ingredient.</div>
           )}
           <div className="space-y-1.5">
-            {substitutes.map((s, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
-                <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[11px] font-mono text-slate-300">{s.rank}</div>
+            {usedIn.map((p: BackendFormulaUsage) => (
+              <div key={p.sku_id} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] text-slate-100">{s.name}</div>
-                  <div className="text-[11px] font-mono text-slate-500">{s.facility} · {s.qty} kg avail · allergen {s.allergen}</div>
+                  <div className="text-[13px] text-slate-100">{p.sku_name}</div>
+                  <div className="text-[11px] font-mono text-slate-500">
+                    {p.sku_id}
+                    {p.category ? ` · ${p.category}` : ""}
+                    {p.allergen_tags.length > 0 ? ` · ${p.allergen_tags.join(", ")}` : ""}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[14px] font-mono tabular-nums text-emerald-300">{Math.round(s.compat * 100)}%</div>
-                  <div className="text-[10px] text-slate-500">compat</div>
-                </div>
-                <div className="px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 text-[11px]">
-                  Use in Production
+                <div className="text-right shrink-0">
+                  <div className="text-[14px] font-mono tabular-nums text-blue-300">{p.kg_per_unit} kg</div>
+                  <div className="text-[10px] text-slate-500">per unit</div>
                 </div>
               </div>
             ))}
@@ -552,6 +565,8 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [fpSortKey, setFpSortKey] = useState("produced");
+  const [fpSortDir, setFpSortDir] = useState<"asc" | "desc">("desc");
 
   const facilityId = facilityFilter !== "all" ? (FACILITY_SHORT_TO_ID[facilityFilter] ?? undefined) : undefined;
 
@@ -565,11 +580,35 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
     });
   }, [facilityId]);
 
+  function handleFpSort(key: string) {
+    if (key === fpSortKey) {
+      setFpSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setFpSortKey(key);
+      setFpSortDir(["qty", "produced"].includes(key) ? "desc" : "asc");
+    }
+  }
+
   const filtered = useMemo(() => {
-    if (!query.trim()) return pallets;
-    const q = query.toLowerCase();
-    return pallets.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
-  }, [pallets, query]);
+    let result = pallets.slice();
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      result = result.filter(p => p.sku_name.toLowerCase().includes(q) || p.sku_id.toLowerCase().includes(q));
+    }
+    const mult = fpSortDir === "asc" ? 1 : -1;
+    result.sort((a, b) => {
+      let cmp = 0;
+      if (fpSortKey === "name")     cmp = a.sku_name.localeCompare(b.sku_name);
+      if (fpSortKey === "sku")      cmp = a.sku_id.localeCompare(b.sku_id);
+      if (fpSortKey === "facility") cmp = a.facility_id.localeCompare(b.facility_id);
+      if (fpSortKey === "qty")      cmp = a.quantity - b.quantity;
+      if (fpSortKey === "shelf")    cmp = a.days_remaining - b.days_remaining;
+      if (fpSortKey === "produced") cmp = new Date(a.produced_at).getTime() - new Date(b.produced_at).getTime();
+      if (fpSortKey === "status")   cmp = a.status.localeCompare(b.status);
+      return cmp * mult;
+    });
+    return result;
+  }, [pallets, query, fpSortKey, fpSortDir]);
 
   const STATUS_COLOR: Record<string, string> = {
     in_warehouse: "text-emerald-300 bg-emerald-900/30 border-emerald-700/50",
@@ -644,13 +683,13 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                <th className="text-left px-4 py-2.5 font-semibold">Product</th>
-                <th className="text-left px-4 py-2.5 font-semibold">SKU</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Facility</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Qty</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Shelf life</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Produced</th>
-                <th className="text-left px-4 py-2.5 font-semibold">Status</th>
+                <SortTh label="Product"    col="name"     activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="SKU"        col="sku"      activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Facility"   col="facility" activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Qty"        col="qty"      activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort} right/>
+                <SortTh label="Shelf life" col="shelf"    activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort} right/>
+                <SortTh label="Produced"   col="produced" activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
+                <SortTh label="Status"     col="status"   activeCol={fpSortKey} dir={fpSortDir} onSort={handleFpSort}/>
               </tr>
             </thead>
             <tbody>
@@ -695,7 +734,8 @@ export default function MaterialsPage() {
   const [storage, setStorage] = useState("All");
   const [risk, setRisk] = useState("All");
   const [daysFilter, setDaysFilter] = useState("All");
-  const [sort, setSort] = useState("risk");
+  const [sortKey, setSortKey] = useState("risk");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [query, setQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -763,6 +803,15 @@ export default function MaterialsPage() {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
+  function handleIngSort(key: string) {
+    if (key === sortKey) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(["risk", "qty"].includes(key) ? "desc" : "asc");
+    }
+  }
+
   const filtered = useMemo(() => {
     let l = mergedLots.slice();
     if (facility !== "all") l = l.filter(x => x.facility === facility);
@@ -779,12 +828,20 @@ export default function MaterialsPage() {
       const q = query.toLowerCase();
       l = l.filter(x => x.ingredient.toLowerCase().includes(q) || x.id.toLowerCase().includes(q));
     }
-    if (sort === "risk")     l.sort((a, b) => b.risk - a.risk);
-    if (sort === "expiry")   l.sort((a, b) => a.daysLeft - b.daysLeft);
-    if (sort === "qty")      l.sort((a, b) => b.qty - a.qty);
-    if (sort === "facility") l.sort((a, b) => a.facility.localeCompare(b.facility));
+    const mult = sortDir === "asc" ? 1 : -1;
+    l.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "risk")       cmp = a.risk - b.risk;
+      if (sortKey === "expiry")     cmp = a.daysLeft - b.daysLeft;
+      if (sortKey === "qty")        cmp = a.qty - b.qty;
+      if (sortKey === "facility")   cmp = a.facility.localeCompare(b.facility);
+      if (sortKey === "ingredient") cmp = a.ingredient.localeCompare(b.ingredient);
+      if (sortKey === "status")     cmp = a.status.localeCompare(b.status);
+      if (sortKey === "storage")    cmp = a.storage.localeCompare(b.storage);
+      return cmp * mult;
+    });
     return l;
-  }, [mergedLots, facility, storage, risk, daysFilter, sort, query]);
+  }, [mergedLots, facility, storage, risk, daysFilter, sortKey, sortDir, query]);
 
   const horizon = useMemo(() => {
     const groups: Record<string, { ingredient: string; total: number; lots: number; expiring3d: number; expiring7d: number; lotsData: { qty: number; daysLeft: number }[] }> = {};
@@ -842,7 +899,7 @@ export default function MaterialsPage() {
                 <Icon name="chat" size={13}/> Ask copilot
               </button>
               {activeTab === "ingredients" && (
-                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-white font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
+                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
                   + Add Lot
                 </button>
               )}
@@ -920,7 +977,8 @@ export default function MaterialsPage() {
                 setStorage("All");
                 setRisk("All");
                 setDaysFilter("All");
-                setSort("risk");
+                setSortKey("risk");
+                setSortDir("desc");
                 setQuery("");
               }}
               className="h-9 px-3 rounded-md border border-slate-700 text-slate-300 text-[12px] hover:border-slate-500 transition"
@@ -930,7 +988,7 @@ export default function MaterialsPage() {
           </div>
 
           <div className={`${filtersOpen ? "max-h-96 opacity-100 mt-3" : "max-h-0 opacity-0 mt-0"} sm:max-h-none sm:opacity-100 sm:mt-3 overflow-hidden transition-all duration-300 ease-out`}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               <label className={`text-[11px] font-medium ${facility !== "all" ? "text-blue-400" : "text-slate-500"}`}>
                 Facility{facility !== "all" && " ●"}
                 <select
@@ -975,19 +1033,6 @@ export default function MaterialsPage() {
                   <option value="14">≤ 14 days</option>
                 </select>
               </label>
-              <label className="text-[11px] text-slate-500">
-                Sort
-                <select
-                  value={sort}
-                  onChange={e => setSort(e.target.value)}
-                  className="mt-1 w-full h-9 bg-slate-900 border border-slate-800 rounded-md px-2 text-[12px] text-slate-200"
-                >
-                  <option value="risk">Spoilage Risk</option>
-                  <option value="expiry">Expiry Date</option>
-                  <option value="qty">Quantity</option>
-                  <option value="facility">Facility</option>
-                </select>
-              </label>
             </div>
           </div>
         </div>
@@ -1017,7 +1062,7 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
                 <button
                   onClick={() => setTransferLotTarget(l)}
                   disabled={l.status === "expired"}
@@ -1036,22 +1081,16 @@ export default function MaterialsPage() {
           <table className="bp-data-table w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500 sticky top-0 z-10">
               <tr>
-                {[
-                  { label: "Lot ID",     right: false, active: false },
-                  { label: "Ingredient", right: false, active: !!query.trim() },
-                  { label: "Facility",   right: false, active: facility !== "all" },
-                  { label: "Qty (kg)",   right: true,  active: sort === "qty" },
-                  { label: "Expiry",     right: false, active: sort === "expiry" },
-                  { label: "Days left",  right: true,  active: daysFilter !== "All" || sort === "expiry" },
-                  { label: "Storage",    right: false, active: storage !== "All" },
-                  { label: "Risk score", right: false, active: sort === "risk" },
-                  { label: "Status",     right: false, active: risk !== "All" },
-                  { label: "Actions",    right: false, active: false },
-                ].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-left font-semibold ${h.right ? "text-right" : ""} ${h.active ? "text-blue-400 border-b-2 border-blue-500" : "border-b-2 border-transparent"}`}>
-                    {h.label}{h.active && <span className="ml-1">↑</span>}
-                  </th>
-                ))}
+                <th className="px-3 py-2 text-left font-semibold">Lot ID</th>
+                <SortTh label="Ingredient"  col="ingredient" activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Facility"    col="facility"   activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Qty (kg)"    col="qty"        activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
+                <SortTh label="Expiry"      col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Days left"   col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
+                <SortTh label="Storage"     col="storage"    activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Risk score"  col="risk"       activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Status"      col="status"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <th className="px-3 py-2 text-left font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1072,7 +1111,7 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
                       <button
                         onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
                         disabled={l.status === "expired"}

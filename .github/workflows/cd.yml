@@ -16,7 +16,7 @@
 #   .env.example             -> rebuild ALL services (safer)
 #   infra/supabase/schema.sql -> apply schema migration (idempotent: CREATE IF NOT EXISTS / DROP TRIGGER IF EXISTS)
 #   infra/supabase/seed.sql   -> re-apply SQL seed   (idempotent: ON CONFLICT DO NOTHING)
-#   infra/seed_*.py,
+#   backend/scripts/seed_*.py,
 #   infra/event_stream.py    -> warn only; destructive scripts must be run by hand
 #   backend/alembic/versions/** -> `alembic upgrade head` (versioned forward migrations)
 #   backend/alembic/{ini,env.py,script.mako} -> same; treat config changes as if a migration ran
@@ -86,8 +86,8 @@ jobs:
             seed_sql:
               - 'infra/supabase/seed.sql'
             seed_scripts:
-              - 'infra/seed_lots.py'
-              - 'infra/seed_demo.py'
+              - 'backend/scripts/seed_lots.py'
+              - 'backend/scripts/seed_demo.py'
               - 'infra/event_stream.py'
             alembic_versions:
               - 'backend/alembic/versions/**'
@@ -198,11 +198,11 @@ jobs:
       - name: Warn on python seed script changes
         if: steps.changes.outputs.seed_scripts == 'true'
         run: |
-          echo "::warning::Python seed scripts changed (infra/seed_*.py / infra/event_stream.py)."
+          echo "::warning::Python seed scripts changed (backend/scripts/seed_*.py / infra/event_stream.py)."
           echo "::warning::These wipe + reseed; not auto-run by CD."
           echo "::warning::Run manually if needed:"
-          echo "::warning::  cd $DEPLOY_DIR && uv run infra/seed_lots.py"
-          echo "::warning::  cd $DEPLOY_DIR && uv run infra/seed_demo.py"
+          echo "::warning::  cd $DEPLOY_DIR/backend && uv run scripts/seed_lots.py"
+          echo "::warning::  cd $DEPLOY_DIR/backend && uv run scripts/seed_demo.py"
 
       # ---- Service rebuilds ----
       # Each step is conditional and a no-op when its paths didn't change.

@@ -17,6 +17,7 @@ import {
   fetchFacilityUtilization,
   fetchIngredients,
   fetchLotSubstitutions,
+  fetchLotUsedIn,
   fetchLots,
   fetchNegotiations,
   fetchOrders,
@@ -37,6 +38,7 @@ import {
   type BackendLoopCard,
   type BackendNetworkSummary,
   type BackendNegotiationDraft,
+  type BackendFormulaUsage,
   type BackendOrder,
   type BackendRetailer,
   type BackendSchedule,
@@ -106,8 +108,27 @@ export function useEsgCounter(): Result<Partial<Kpis>> {
   return useBackend(fetchEsgCounter, {});
 }
 
-export function useSchedules(): Result<BackendSchedule[]> {
-  return useBackend(fetchSchedules, []);
+export function useSchedules(refreshKey = 0): Result<BackendSchedule[]> {
+  const [data, setData] = useState<BackendSchedule[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    let alive = true;
+    fetchSchedules().then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey]);
+
+  return { data, status };
 }
 
 export function useEsgPatterns(): Result<BackendEsgPattern[]> {
@@ -128,6 +149,34 @@ export function useLotSubstitutions(lotId: string | null): {
     setData([]);
     let alive = true;
     fetchLotSubstitutions(lotId).then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => { alive = false; };
+  }, [lotId]);
+
+  return { data, status };
+}
+
+/** Fetch products/recipes that use this lot's ingredient. Re-fetches when lotId changes. */
+export function useLotUsedIn(lotId: string | null): {
+  data: BackendFormulaUsage[];
+  status: BackendStatus;
+} {
+  const [data, setData] = useState<BackendFormulaUsage[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    if (!lotId) return;
+    setStatus("loading");
+    setData([]);
+    let alive = true;
+    fetchLotUsedIn(lotId).then((res) => {
       if (!alive) return;
       if (res !== null) {
         setData(res);

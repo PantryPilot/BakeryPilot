@@ -1,0 +1,231 @@
+# Bill of materials per SKU (3-6 ingredients each).
+#
+# This data has no public machine-readable source. Production recipes
+# are proprietary trade secrets; no public API or website publishes the
+# exact gram-per-unit ingredient ratios for ACE Bakery / Stonefire /
+# Wonder / D'Italiano / Country Harvest / Casa Mendosa SKUs. The values
+# below are engineering-judgment proxies calibrated against:
+#   - Each SKU's published net weight (e.g. ACE baguette ~250g, Wonder
+#     loaf ~675g). Pre-bake dough mass exceeds finished mass by ~12-18%
+#     (water lost during proof + bake), so kg_per_unit values are
+#     deliberately set BELOW retail pack weight.
+#   - Standard bakery formulas from public references (King Arthur,
+#     industry training manuals) for ratios of flour : yeast : salt :
+#     water : fat.
+#
+# Every row carries `source: engineering_judgment_demo_only` so observers
+# can audit-trail it as non-real.
+#
+# Schema target: production_formulas (sku_id, ingredient_id, kg_per_unit).
+# FKs require both the sku_id and ingredient_id to exist; seed.sql seeds
+# both before this YAML is loaded.
+
+production_formulas:
+  # ACE White Baguette (single ~250g baguette)
+  - { sku_id: sku-ace-baguette-classic,           ingredient_id: ing-flour-bread,        kg_per_unit: 0.180, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-baguette-classic,           ingredient_id: ing-yeast-instant,      kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-baguette-classic,           ingredient_id: ing-salt-kosher,        kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+
+  # ACE Rustic Italian Oval (single ~500g loaf)
+  - { sku_id: sku-ace-rustic-italian-oval,        ingredient_id: ing-flour-bread,        kg_per_unit: 0.350, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rustic-italian-oval,        ingredient_id: ing-flour-whole-wheat,  kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rustic-italian-oval,        ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rustic-italian-oval,        ingredient_id: ing-salt-kosher,        kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rustic-italian-oval,        ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+
+  # ACE Rosemary Focaccia (single ~450g flat loaf)
+  - { sku_id: sku-ace-rosemary-focaccia,          ingredient_id: ing-flour-bread,        kg_per_unit: 0.320, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rosemary-focaccia,          ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rosemary-focaccia,          ingredient_id: ing-salt-sea,           kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-rosemary-focaccia,          ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.045, source: engineering_judgment_demo_only }
+
+  # ACE Ciabatta Piccolo 6-pack (6x ~85g rolls)
+  - { sku_id: sku-ace-ciabatta-piccolo-6pk,       ingredient_id: ing-flour-bread,        kg_per_unit: 0.420, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-ciabatta-piccolo-6pk,       ingredient_id: ing-yeast-instant,      kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-ciabatta-piccolo-6pk,       ingredient_id: ing-salt-kosher,        kg_per_unit: 0.010, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-ciabatta-piccolo-6pk,       ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.025, source: engineering_judgment_demo_only }
+
+  # ACE Sourdough Bistro (single ~600g loaf)
+  - { sku_id: sku-ace-sourdough-bistro,           ingredient_id: ing-flour-bread,        kg_per_unit: 0.450, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-sourdough-bistro,           ingredient_id: ing-flour-whole-wheat,  kg_per_unit: 0.090, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-sourdough-bistro,           ingredient_id: ing-salt-kosher,        kg_per_unit: 0.011, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-sourdough-bistro,           ingredient_id: ing-yeast-active-dry,   kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+
+  # Stonefire Original Naan 2-pack (2x ~110g; cultured-milk dough)
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-flour-ap,           kg_per_unit: 0.180, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-yogurt-plain,       kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-milk-whole,         kg_per_unit: 0.030, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-yeast-instant,      kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-salt-kosher,        kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-original-naan-2pk,    ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.012, source: engineering_judgment_demo_only }
+
+  # Stonefire Mini Naan 8-pack (8x ~45g rounds)
+  - { sku_id: sku-stonefire-mini-naan-8pk,        ingredient_id: ing-flour-ap,           kg_per_unit: 0.300, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-mini-naan-8pk,        ingredient_id: ing-yogurt-plain,       kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-mini-naan-8pk,        ingredient_id: ing-milk-whole,         kg_per_unit: 0.045, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-mini-naan-8pk,        ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-mini-naan-8pk,        ingredient_id: ing-salt-kosher,        kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+
+  # Stonefire Naan Dippers Original (~225g bag of crispy strips)
+  - { sku_id: sku-stonefire-naan-dippers-original,ingredient_id: ing-flour-ap,           kg_per_unit: 0.200, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-naan-dippers-original,ingredient_id: ing-milk-powder,        kg_per_unit: 0.012, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-naan-dippers-original,ingredient_id: ing-yeast-instant,      kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-naan-dippers-original,ingredient_id: ing-salt-kosher,        kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-naan-dippers-original,ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.018, source: engineering_judgment_demo_only }
+
+  # Stonefire Artisan Pizza Crust 2-pack (2x ~200g par-baked rounds)
+  - { sku_id: sku-stonefire-pizza-crust-2pk,      ingredient_id: ing-flour-bread,        kg_per_unit: 0.300, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-pizza-crust-2pk,      ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-pizza-crust-2pk,      ingredient_id: ing-salt-kosher,        kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-pizza-crust-2pk,      ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.015, source: engineering_judgment_demo_only }
+
+  # Wonder Classic White Bread (single 675g loaf)
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-flour-ap,           kg_per_unit: 0.420, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.030, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-yeast-instant,      kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-salt-kosher,        kg_per_unit: 0.009, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-oil-vegetable,      kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+
+  # D'Italiano Hot Dog Buns 8-pack (8x ~50g buns)
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-flour-bread,        kg_per_unit: 0.260, source: engineering_judgment_demo_only }
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.025, source: engineering_judgment_demo_only }
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-salt-kosher,        kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-milk-whole,         kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-eggs-whole,         kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+
+  # Country Harvest 12 Grain Bread (single 675g sliced loaf)
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-flour-whole-wheat,  kg_per_unit: 0.260, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-flour-ap,           kg_per_unit: 0.150, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-oats-rolled,        kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-flax-seeds,         kg_per_unit: 0.015, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-sunflower-seeds,    kg_per_unit: 0.012, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-salt-kosher,        kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-honey,              kg_per_unit: 0.018, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-molasses,           kg_per_unit: 0.012, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-sesame-seeds,       kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-pumpkin-seeds,      kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-chia-seeds,         kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-12-grain-loaf,  ingredient_id: ing-bran-wheat,         kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+
+  # Wonder Classic White — add shortening + milk powder (standard enriched-bread additions)
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-shortening,         kg_per_unit: 0.018, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-classic-white-loaf,      ingredient_id: ing-milk-powder,        kg_per_unit: 0.015, source: engineering_judgment_demo_only }
+
+  # D'Italiano Hot Dog Buns — shortening for soft crumb
+  - { sku_id: sku-d-italiano-hot-dog-buns-8pk,    ingredient_id: ing-shortening,         kg_per_unit: 0.022, source: engineering_judgment_demo_only }
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # NEW SKUs (10 products covering muffins, croissants, cookies, quick-breads,
+  # bagels and scones).  Source of calibration: standard North American bakery
+  # training manuals (King Arthur Flour, CIA Baking & Pastry, FGF
+  # SKU net-weight declarations).
+  # ──────────────────────────────────────────────────────────────────────────────
+
+  # ACE Blueberry Muffin 4-pack (4 × ~80g muffins)
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-flour-ap,           kg_per_unit: 0.200, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.080, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-blueberry-frozen,   kg_per_unit: 0.120, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-eggs-whole,         kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-milk-whole,         kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-baking-powder,      kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-blueberry-muffin-4pk,        ingredient_id: ing-salt-kosher,        kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+
+  # ACE All-Butter Croissant 4-pack (4 × ~65g croissants; laminated dough)
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-flour-pastry,       kg_per_unit: 0.200, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-butter-frozen,      kg_per_unit: 0.100, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-eggs-whole,         kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-milk-whole,         kg_per_unit: 0.035, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.018, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-yeast-instant,      kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-butter-croissant-4pk,         ingredient_id: ing-salt-kosher,        kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+
+  # Wonder Oatmeal Raisin Cookies 300g (~12 cookies)
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-oats-rolled,        kg_per_unit: 0.140, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-flour-ap,           kg_per_unit: 0.080, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-sugar-brown-light,  kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.070, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-eggs-whole,         kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-raisins,            kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-baking-soda,        kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-cinnamon-ground,    kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-oatmeal-raisin-cookie,     ingredient_id: ing-salt-kosher,        kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+
+  # Wonder Chocolate Chip Cookies 300g (~12 cookies)
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-flour-ap,           kg_per_unit: 0.130, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.050, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-sugar-brown-dark,   kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.090, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-eggs-whole,         kg_per_unit: 0.025, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-chocolate-chips-dark,kg_per_unit: 0.110, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-baking-soda,        kg_per_unit: 0.004, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-choc-chip-cookie,          ingredient_id: ing-salt-kosher,        kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+
+  # Wonder Banana Bread Loaf 450g
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-flour-ap,           kg_per_unit: 0.200, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-banana-fresh,       kg_per_unit: 0.180, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.080, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-eggs-whole,         kg_per_unit: 0.050, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-walnuts-halves,     kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-baking-soda,        kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-wonder-banana-bread-loaf,         ingredient_id: ing-salt-kosher,        kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+
+  # Stonefire Sesame Bagels 4-pack (4 × ~95g bagels)
+  - { sku_id: sku-stonefire-sesame-bagel-4pk,       ingredient_id: ing-flour-bread,        kg_per_unit: 0.300, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-sesame-bagel-4pk,       ingredient_id: ing-sesame-seeds,       kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-sesame-bagel-4pk,       ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.012, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-sesame-bagel-4pk,       ingredient_id: ing-yeast-instant,      kg_per_unit: 0.005, source: engineering_judgment_demo_only }
+  - { sku_id: sku-stonefire-sesame-bagel-4pk,       ingredient_id: ing-salt-kosher,        kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+
+  # Country Harvest Cinnamon Raisin Bread (single 675g loaf)
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-flour-whole-wheat,  kg_per_unit: 0.250, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-flour-ap,           kg_per_unit: 0.130, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-raisins,            kg_per_unit: 0.065, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-honey,              kg_per_unit: 0.025, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-cinnamon-ground,    kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-eggs-whole,         kg_per_unit: 0.015, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-yeast-active-dry,   kg_per_unit: 0.006, source: engineering_judgment_demo_only }
+  - { sku_id: sku-country-harvest-cinnamon-raisin,  ingredient_id: ing-salt-kosher,        kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+
+  # ACE Lemon Poppy Seed Muffin 4-pack (4 × ~80g muffins)
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-flour-ap,           kg_per_unit: 0.190, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.075, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-lemon-fresh,        kg_per_unit: 0.050, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-eggs-whole,         kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.055, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-milk-whole,         kg_per_unit: 0.055, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-poppy-seeds,        kg_per_unit: 0.010, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-baking-powder,      kg_per_unit: 0.007, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-lemon-poppyseed-muffin-4pk,   ingredient_id: ing-salt-kosher,        kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+
+  # ACE Fudge Brownie 6-pack (6 × ~50g brownies)
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-cocoa-powder,       kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-chocolate-chips-dark,kg_per_unit: 0.080, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.070, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.100, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-eggs-whole,         kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-flour-ap,           kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-vanilla-extract,    kg_per_unit: 0.003, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-baking-soda,        kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-chocolate-brownie-6pk,         ingredient_id: ing-salt-kosher,        kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+
+  # ACE Cranberry Almond Scone 4-pack (4 × ~75g scones; buttermilk dough)
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-flour-pastry,       kg_per_unit: 0.190, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-butter-unsalted,    kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-buttermilk,         kg_per_unit: 0.060, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-cranberry-dried,    kg_per_unit: 0.050, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-almonds-sliced,     kg_per_unit: 0.030, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-sugar-granulated,   kg_per_unit: 0.040, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-eggs-whole,         kg_per_unit: 0.020, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-almond-extract,     kg_per_unit: 0.002, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-baking-powder,      kg_per_unit: 0.008, source: engineering_judgment_demo_only }
+  - { sku_id: sku-ace-cranberry-almond-scone-4pk,    ingredient_id: ing-salt-kosher,        kg_per_unit: 0.004, source: engineering_judgment_demo_only }

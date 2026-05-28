@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import {
   Pill,
   Dot,
@@ -181,19 +181,24 @@ describe('ActionCard', () => {
     expect(screen.getByText('Qty')).toBeInTheDocument()
   })
 
-  test('Confirm button calls onConfirm and shows confirmed state', () => {
-    const onConfirm = jest.fn()
+  test('Confirm button calls onConfirm and shows confirmed state', async () => {
+    const onConfirm = jest.fn().mockResolvedValue(undefined)
     render(<ActionCard card={sampleCard} onConfirm={onConfirm} />)
     fireEvent.click(screen.getByText('Confirm'))
     expect(onConfirm).toHaveBeenCalledWith(sampleCard)
-    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    })
   })
 
-  test('Reject button calls onReject', () => {
-    const onReject = jest.fn()
+  test('Reject button calls onReject', async () => {
+    const onReject = jest.fn().mockResolvedValue(undefined)
     render(<ActionCard card={sampleCard} onReject={onReject} />)
     fireEvent.click(screen.getByText('Reject'))
     expect(onReject).toHaveBeenCalledWith(sampleCard)
+    await waitFor(() => {
+      expect(screen.getByText('Rejected')).toBeInTheDocument()
+    })
   })
 
   test('Edit button calls onEdit', () => {

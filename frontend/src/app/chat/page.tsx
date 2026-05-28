@@ -4,7 +4,8 @@ import { Icon } from "../../components/Icon";
 import { Pill, Dot, ToolBreadcrumbs, ActionCard } from "../../components/atoms";
 import { ChatBox } from "../../components/ChatDrawer";
 import { ActionCardData } from "../../components/atoms";
-import { streamChat, fetchActionCard, adaptActionCard } from "../../lib/api";
+import { streamChat, fetchActionCard, adaptActionCard, confirmActionCard, rejectActionCard } from "../../lib/api";
+import { useApp } from "../../lib/context";
 
 interface Message {
   role: "user" | "assistant";
@@ -95,7 +96,21 @@ function ThinkingIndicator({ agent }: { agent: string }) {
   );
 }
 
-function ChatMessageFull({ m }: { m: Message }) {
+function chatMessageDisplayText(m: Message): string {
+  const stripped = m.text.replace(/```action_card\s*\{[\s\S]*?\}\s*```/g, "").trim();
+  if (stripped) return stripped;
+  return m.card?.flags?.[0]?.text ?? "";
+}
+
+function ChatMessageFull({
+  m,
+  onConfirmCard,
+  onRejectCard,
+}: {
+  m: Message;
+  onConfirmCard: (c: ActionCardData) => Promise<void>;
+  onRejectCard: (c: ActionCardData) => Promise<void>;
+}) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -115,13 +130,22 @@ function ChatMessageFull({ m }: { m: Message }) {
         <span className="text-[11px] font-mono text-slate-500">{m.time}</span>
       </div>
       {m.tools && <div className="pl-8"><ToolBreadcrumbs tools={m.tools}/></div>}
-      <div className="pl-8 text-[14px] text-slate-200 leading-relaxed whitespace-pre-wrap">{m.text}</div>
-      {m.card && <div className="pl-8 pt-1"><ActionCard card={m.card}/></div>}
+      {chatMessageDisplayText(m) && (
+        <div className="pl-8 text-[14px] text-slate-200 leading-relaxed whitespace-pre-wrap">
+          {chatMessageDisplayText(m)}
+        </div>
+      )}
+      {m.card && (
+        <div className="pl-8 pt-1">
+          <ActionCard card={m.card} onConfirm={onConfirmCard} onReject={onRejectCard} />
+        </div>
+      )}
     </div>
   );
 }
 
 export default function ChatPage() {
+  const { bumpScheduleRefresh, setPendingScheduleCardId, setShowScheduleProposal } = useApp();
   const [input, setInput] = useState("");
   const [voice, setVoice] = useState(false);
   const [thread, setThread] = useState<Message[]>([
@@ -138,6 +162,25 @@ export default function ChatPage() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [thread]);
+
+  const handleConfirmCard = async (card: ActionCardData) => {
+    if (!card.cardId) throw new Error("missing card id");
+    const result = await confirmActionCard(card.cardId);
+    if (!result) throw new Error("confirm failed");
+    bumpScheduleRefresh();
+    setThread(t =>
+      t.map(msg => msg.card?.cardId === card.cardId ? { ...msg, card: adaptActionCard(result) } : msg),
+    );
+  };
+
+  const handleRejectCard = async (card: ActionCardData) => {
+    if (!card.cardId) throw new Error("missing card id");
+    const result = await rejectActionCard(card.cardId);
+    if (!result) throw new Error("reject failed");
+    setThread(t =>
+      t.map(msg => msg.card?.cardId === card.cardId ? { ...msg, card: adaptActionCard(result) } : msg),
+    );
+  };
 
   const send = async () => {
     if (!input.trim() || isThinking) return;
@@ -167,11 +210,22 @@ export default function ChatPage() {
         const raw = await fetchActionCard(cardId);
         if (!raw) return;
         const card = adaptActionCard(raw);
+        const summary = card.flags?.[0]?.text ?? "";
+        if (raw.kind === "schedule_change") {
+          setPendingScheduleCardId(cardId);
+          setShowScheduleProposal(true);
+        }
         setThread(t => {
           const next = [...t];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, card };
+            const text = last.text.replace(/```action_card\s*\{[\s\S]*?\}\s*```/g, "").trim() || summary || last.text;
+            next[next.length - 1] = {
+              ...last,
+              card,
+              text,
+              agent: raw.kind === "schedule_change" ? "SchedulerAgent" : last.agent,
+            };
           }
           return next;
         });
@@ -205,7 +259,14 @@ export default function ChatPage() {
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
           <div className="max-w-[760px] mx-auto space-y-5">
-            {thread.map((m, i) => <ChatMessageFull key={i} m={m}/>)}
+            {thread.map((m, i) => (
+              <ChatMessageFull
+                key={i}
+                m={m}
+                onConfirmCard={handleConfirmCard}
+                onRejectCard={handleRejectCard}
+              />
+            ))}
             {isThinking && <ThinkingIndicator agent="OrchestratorAgent"/>}
           </div>
         </div>
@@ -224,7 +285,13 @@ export default function ChatPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {thread.filter(m => m.card).at(-1)?.card
-            ? <ActionCard card={thread.filter(m => m.card).at(-1)!.card!}/>
+            ? (
+              <ActionCard
+                card={thread.filter(m => m.card).at(-1)!.card!}
+                onConfirm={handleConfirmCard}
+                onReject={handleRejectCard}
+              />
+            )
             : <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-[12px] text-slate-500">No action cards yet — ask me to place an order, schedule a run, or substitute a lot.</div>
           }
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">

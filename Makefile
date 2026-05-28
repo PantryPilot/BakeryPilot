@@ -50,7 +50,7 @@ schema.migrate:
 #                                       production_orders (8 incl. QA scenario),
 #                                       app_users, user_settings
 #   2. seed_toronto_facilities.py   -- facilities (live FGF + Nominatim;
-#                                       caches under infra/data/cache/)
+#                                       caches under backend/scripts/data/cache/)
 #   3. seed_synthetic.py            -- production_lines, warehouse_costs,
 #                                       allergen_changeovers, production_formulas
 #                                       (engineering_judgment_demo_only)
@@ -70,77 +70,77 @@ schema.migrate:
 schema.seed:
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
-	$(UV) run infra/seed_toronto_facilities.py
-	$(UV) run infra/seed_synthetic.py
+	$(UV) run backend/scripts/seed_toronto_facilities.py
+	$(UV) run backend/scripts/seed_synthetic.py
 	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) \
 		-f /docker-entrypoint-initdb.d/seed.sql
-	$(UV) run infra/seed_lots.py
-	$(UV) run infra/seed_demo.py
+	$(UV) run backend/scripts/seed_lots.py
+	$(UV) run backend/scripts/seed_demo.py
 
 seed.lots:
-	$(UV) run infra/seed_lots.py
+	$(UV) run backend/scripts/seed_lots.py
 
 seed.events:
 	$(UV) run infra/event_stream.py
 
 seed.demo:
-	$(UV) run infra/seed_demo.py
+	$(UV) run backend/scripts/seed_demo.py
 
 # seed.synthetic loads the four labelled-synthetic tables from
-# infra/data/synthetic/*.yaml. Run AFTER seed.toronto.facilities so the FK
+# backend/scripts/data/synthetic/*.yaml. Run AFTER seed.toronto.facilities so the FK
 # from production_lines -> facilities resolves.
 seed.synthetic:
-	$(UV) run infra/seed_synthetic.py
+	$(UV) run backend/scripts/seed_synthetic.py
 
 seed.toronto:
-	$(UV) run infra/seed_toronto_suppliers.py
+	$(UV) run backend/scripts/seed_toronto_suppliers.py
 
 seed.toronto.retailers:
-	$(UV) run infra/seed_toronto_retailers.py
+	$(UV) run backend/scripts/seed_toronto_retailers.py
 
 # Live-fetches FGF Brands' Toronto address from fgfbrands.com/contact and
 # geocodes all four plant locations via OpenStreetMap Nominatim.
-# On network failure falls back to cached snapshots in infra/data/cache/.
+# On network failure falls back to cached snapshots in backend/scripts/data/cache/.
 seed.toronto.facilities:
-	$(UV) run infra/seed_toronto_facilities.py
+	$(UV) run backend/scripts/seed_toronto_facilities.py
 
 seed.toronto.skus:
-	$(UV) run infra/seed_toronto_skus.py
+	$(UV) run backend/scripts/seed_toronto_skus.py
 
 # Live-fetches daily commodity OHLCV from Yahoo Finance (wheat, sugar, corn,
 # soybean oil, natural gas, crude) and upserts into commodity_prices. No API
 # key required. Re-run any time to refresh.
 seed.commodity_prices:
-	$(UV) run infra/seed_commodity_prices.py
+	$(UV) run backend/scripts/seed_commodity_prices.py
 
 # Live-fetches daily FX reference rates (CAD/USD, CAD/EUR) from the
 # Bank of Canada Valet API into commodity_prices. No API key required.
 seed.fx_rates:
-	$(UV) run infra/seed_fx_rates.py
+	$(UV) run backend/scripts/seed_fx_rates.py
 
 # Live-fetches 21-day weather (7 past + 14 forecast) per facility from
 # Open-Meteo and writes weather-risk rows to disruption_signals. No API
 # key required. Requires facilities.latitude/longitude (seed.toronto.facilities).
 seed.weather_signals:
-	$(UV) run infra/seed_weather_signals.py
+	$(UV) run backend/scripts/seed_weather_signals.py
 
 # Live-queries the GDELT 2.0 DOC API for negative-tone news on supply-chain
 # keywords (wheat shortage, port congestion, freight strike, ...) and writes
 # news-risk rows to disruption_signals. No API key required.
 seed.news_signals:
-	$(UV) run infra/seed_news_signals.py
+	$(UV) run backend/scripts/seed_news_signals.py
 
 # Live-fetches daily ECB reference FX rates for 8 USD pairs (EUR, GBP, JPY,
 # CHF, CAD, MXN, CNY, AUD) from Frankfurter.app. Documented public API,
 # no API key required. Complements seed.fx_rates (which is CAD-base only).
 seed.fx_world:
-	$(UV) run infra/seed_fx_world.py
+	$(UV) run backend/scripts/seed_fx_world.py
 
 # Live-fetches official US Federal Reserve commodity + macro series (WTI crude,
 # Henry Hub natgas, IMF wheat, US food CPI, CAD/USD) into commodity_prices.
 # Requires FRED_API_KEY in .env (free signup at fred.stlouisfed.org).
 seed.fred_prices:
-	$(UV) run infra/seed_fred_prices.py
+	$(UV) run backend/scripts/seed_fred_prices.py
 
 # Convenience: open a psql shell against the running postgres container.
 db.psql:

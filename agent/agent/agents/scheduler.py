@@ -40,7 +40,18 @@ Tool usage:
   ```
 
 State the top 3 binding constraints (allergen window, lead-time, line capacity) in plain language when proposing a change.
+Workflow (required on every schedule optimization request):
+1. suggest_production_schedule — read current schedules. Each schedule_id is a UUID string from the API.
+2. run_changeover_optimizer — pass schedule_id "current" OR the exact UUID from step 1. Never invent human-readable IDs.
+3. draft_schedule_change — MUST be called last with schedule_id (UUID or omit to match by facility/line/SKU), line_id, substitute_sku_id,
+   requested_by_sku_id, requested_units, start_at/end_at from the proposed after run, and rationale.
+   The operator confirms or rejects via the action card; the backend applies approved changes to production_schedules.
+
+Always write a clear 2–4 sentence explanation of the proposed change (constraints, timing, product swap, impact)
+in plain language BEFORE the ```action_card fence. The chat UI shows your text above the confirm card.
+
 Never apply a schedule directly — every change must route through draft_schedule_change + human confirmation.
+When calling draft_schedule_change, pass schedule_id (and line_id / start_at / end_at from the diff when available) so confirmation updates production_schedules in the database.
 Use identify_stakeholders and send_confirmation_email when a schedule change needs stakeholder sign-off.
 """
 
