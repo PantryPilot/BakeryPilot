@@ -512,7 +512,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       </div>
 
       <div className="border-t border-slate-800 px-3 pt-2.5 pb-3 shrink-0">
-        <div className={`rounded-xl border border-slate-700 bg-slate-900/80 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
+        <div className={`rounded-xl border border-slate-700 bg-slate-900/80 ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
           <textarea
             ref={textareaRef}
             value={input}
@@ -522,7 +522,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
             }}
             placeholder="Ask anything… (Shift+Enter for new line)"
             rows={2}
-            className="w-full bg-transparent resize-none outline-none text-[14px] leading-relaxed text-slate-100 placeholder:text-slate-500 px-3 pt-2.5 pb-1 block"
+            className="w-full bg-transparent resize-none outline-none focus:outline-none focus:ring-0 text-[14px] leading-relaxed text-slate-100 placeholder:text-slate-500 px-3 pt-2.5 pb-1 block"
             style={{ minHeight: 56, maxHeight: 160 }}
           />
           <div className="flex items-center justify-between px-2 pb-2">
