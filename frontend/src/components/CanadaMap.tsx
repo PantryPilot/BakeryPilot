@@ -2,115 +2,90 @@
 
 import {
   buildCanadaPath,
+  buildHudsonBayPath,
   buildNewfoundlandPath,
+  buildProvinceDividerPaths,
+  buildUSBorderPath,
+  CANVAS_H,
+  CANVAS_W,
   CONTEXT_CITIES,
   GREAT_LAKES,
-  HUDSON_BAY,
   project,
   projectEllipse,
 } from "../lib/geo";
 
 const CANADA_PATH = buildCanadaPath();
 const NEWFOUNDLAND_PATH = buildNewfoundlandPath();
+const HUDSON_BAY_PATH = buildHudsonBayPath();
+const US_BORDER_PATH = buildUSBorderPath();
+const PROVINCE_DIVIDER_PATHS = buildProvinceDividerPaths();
 
 /**
  * Geographic basemap for FlowSight.
  *
- * Renders Canada's outline, the Great Lakes, Hudson Bay, the US border, and a
- * graticule with major city dots — all in SVG so it scales with the parent
- * <svg viewBox>. Place this as the first child of the FlowSight <svg>.
+ * Order matters: ocean rect first, then Canada land, then water carve-outs
+ * (Hudson Bay, Great Lakes), then borders, then labels.
  */
 export function CanadaMap() {
-  // Latitude graticule at 50°N and 60°N — visual reference for the operator.
-  const grat50Left = project(-141, 50);
-  const grat50Right = project(-52, 50);
-  const grat60Left = project(-141, 60);
-  const grat60Right = project(-52, 60);
-
-  // US border — runs along the 49th parallel from BC to Manitoba, then drops
-  // along the Great Lakes shoreline. Drawn as a faint dashed line.
-  const borderPts: Array<[number, number]> = [
-    [-123, 49], [-117, 49], [-110, 49], [-100, 49], [-95, 49],
-    [-90, 48], [-87, 46], [-84, 46], [-83, 42], [-82, 42],
-    [-79, 43], [-77, 43.5], [-75, 45], [-71, 45], [-67, 45.2],
-  ];
-  const borderPath = borderPts
-    .map(([lng, lat], i) => {
-      const { x, y } = project(lng, lat);
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  const hudson = projectEllipse(HUDSON_BAY.lng, HUDSON_BAY.lat, HUDSON_BAY.rxDeg, HUDSON_BAY.ryDeg);
-
   return (
     <g aria-hidden>
       <defs>
-        <linearGradient id="landGradient" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#13192a" />
-          <stop offset="100%" stopColor="#0f1422" />
+        <linearGradient id="oceanGradient" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#050811" />
+          <stop offset="100%" stopColor="#070d1c" />
         </linearGradient>
-        <radialGradient id="waterGradient" cx="50%" cy="50%" r="60%">
-          <stop offset="0%" stopColor="#091321" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#070a11" stopOpacity="0" />
-        </radialGradient>
+        <linearGradient id="landGradient" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#1a2538" />
+          <stop offset="100%" stopColor="#141c2c" />
+        </linearGradient>
       </defs>
 
-      {/* Latitude graticule */}
-      <line
-        x1={grat50Left.x}
-        y1={grat50Left.y}
-        x2={grat50Right.x}
-        y2={grat50Right.y}
-        stroke="#1e293b"
-        strokeOpacity="0.35"
-        strokeDasharray="2 4"
-        strokeWidth="0.6"
-      />
-      <line
-        x1={grat60Left.x}
-        y1={grat60Left.y}
-        x2={grat60Right.x}
-        y2={grat60Right.y}
-        stroke="#1e293b"
-        strokeOpacity="0.35"
-        strokeDasharray="2 4"
-        strokeWidth="0.6"
-      />
+      {/* Ocean background */}
+      <rect x="0" y="0" width={CANVAS_W} height={CANVAS_H} fill="url(#oceanGradient)" />
 
       {/* Canada landmass */}
       <path
         d={CANADA_PATH}
         fill="url(#landGradient)"
-        stroke="#334155"
-        strokeOpacity="0.7"
+        stroke="#3a4a66"
+        strokeOpacity="0.65"
         strokeWidth="1"
         strokeLinejoin="round"
       />
 
-      {/* Newfoundland */}
+      {/* Newfoundland (separate island) */}
       <path
         d={NEWFOUNDLAND_PATH}
         fill="url(#landGradient)"
-        stroke="#334155"
-        strokeOpacity="0.7"
+        stroke="#3a4a66"
+        strokeOpacity="0.65"
         strokeWidth="1"
         strokeLinejoin="round"
       />
 
-      {/* Hudson Bay — drawn over the land path to "carve out" water */}
-      <ellipse
-        cx={hudson.cx}
-        cy={hudson.cy}
-        rx={hudson.rx}
-        ry={hudson.ry}
-        fill="#070a11"
-        stroke="#1e293b"
-        strokeOpacity="0.5"
-        strokeWidth="0.5"
+      {/* Province dividers — very subtle */}
+      {PROVINCE_DIVIDER_PATHS.map((d, i) => (
+        <path
+          key={i}
+          d={d}
+          fill="none"
+          stroke="#2a3650"
+          strokeOpacity="0.55"
+          strokeWidth="0.6"
+          strokeDasharray="3 3"
+        />
+      ))}
+
+      {/* Hudson Bay carved out of the land */}
+      <path
+        d={HUDSON_BAY_PATH}
+        fill="#070d1c"
+        stroke="#3a4a66"
+        strokeOpacity="0.55"
+        strokeWidth="0.8"
       />
 
-      {/* Great Lakes */}
+      {/* Great Lakes carved out */}
       {GREAT_LAKES.map((lake) => {
         const e = projectEllipse(lake.lng, lake.lat, lake.rxDeg, lake.ryDeg);
         return (
@@ -120,37 +95,38 @@ export function CanadaMap() {
             cy={e.cy}
             rx={e.rx}
             ry={e.ry}
-            fill="#070a11"
-            stroke="#1e293b"
-            strokeOpacity="0.6"
-            strokeWidth="0.5"
+            fill="#070d1c"
+            stroke="#3a4a66"
+            strokeOpacity="0.55"
+            strokeWidth="0.6"
           />
         );
       })}
 
-      {/* US border — faint dashed line */}
+      {/* US border — faint dashed (only on the parts that aren't the lake shorelines) */}
       <path
-        d={borderPath}
+        d={US_BORDER_PATH}
         fill="none"
         stroke="#475569"
-        strokeOpacity="0.45"
-        strokeDasharray="3 4"
-        strokeWidth="0.6"
+        strokeOpacity="0.35"
+        strokeDasharray="4 4"
+        strokeWidth="0.7"
       />
 
-      {/* Context city dots + labels (Vancouver, Calgary, Winnipeg, Halifax, etc.) */}
+      {/* Context city dots + labels */}
       {CONTEXT_CITIES.map((c) => {
         const { x, y } = project(c.lng, c.lat);
         return (
           <g key={c.name}>
-            <circle cx={x} cy={y} r="1.8" fill="#475569" />
+            <circle cx={x} cy={y} r="2" fill="#64748b" opacity="0.9" />
             <text
               x={x + 5}
               y={y + 3}
               fontSize="9"
-              fill="#64748b"
+              fill="#94a3b8"
               fontFamily="ui-monospace, monospace"
               letterSpacing="0.04em"
+              opacity="0.7"
             >
               {c.name}
             </text>
@@ -158,15 +134,17 @@ export function CanadaMap() {
         );
       })}
 
-      {/* Country label — placed over the northern interior so it doesn't fight with nodes */}
+      {/* Country label — placed over the empty north */}
       <text
-        x={project(-100, 65).x}
-        y={project(-100, 65).y}
+        x={project(-95, 60).x}
+        y={project(-95, 60).y}
         textAnchor="middle"
-        fontSize="14"
+        fontSize="16"
+        fontWeight="600"
         fill="#334155"
         fontFamily="ui-monospace, monospace"
-        letterSpacing="0.3em"
+        letterSpacing="0.35em"
+        opacity="0.5"
       >
         CANADA
       </text>
