@@ -106,8 +106,27 @@ export function useEsgCounter(): Result<Partial<Kpis>> {
   return useBackend(fetchEsgCounter, {});
 }
 
-export function useSchedules(): Result<BackendSchedule[]> {
-  return useBackend(fetchSchedules, []);
+export function useSchedules(refreshKey = 0): Result<BackendSchedule[]> {
+  const [data, setData] = useState<BackendSchedule[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+
+  useEffect(() => {
+    let alive = true;
+    fetchSchedules().then((res) => {
+      if (!alive) return;
+      if (res !== null) {
+        setData(res);
+        setStatus("live");
+      } else {
+        setStatus("fallback");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey]);
+
+  return { data, status };
 }
 
 export function useEsgPatterns(): Result<BackendEsgPattern[]> {

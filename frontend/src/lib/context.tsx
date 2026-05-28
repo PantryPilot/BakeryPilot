@@ -83,6 +83,12 @@ interface AppState {
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (v: boolean) => void;
   openChatContext: (ctx: string) => void;
+  pendingScheduleCardId: string | null;
+  setPendingScheduleCardId: (id: string | null) => void;
+  showScheduleProposal: boolean;
+  setShowScheduleProposal: (v: boolean) => void;
+  scheduleRefreshKey: number;
+  bumpScheduleRefresh: () => void;
   notifications: AppNotification[];
   unreadCount: number;
   dismissNotification: (refId: string) => void;
@@ -163,6 +169,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [facility, setFacility] = useState<FacilityId>("all");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatContext, setChatContext] = useState<string | null>(null);
+  const [pendingScheduleCardId, setPendingScheduleCardId] = useState<string | null>(null);
+  const [showScheduleProposal, setShowScheduleProposal] = useState(false);
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
+  const bumpScheduleRefresh = useCallback(() => {
+    setScheduleRefreshKey((k) => k + 1);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -315,6 +327,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sidebarCollapsed, setSidebarCollapsed,
       mobileSidebarOpen, setMobileSidebarOpen,
       openChatContext,
+      pendingScheduleCardId,
+      setPendingScheduleCardId,
+      showScheduleProposal,
+      setShowScheduleProposal,
+      scheduleRefreshKey,
+      bumpScheduleRefresh,
       notifications, unreadCount, dismissNotification, hideToast, markNotificationsRead,
       user, userStatus, updateUser,
       notificationPrefs, updateNotificationPrefs,

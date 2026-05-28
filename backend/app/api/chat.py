@@ -15,6 +15,40 @@ from app.services.app_settings import get_copilot_model
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+_ACTION_CARD_FENCE_RE = re.compile(r"```action_card\s*\{.*?\}\s*```", re.DOTALL)
+
+
+def _strip_action_card_fence(content: str) -> str:
+    return _ACTION_CARD_FENCE_RE.sub("", content).strip()
+
+
+def _ai_message_content(messages: list) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            if isinstance(msg.content, str):
+                return msg.content
+            return str(msg.content)
+    return ""
+
+
+async def _summary_for_action_card(db: AsyncSession, card_id: str) -> str:
+    from app.db.models import ActionCard as ActionCardORM
+
+    try:
+        sid = uuid.UUID(card_id)
+    except ValueError:
+        return ""
+    card = await db.get(ActionCardORM, sid)
+    if not card:
+        return ""
+    payload = card.payload or {}
+    return str(
+        payload.get("change_summary")
+        or payload.get("rationale")
+        or payload.get("title")
+        or ""
+    )
+
 _INTENT_STATUS = {
     "inventory":       "InventoryAgent · checking lots & stock levels",
     "procurement":     "ProcurementAgent · analyzing suppliers & costs",
@@ -65,6 +99,7 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     _sync_llm_env()
     from agent.graph import _graph
     from agent.llm import set_request_model
+    from app.services.schedule_propose import propose_current_schedule_change
 
     model_id = await get_copilot_model(db)
     set_request_model(model_id)
@@ -102,21 +137,32 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
             return
 
         messages = final_state.get("messages", [])
-        last = messages[-1] if messages else None
-        if isinstance(last, AIMessage) and last.content:
-            for token in re.findall(r"\S+|\s+", last.content):
+        content = _strip_action_card_fence(_ai_message_content(messages))
+
+        action_cards = final_state.get("action_cards", [])
+        card_id: str | None = None
+        if action_cards:
+            card_id = str(action_cards[-1].get("action_card_id", "") or "")
+        elif final_state.get("intent") == "scheduler":
+            proposed = await propose_current_schedule_change(db)
+            if proposed:
+                card_id = str(proposed.card_id)
+
+        if not content and card_id:
+            content = await _summary_for_action_card(db, card_id)
+
+        if content:
+            for token in re.findall(r"\S+|\s+", content):
                 yield {
                     "event": "message",
                     "data": json.dumps({"content": token}),
                 }
                 await asyncio.sleep(0.012)
 
-        action_cards = final_state.get("action_cards", [])
-        if action_cards:
-            card = action_cards[-1]
+        if card_id:
             yield {
                 "event": "action_card",
-                "data": json.dumps({"action_card_id": card.get("action_card_id", "")}),
+                "data": json.dumps({"action_card_id": card_id}),
             }
 
         yield {"event": "done", "data": "{}"}

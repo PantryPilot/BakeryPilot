@@ -109,6 +109,21 @@ interface BackendActionCard {
   decided_by: string | null;
 }
 
+export interface BackendScheduleDiffRun {
+  run_id: string;
+  sku_id: string;
+  start_at: string;
+  end_at: string;
+  quantity: number;
+  lot_assignments: string[];
+}
+
+export interface BackendScheduleDiff {
+  before: BackendScheduleDiffRun[];
+  after: BackendScheduleDiffRun[];
+  changes: { kind: string; narration: string; affected_run_ids: string[] }[];
+}
+
 // ---------- Adapters: backend -> frontend shapes ----------
 
 const FACILITY_MAP: Record<string, string> = {
@@ -370,6 +385,32 @@ export async function fetchOrders(supplierId?: string): Promise<BackendOrder[] |
 
 // ---------- Action cards ----------
 
+export function formatScheduleWindow(startIso: unknown, endIso: unknown): string {
+  if (!startIso || !endIso) return "—";
+  const start = new Date(String(startIso));
+  const end = new Date(String(endIso));
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "—";
+  const fmtDate = (d: Date) =>
+    d.toLocaleString("en-CA", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "UTC",
+    });
+  const fmtTime = (d: Date) =>
+    d.toLocaleString("en-CA", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "UTC",
+    });
+  return `${fmtDate(start)} – ${fmtTime(end)} UTC`;
+}
+
 const ACTION_CARD_ICONS: Record<string, string> = {
   supplier_order: "truck",
   schedule_change: "calendar",
@@ -381,8 +422,52 @@ const ACTION_CARD_ICONS: Record<string, string> = {
 /** Adapt a backend action card to the frontend ActionCardData shape for <ActionCard/>. */
 export function adaptActionCard(b: BackendActionCard) {
   const p = (b.payload || {}) as Record<string, unknown>;
+  const shortSku = (id: unknown) => String(id ?? "—").replace(/^sku-/, "").replace(/-/g, " ");
+
+  if (b.kind === "schedule_change") {
+    const beforeWindow =
+      String(p.before_window ?? "") ||
+      formatScheduleWindow(p.before_start_at, p.before_end_at);
+    const afterWindow =
+      String(p.after_window ?? "") ||
+      formatScheduleWindow(p.start_at, p.end_at);
+    const beforeName = String(
+      p.before_sku_name ?? shortSku(p.requested_by_sku_id),
+    );
+    const afterName = String(
+      p.after_sku_name ?? shortSku(p.substitute_sku_id),
+    );
+    const changeSummary = String(
+      p.change_summary ?? p.rationale ?? "",
+    );
+    return {
+      kind: "Schedule Change",
+      agent: String(p.agent ?? "SchedulerAgent"),
+      icon: ACTION_CARD_ICONS.schedule_change,
+      title: String(p.title ?? `${beforeName} → ${afterName}`),
+      summary: [
+        { label: "Before", value: beforeWindow },
+        { label: "After", value: afterWindow },
+        {
+          label: "Product",
+          value: beforeName === afterName ? beforeName : `${beforeName} → ${afterName}`,
+        },
+      ],
+      details: [
+        { label: "Plant", value: String(p.facility_name ?? p.facility_id ?? "—") },
+        { label: "Line", value: String(p.line_name ?? p.line_id ?? "—") },
+        { label: "Units", value: String(p.requested_units ?? "—") },
+      ],
+      flags: changeSummary
+        ? [{ text: changeSummary, tone: "amber" as const }]
+        : undefined,
+      state: b.state,
+      cardId: b.card_id,
+    };
+  }
+
   const summary = Object.entries(p)
-    .filter(([k]) => !["title", "sub", "agent"].includes(k))
+    .filter(([k]) => !["title", "sub", "agent", "rationale"].includes(k))
     .slice(0, 3)
     .map(([k, v]) => ({ label: k.replace(/_/g, " "), value: String(v) }));
   if (summary.length === 0) {
@@ -397,6 +482,27 @@ export function adaptActionCard(b: BackendActionCard) {
     state: b.state,
     cardId: b.card_id,
   };
+}
+
+export async function fetchActionCards(
+  state?: "pending" | "confirmed" | "rejected",
+): Promise<BackendActionCard[] | null> {
+  const q = state ? `?state=${encodeURIComponent(state)}` : "";
+  return safeFetch<BackendActionCard[]>(`/api/action_cards${q}`);
+}
+
+export async function fetchPendingScheduleChangeCard(): Promise<BackendActionCard | null> {
+  const cards = await fetchActionCards("pending");
+  if (!cards) return null;
+  return cards.find((c) => c.kind === "schedule_change") ?? null;
+}
+
+export async function fetchScheduleDiff(
+  scheduleId = "current",
+): Promise<BackendScheduleDiff | null> {
+  return safeFetch<BackendScheduleDiff>(
+    `/api/schedules/${encodeURIComponent(scheduleId)}/diff`,
+  );
 }
 
 export async function fetchActionCard(

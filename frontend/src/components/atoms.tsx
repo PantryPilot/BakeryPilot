@@ -82,11 +82,42 @@ export interface ActionCardData {
   cardId?: string;
 }
 
-export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false }: { card: ActionCardData; onConfirm?: (c: ActionCardData) => void; onReject?: (c: ActionCardData) => void; onEdit?: () => void; compact?: boolean }) {
+export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false }: { card: ActionCardData; onConfirm?: (c: ActionCardData) => void | Promise<void>; onReject?: (c: ActionCardData) => void | Promise<void>; onEdit?: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(card.state || "pending");
+  const [busy, setBusy] = useState(false);
   const confirmed = state === "confirmed";
   const rejected = state === "rejected";
+
+  useEffect(() => {
+    setState(card.state || "pending");
+  }, [card.state, card.cardId]);
+
+  const handleConfirm = async () => {
+    if (busy || confirmed || rejected || !onConfirm) return;
+    setBusy(true);
+    try {
+      await onConfirm(card);
+      setState("confirmed");
+    } catch {
+      // keep pending on failure
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (busy || confirmed || rejected || !onReject) return;
+    setBusy(true);
+    try {
+      await onReject(card);
+      setState("rejected");
+    } catch {
+      // keep pending on failure
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className={`rounded-xl border ${confirmed ? "border-emerald-500/30 bg-emerald-500/[0.04]" : rejected ? "border-slate-700 bg-slate-900/60 opacity-70" : "border-blue-500/40 bg-slate-900 shadow-[0_0_0_1px_rgba(59,130,246,0.08),0_8px_30px_-12px_rgba(59,130,246,0.35)]"}`}>
@@ -143,9 +174,9 @@ export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false 
 
       {!confirmed && !rejected && !compact && (
         <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2 p-3 pt-2 border-t border-slate-800">
-          <button onClick={() => { setState("confirmed"); onConfirm?.(card); }} className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-sm transition">Confirm</button>
-          <button onClick={onEdit} className="px-3 py-2 rounded-md border border-slate-700 hover:border-slate-500 text-slate-200 text-sm transition">Edit</button>
-          <button onClick={() => { setState("rejected"); onReject?.(card); }} className="px-3 py-2 rounded-md text-red-400 hover:text-red-300 text-sm transition">Reject</button>
+          <button onClick={handleConfirm} disabled={busy} className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-emerald-950 font-semibold text-sm transition">{busy ? "Applying…" : "Confirm"}</button>
+          <button onClick={onEdit} disabled={busy} className="px-3 py-2 rounded-md border border-slate-700 hover:border-slate-500 text-slate-200 text-sm transition">Edit</button>
+          <button onClick={handleReject} disabled={busy} className="px-3 py-2 rounded-md text-red-400 hover:text-red-300 text-sm transition">Reject</button>
         </div>
       )}
       {confirmed && (

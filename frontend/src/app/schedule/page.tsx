@@ -1,11 +1,20 @@
 "use client";
-import { useState, useMemo, useRef, useLayoutEffect } from "react";
+import { useState, useMemo, useRef, useLayoutEffect, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
-import { Pill, SectionHeader } from "../../components/atoms";
+import { Pill, SectionHeader, ActionCard, type ActionCardData } from "../../components/atoms";
 import { FACILITIES, SKUS, ProductionRun } from "../../lib/data";
-import type { BackendSchedule } from "../../lib/api";
+import type { BackendSchedule, BackendScheduleDiff, BackendScheduleDiffRun } from "../../lib/api";
+import {
+  adaptActionCard,
+  confirmActionCard,
+  fetchActionCard,
+  fetchPendingScheduleChangeCard,
+  fetchScheduleDiff,
+  formatScheduleWindow,
+  rejectActionCard,
+} from "../../lib/api";
 import { useSchedules } from "../../lib/hooks";
 
 const FACILITY_MAP: Record<string, string> = {
@@ -254,22 +263,27 @@ function GanttLane({
   );
 }
 
-function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; sku: string; state: string; note?: string; risk?: boolean }[] }) {
+function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; sku: string; state: string; window?: string; note?: string; risk?: boolean }[] }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {runs.map((r, i) => {
         const left = (r.start - 6) / 18 * 100;
         const w = (r.end - r.start) / 18 * 100;
         const bg = r.state === "new" ? "border-dashed border-emerald-400 bg-emerald-500/10" : r.state === "moved" ? "border-blue-400 bg-blue-500/10" : "border-slate-700 bg-slate-800/40";
         return (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-10 text-[10px] font-mono text-slate-500 shrink-0">{r.lane}</span>
-            <div className="relative flex-1 h-6 rounded bg-slate-800/30">
-              <div className={`absolute top-0 bottom-0 border-l-2 ${bg} rounded text-[10px] flex items-center px-1.5 gap-1`} style={{ left: `${left}%`, width: `${w}%` }}>
-                <span className="text-slate-200 truncate">{r.sku}</span>
-                {r.note && <span className="text-[9px] font-mono text-blue-300 ml-auto shrink-0">{r.note}</span>}
+          <div key={i} className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="w-10 text-[10px] font-mono text-slate-500 shrink-0">{r.lane}</span>
+              <div className="relative flex-1 h-6 rounded bg-slate-800/30">
+                <div className={`absolute top-0 bottom-0 border-l-2 ${bg} rounded text-[10px] flex items-center px-1.5 gap-1`} style={{ left: `${left}%`, width: `${w}%` }}>
+                  <span className="text-slate-200 truncate">{r.sku}</span>
+                  {r.note && <span className="text-[9px] font-mono text-blue-300 ml-auto shrink-0">{r.note}</span>}
+                </div>
               </div>
             </div>
+            {r.window && (
+              <div className="pl-12 text-[10px] font-mono text-slate-400 leading-snug">{r.window}</div>
+            )}
           </div>
         );
       })}
@@ -277,71 +291,190 @@ function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; 
   );
 }
 
-function ScheduleDiff() {
+function skuLabel(skuId: string): string {
+  return SKUS.find(s => s.id === skuId)?.name || skuId.replace(/^sku-/, "").replace(/-/g, " ");
+}
+
+function diffRunToMini(run: BackendScheduleDiffRun, state: string, lane = "Line") {
+  const start = new Date(run.start_at);
+  const end = new Date(run.end_at);
+  return {
+    lane,
+    start: start.getUTCHours() + start.getUTCMinutes() / 60,
+    end: end.getUTCHours() + end.getUTCMinutes() / 60,
+    sku: skuLabel(run.sku_id),
+    state,
+    window: formatScheduleWindow(run.start_at, run.end_at),
+  };
+}
+
+function ScheduleProposalPanel({
+  cardId,
+  onApplied,
+  onDismiss,
+}: {
+  cardId: string | null;
+  onApplied: () => void;
+  onDismiss: () => void;
+}) {
+  const [card, setCard] = useState<ActionCardData | null>(null);
+  const [rawCardPayload, setRawCardPayload] = useState<Record<string, unknown> | null>(null);
+  const [diff, setDiff] = useState<BackendScheduleDiff | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [diffRes, cardRes] = await Promise.all([
+        fetchScheduleDiff("current"),
+        cardId ? fetchActionCard(cardId) : fetchPendingScheduleChangeCard(),
+      ]);
+      if (!diffRes) {
+        setError("No schedule diff available. Ask copilot to optimize first.");
+        setDiff(null);
+      } else {
+        setDiff(diffRes);
+      }
+      setCard(cardRes ? adaptActionCard(cardRes) : null);
+      setRawCardPayload(cardRes?.payload ?? null);
+    } catch {
+      setError("Could not load agent proposal.");
+    } finally {
+      setLoading(false);
+    }
+  }, [cardId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const handleConfirm = async (c: ActionCardData) => {
+    if (!c.cardId) throw new Error("missing card id");
+    const result = await confirmActionCard(c.cardId);
+    if (!result) throw new Error("confirm failed");
+    setCard(adaptActionCard(result));
+    setRawCardPayload(result.payload ?? null);
+    onApplied();
+  };
+
+  const handleReject = async (c: ActionCardData) => {
+    if (!c.cardId) throw new Error("missing card id");
+    const result = await rejectActionCard(c.cardId);
+    if (!result) throw new Error("reject failed");
+    setCard(adaptActionCard(result));
+    onDismiss();
+  };
+
+  if (loading) {
+    return (
+      <div className="mt-5 rounded-lg border border-blue-500/30 bg-blue-500/[0.04] px-4 py-6 text-[13px] text-slate-400">
+        Loading agent proposal…
+      </div>
+    );
+  }
+
+  if (error || !diff) {
+    return (
+      <div className="mt-5 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-4 text-[13px] text-slate-400">
+        {error ?? "No proposal available."}{" "}
+        Use <span className="text-slate-200">Ask copilot to optimise</span> to generate a plan and action card.
+      </div>
+    );
+  }
+
+  const beforeRuns = diff.before.map(r => diffRunToMini(r, "current"));
+  const afterRuns = diff.after.map(r => diffRunToMini(r, "moved"));
+  const changeSummary =
+    String(rawCardPayload?.change_summary ?? "") ||
+    diff.changes[0]?.narration ||
+    card?.flags?.[0]?.text ||
+    "SchedulerAgent proposal";
+  const title = card?.title ?? changeSummary;
+
   return (
     <div className="mt-5 rounded-lg border border-blue-500/40 bg-blue-500/[0.04]">
-      <div className="px-4 py-3 border-b border-blue-500/20 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-blue-500/15 text-blue-300 flex items-center justify-center"><Icon name="diff" size={14}/></div>
-          <div>
+      <div className="px-4 py-3 border-b border-blue-500/20 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-blue-500/15 text-blue-300 flex items-center justify-center shrink-0"><Icon name="diff" size={14}/></div>
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-blue-300 font-semibold">Agent proposal · SchedulerAgent</div>
-            <div className="text-[14px] text-slate-100 font-medium">Reschedule to consume LOT-21884 before expiry + accommodate Costco PO spike</div>
+            <div className="text-[14px] text-slate-100 font-medium">{title}</div>
           </div>
         </div>
-        <Pill tone="blue" className="font-mono">v1 · 2 alternatives</Pill>
+        <Pill tone="blue" className="font-mono shrink-0">{card?.state === "confirmed" ? "applied" : card?.state ?? "pending"}</Pill>
       </div>
-      <div className="grid grid-cols-2 gap-px bg-slate-800">
+      <div className="px-4 py-3 border-b border-blue-500/20 bg-slate-900/20">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">What is changing</div>
+        <p className="text-[13px] text-slate-200 leading-relaxed">{changeSummary}</p>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] font-mono">
+          <div className="rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2">
+            <div className="text-slate-500 mb-1">Before</div>
+            <div className="text-slate-200">
+              {String(
+                rawCardPayload?.before_window
+                ?? (diff.before[0]
+                  ? formatScheduleWindow(diff.before[0].start_at, diff.before[0].end_at)
+                  : "—"),
+              )}
+            </div>
+            <div className="text-slate-400 mt-1">
+              {String(
+                rawCardPayload?.before_sku_name
+                ?? (diff.before[0] ? skuLabel(diff.before[0].sku_id) : "—"),
+              )}
+            </div>
+          </div>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
+            <div className="text-emerald-400/80 mb-1">After</div>
+            <div className="text-slate-200">
+              {String(
+                rawCardPayload?.after_window
+                ?? (diff.after[0]
+                  ? formatScheduleWindow(diff.after[0].start_at, diff.after[0].end_at)
+                  : "—"),
+              )}
+            </div>
+            <div className="text-slate-400 mt-1">
+              {String(
+                rawCardPayload?.after_sku_name
+                ?? (diff.after[0] ? skuLabel(diff.after[0].sku_id) : "—"),
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-slate-800">
         <div className="bg-slate-900/30 p-4">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Before · current</div>
-          <DiffMini runs={[
-            { lane: "P1-L1", start: 10, end: 14, sku: "Lemon Poppy",  state: "current" },
-            { lane: "P1-L1", start: 14, end: 18, sku: "Blueberry M.", state: "current", risk: true },
-            { lane: "P1-L2", start: 8,  end: 14, sku: "Croissant",    state: "current" },
-            { lane: "P1-L2", start: 14, end: 19, sku: "Cookie 24pk",  state: "current" },
-          ]}/>
+          <DiffMini runs={beforeRuns}/>
         </div>
         <div className="bg-slate-900/30 p-4">
           <div className="text-[10px] uppercase tracking-wider text-emerald-300 mb-2">After · proposed</div>
-          <DiffMini runs={[
-            { lane: "P1-L1", start: 10, end: 14, sku: "Blueberry M.",  state: "moved", note: "↑ 4h" },
-            { lane: "P1-L1", start: 14, end: 18, sku: "Lemon Poppy",   state: "moved" },
-            { lane: "P1-L2", start: 8,  end: 12, sku: "Croissant",     state: "current" },
-            { lane: "P1-L2", start: 12, end: 17, sku: "Cookie 24pk",   state: "moved", note: "↑ 2h" },
-            { lane: "P1-L2", start: 17, end: 20, sku: "Cookie 24pk +", state: "new" },
-          ]}/>
+          <DiffMini runs={afterRuns}/>
         </div>
       </div>
-      <div className="p-4 border-t border-blue-500/20 space-y-2">
-        {[
-          { txt: "P1-L1 blueberry muffin moved 14:00 → 10:00 — consumes LOT-21884 before tonight's expiry, saves $1,240 write-off", tone: "green" },
-          { txt: "P1-L2 cookie run extended +3h (17:00 → 20:00) to fulfil Costco PO #C-882 spike (+35%) at 94% rate",               tone: "green" },
-          { txt: "Walmart cookie ship moves Wed → Thu (within window) — no SLA impact",                                              tone: "slate" },
-          { txt: "Adds 1 nut/nut-free changeover · +90 min idle on P4-L1 · offset by yield gain",                                    tone: "amber" },
-        ].map((c, i) => (
-          <div key={i} className="flex items-start gap-2 text-[12px]">
-            <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${c.tone === "green" ? "bg-emerald-400" : c.tone === "amber" ? "bg-amber-400" : "bg-slate-500"}`}/>
-            <span className="text-slate-200">{c.txt}</span>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-4 gap-px bg-slate-800 mx-4 mb-3 rounded-md overflow-hidden">
-        {[
-          { l: "Waste avoided", v: "$1,240", t: "green" },
-          { l: "kg saved",      v: "0.8",    t: "green" },
-          { l: "Changeover Δ",  v: "+1",     t: "amber" },
-          { l: "Capacity",      v: "+2.4%",  t: "green" },
-        ].map((s, i) => (
-          <div key={i} className="bg-slate-900/80 px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">{s.l}</div>
-            <div className={`text-[18px] font-mono tabular-nums ${s.t === "green" ? "text-emerald-300" : "text-amber-300"}`}>{s.v}</div>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-4 pb-4 border-t border-blue-500/20 pt-3">
-        <button className="py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-semibold text-[13px]">Accept · generates ActionCard</button>
-        <button className="px-3 py-2 rounded-md border border-slate-700 text-slate-200 text-[13px]">Compare alt</button>
-        <button className="px-3 py-2 rounded-md text-red-400 text-[13px]">Reject</button>
-      </div>
+      {diff.changes.length > 0 && (
+        <div className="p-4 border-t border-blue-500/20 space-y-2">
+          {diff.changes.map((c, i) => (
+            <div key={i} className="flex items-start gap-2 text-[12px]">
+              <span className="mt-1 w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400"/>
+              <span className="text-slate-200">{c.narration}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {card ? (
+        <div className="px-4 pb-4 border-t border-blue-500/20 pt-3">
+          <div className="text-[11px] text-slate-400 mb-2">Review and confirm to apply this schedule change to the database.</div>
+          <ActionCard card={card} onConfirm={handleConfirm} onReject={handleReject} />
+        </div>
+      ) : (
+        <div className="px-4 pb-4 text-[12px] text-slate-500 border-t border-blue-500/20 pt-3">
+          Waiting for action card from copilot…
+        </div>
+      )}
     </div>
   );
 }
@@ -399,13 +532,27 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
 }
 
 export default function SchedulePage() {
-  const { openChatContext } = useApp();
+  const {
+    openChatContext,
+    pendingScheduleCardId,
+    setPendingScheduleCardId,
+    showScheduleProposal,
+    setShowScheduleProposal,
+    scheduleRefreshKey,
+    bumpScheduleRefresh,
+  } = useApp();
   const [plant, setPlant] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
-  const { data: backendSchedules, status: scheduleStatus } = useSchedules();
+  const { data: backendSchedules, status: scheduleStatus } = useSchedules(scheduleRefreshKey);
+
+  useEffect(() => {
+    if (showScheduleProposal || pendingScheduleCardId) {
+      setShowDiff(true);
+    }
+  }, [showScheduleProposal, pendingScheduleCardId]);
 
   const todayKey = useMemo(() => toDateKey(new Date()), []);
 
@@ -626,7 +773,20 @@ export default function SchedulePage() {
           </div>
         </div>
 
-        {showDiff && <ScheduleDiff/>}
+        {showDiff && (
+          <ScheduleProposalPanel
+            cardId={pendingScheduleCardId}
+            onApplied={() => {
+              bumpScheduleRefresh();
+              setPendingScheduleCardId(null);
+              setShowScheduleProposal(false);
+            }}
+            onDismiss={() => {
+              setPendingScheduleCardId(null);
+              setShowScheduleProposal(false);
+            }}
+          />
+        )}
         {whatIfOpen && <WhatIfPanel onClose={() => setWhatIfOpen(false)}/>}
       </div>
     </div>

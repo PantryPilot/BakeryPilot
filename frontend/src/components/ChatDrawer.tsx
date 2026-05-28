@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 import { ToolBreadcrumbs, ActionCard } from "./atoms";
 import { ActionCardData } from "./atoms";
 import { ChatSessionList } from "./ChatSessionList";
-import { streamChat, fetchActionCard, adaptActionCard, BACKEND_URL } from "../lib/api";
+import { streamChat, fetchActionCard, adaptActionCard, confirmActionCard, rejectActionCard, BACKEND_URL } from "../lib/api";
 import { useApp } from "../lib/context";
 import {
   createSession,
@@ -80,7 +80,9 @@ export function CopilotButton() {
 
 function contextToMessage(ctx: string): string {
   if (ctx.startsWith("Inventory")) return "What ingredient lots are currently at risk? Show me the critical and expiring ones.";
-  if (ctx.startsWith("Schedule · optimise")) return "How can I optimise the current production schedule? What changes would reduce changeover time?";
+  if (ctx.startsWith("Schedule · optimise")) {
+    return "Review the current production schedule, run the changeover optimizer diff, explain the proposed changes, and create a schedule_change action card with draft_schedule_change so I can accept or reject the plan.";
+  }
   if (ctx.startsWith("Supplier:")) return `What is the status of ${ctx.replace("Supplier: ", "")}? Show me their delivery performance and any issues.`;
   if (ctx.startsWith("Plant")) return `What is happening at ${ctx}? Give me a status summary.`;
   if (ctx.toLowerCase().includes("esg") || ctx.toLowerCase().includes("waste")) return "How much waste have we avoided this quarter? Show me the latest ESG numbers.";
@@ -88,7 +90,13 @@ function contextToMessage(ctx: string): string {
 }
 
 function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?: boolean }) {
-  const { chatContext, setChatContext } = useApp();
+  const {
+    chatContext,
+    setChatContext,
+    bumpScheduleRefresh,
+    setPendingScheduleCardId,
+    setShowScheduleProposal,
+  } = useApp();
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -185,6 +193,59 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     setInput("");
   }, []);
 
+  useEffect(() => () => { cancelStreamRef.current?.(); }, []);
+
+  const handleConfirmCard = useCallback(async (card: ActionCardData) => {
+    if (!card.cardId) throw new Error("missing card id");
+    const result = await confirmActionCard(card.cardId);
+    if (!result) throw new Error("confirm failed");
+    bumpScheduleRefresh();
+    setMessages((m) =>
+      m.map((msg) =>
+        msg.card?.cardId === card.cardId ? { ...msg, card: adaptActionCard(result) } : msg,
+      ),
+    );
+  }, [bumpScheduleRefresh]);
+
+  const handleRejectCard = useCallback(async (card: ActionCardData) => {
+    if (!card.cardId) throw new Error("missing card id");
+    const result = await rejectActionCard(card.cardId);
+    if (!result) throw new Error("reject failed");
+    setMessages((m) =>
+      m.map((msg) =>
+        msg.card?.cardId === card.cardId ? { ...msg, card: adaptActionCard(result) } : msg,
+      ),
+    );
+  }, []);
+
+  const handleActionCardEvent = useCallback(async (cardId: string) => {
+    if (!cardId) return;
+    const raw = await fetchActionCard(cardId);
+    if (!raw) return;
+    const card = adaptActionCard(raw);
+    const summary = card.flags?.[0]?.text ?? "";
+    if (raw.kind === "schedule_change") {
+      setPendingScheduleCardId(cardId);
+      setShowScheduleProposal(true);
+    }
+    setMessages((m) => {
+      const next = [...m];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant") {
+        const text = last.text.replace(/```action_card\s*\{[\s\S]*?\}\s*```/g, "").trim() || summary || last.text;
+        next[next.length - 1] = {
+          ...last,
+          card,
+          text,
+          agent: raw.kind === "schedule_change" ? "SchedulerAgent" : last.agent,
+          streaming: false,
+          thinking: false,
+        };
+      }
+      return next;
+    });
+  }, [setPendingScheduleCardId, setShowScheduleProposal]);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || inflightRef.current) return;
     inflightRef.current = true;
@@ -218,20 +279,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           return next;
         });
       },
-      onActionCard: async (cardId) => {
-        if (!cardId) return;
-        const raw = await fetchActionCard(cardId);
-        if (!raw) return;
-        const card = adaptActionCard(raw);
-        setMessages(m => {
-          const next = [...m];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, card };
-          }
-          return next;
-        });
-      },
+      onActionCard: handleActionCardEvent,
       onDone: () => {
         inflightRef.current = false;
         cancelStreamRef.current = null;
@@ -258,7 +306,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         });
       },
     });
-  }, []);
+  }, [handleActionCardEvent]);
 
   useEffect(() => {
     if (chatContext) {
@@ -424,7 +472,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
           <div className={expanded ? "max-w-[820px] mx-auto space-y-5" : "space-y-4"}>
             {messages.map((m, i) => (
-              <PopupMessage key={i} m={m} />
+              <PopupMessage key={i} m={m} onConfirmCard={handleConfirmCard} onRejectCard={handleRejectCard} />
             ))}
           </div>
         </div>
@@ -494,7 +542,8 @@ function cleanTable(lines: string[]): string {
 }
 
 function cleanMarkdown(text: string): string {
-  const lines = text.split("\n");
+  const withoutActionCard = text.replace(/```action_card\s*\{[\s\S]*?\}\s*```/g, "").trim();
+  const lines = withoutActionCard.split("\n");
   const out: string[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -561,7 +610,21 @@ function downloadPdf(text: string, agent: string) {
   if (win) win.onload = () => URL.revokeObjectURL(url);
 }
 
-function PopupMessage({ m }: { m: Message }) {
+function messageDisplayText(m: Message): string {
+  const stripped = m.text.replace(/```action_card\s*\{[\s\S]*?\}\s*```/g, "").trim();
+  if (stripped) return stripped;
+  return m.card?.flags?.[0]?.text ?? "";
+}
+
+function PopupMessage({
+  m,
+  onConfirmCard,
+  onRejectCard,
+}: {
+  m: Message;
+  onConfirmCard?: (c: ActionCardData) => void | Promise<void>;
+  onRejectCard?: (c: ActionCardData) => void | Promise<void>;
+}) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
@@ -571,6 +634,8 @@ function PopupMessage({ m }: { m: Message }) {
       </div>
     );
   }
+  const displayText = messageDisplayText(m);
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
@@ -602,10 +667,10 @@ function PopupMessage({ m }: { m: Message }) {
           </div>
         ) : m.streaming ? (
           <div className="text-[13.5px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
-            {m.text}
+            {displayText}
             <span className="inline-block w-[7px] h-[14px] -mb-[2px] ml-[1px] bg-blue-400/70 animate-pulse"/>
           </div>
-        ) : (
+        ) : displayText ? (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -623,22 +688,26 @@ function PopupMessage({ m }: { m: Message }) {
               h4: ({ children }) => <h4 className="text-[12px] font-semibold text-slate-200 mb-1">{children}</h4>,
             }}
           >
-            {cleanMarkdown(m.text)}
+            {cleanMarkdown(displayText)}
           </ReactMarkdown>
-        )}
+        ) : null}
       </div>
-      {m.card && <div className="pl-6 pt-1"><ActionCard card={m.card} /></div>}
-      {!m.thinking && m.text && (
+      {m.card && (
+        <div className="pl-6 pt-2">
+          <ActionCard card={m.card} onConfirm={onConfirmCard} onReject={onRejectCard} />
+        </div>
+      )}
+      {!m.thinking && displayText && (
         <div className="pl-6 pt-1 flex items-center gap-3">
           <button
-            onClick={() => downloadPdf(m.text, m.agent || "copilot")}
+            onClick={() => downloadPdf(displayText, m.agent || "copilot")}
             className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
           >
             <Icon name="download" size={11} />
             Download PDF
           </button>
           <button
-            onClick={() => downloadMarkdown(m.text, m.agent || "copilot")}
+            onClick={() => downloadMarkdown(displayText, m.agent || "copilot")}
             className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 transition"
           >
             <Icon name="download" size={11} />

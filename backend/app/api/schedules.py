@@ -1,5 +1,4 @@
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -13,10 +12,17 @@ from app.db.models import (
 from app.db.session import get_db
 from app.models.schedules import (
     ProductionSchedule,
-    ScheduleChange,
     ScheduleDiff,
     ScheduleRun,
     WhatIfRequest,
+)
+from app.services.schedule_apply import resolve_schedule, utc_iso
+from app.services.schedule_propose import (
+    build_schedule_change_payload,
+    build_schedule_diff,
+    format_schedule_window,
+    propose_current_schedule_change,
+    resolve_schedule_for_draft,
 )
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
@@ -24,38 +30,11 @@ router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 def _utc_iso(dt: datetime) -> str:
     """Return ISO string with explicit UTC offset so JS Date.getUTCHours() works reliably."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.isoformat()
+    return utc_iso(dt)
 
 
 async def _resolve_schedule(db: AsyncSession, schedule_id: str) -> ScheduleORM | None:
-    """Resolve a schedule path param, including ``current`` / ``latest`` aliases."""
-    if schedule_id in ("current", "latest"):
-        suggested = (
-            await db.execute(
-                select(ScheduleORM)
-                .where(ScheduleORM.status == "suggested")
-                .order_by(ScheduleORM.created_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if suggested:
-            return suggested
-        return (
-            await db.execute(
-                select(ScheduleORM)
-                .where(ScheduleORM.status == "approved")
-                .order_by(ScheduleORM.start_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-
-    try:
-        sid = uuid.UUID(schedule_id)
-    except ValueError:
-        return None
-    return await db.get(ScheduleORM, sid)
+    return await resolve_schedule(db, schedule_id)
 
 
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
@@ -108,36 +87,7 @@ async def schedule_diff(
     s = await _resolve_schedule(db, schedule_id)
     if not s:
         raise HTTPException(404, f"schedule {schedule_id} not found")
-    before_run = ScheduleRun(
-        run_id=str(s.schedule_id),
-        sku_id=s.sku_id,
-        start_at=_utc_iso(s.start_at),
-        end_at=_utc_iso(s.end_at),
-        quantity=s.quantity_units,
-        lot_assignments=[],
-    )
-    after_run = ScheduleRun(
-        run_id=str(s.schedule_id),
-        sku_id="sku-ace-sourdough-bistro",
-        start_at=_utc_iso(s.start_at + timedelta(hours=1)),
-        end_at=_utc_iso(s.end_at + timedelta(hours=1)),
-        quantity=s.quantity_units,
-        lot_assignments=[],
-    )
-    return ScheduleDiff(
-        before=[before_run],
-        after=[after_run],
-        changes=[
-            ScheduleChange(
-                kind="move",
-                affected_run_ids=[str(s.schedule_id)],
-                narration=(
-                    f"Swapped {s.sku_id} for lemon poppy seed — "
-                    "blueberry stock below threshold; substitution preserves line utilization."
-                ),
-            )
-        ],
-    )
+    return build_schedule_diff(s)
 
 
 @router.post("/{schedule_id}/what_if", response_model=ScheduleDiff)
@@ -166,12 +116,33 @@ async def post_to_mes(
     }
 
 
+@router.post("/current/propose", response_model=dict)
+async def propose_current(db: AsyncSession = Depends(get_db)) -> dict:
+    """Build diff from current schedule and create a pending schedule_change card."""
+    card = await propose_current_schedule_change(db)
+    if not card:
+        raise HTTPException(404, "no current schedule to propose changes for")
+    s = await _resolve_schedule(db, "current")
+    diff = build_schedule_diff(s) if s else None
+    return {
+        "action_card_id": str(card.card_id),
+        "kind": card.kind,
+        "title": card.payload.get("title"),
+        "diff": diff.model_dump() if diff else None,
+    }
+
+
 class ScheduleChangeDraftRequest(BaseModel):
     facility_id: str
     substitute_sku_id: str
     requested_by_sku_id: str
     requested_units: int
     rationale: str | None = None
+    schedule_id: str | None = None
+    line_id: str | None = None
+    start_at: str | None = None
+    end_at: str | None = None
+    waste_avoided_kg: float | None = None
 
 
 @router.post("/draft_change", response_model=dict)
@@ -179,12 +150,44 @@ async def draft_schedule_change(
     req: ScheduleChangeDraftRequest, db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Create a pending action_card the operator can confirm to swap one SKU
-    for another on the production line. The actual cancel-old-order + create-
-    new-order work runs inside _execute_schedule_change_card when the user
-    confirms the card."""
-    card = ActionCardORM(
-        kind="schedule_change",
-        payload={
+    for another on the production line. On confirm, the backend supersedes the
+    matching ``production_schedules`` row and creates an approved replacement,
+    and updates ``production_orders`` on the line."""
+    s = await resolve_schedule_for_draft(
+        db,
+        schedule_id=req.schedule_id,
+        facility_id=req.facility_id,
+        line_id=req.line_id,
+        requested_by_sku_id=req.requested_by_sku_id,
+    )
+
+    if s:
+        before = ScheduleRun(
+            run_id=str(s.schedule_id),
+            sku_id=s.sku_id,
+            start_at=utc_iso(s.start_at),
+            end_at=utc_iso(s.end_at),
+            quantity=s.quantity_units,
+            lot_assignments=[],
+        )
+        after = ScheduleRun(
+            run_id=str(s.schedule_id),
+            sku_id=req.substitute_sku_id,
+            start_at=req.start_at or utc_iso(s.start_at),
+            end_at=req.end_at or utc_iso(s.end_at),
+            quantity=req.requested_units,
+            lot_assignments=[],
+        )
+        payload = await build_schedule_change_payload(
+            db,
+            s,
+            before,
+            after,
+            agent="SchedulerAgent",
+            rationale=req.rationale or None,
+        )
+    else:
+        payload = {
             "facility_id": req.facility_id,
             "substitute_sku_id": req.substitute_sku_id,
             "requested_by_sku_id": req.requested_by_sku_id,
@@ -192,7 +195,22 @@ async def draft_schedule_change(
             "rationale": req.rationale or "",
             "title": f"Swap {req.requested_by_sku_id} → {req.substitute_sku_id}",
             "agent": "SchedulerAgent",
-        },
+        }
+        if req.schedule_id:
+            payload["schedule_id"] = req.schedule_id
+        if req.line_id:
+            payload["line_id"] = req.line_id
+        if req.start_at:
+            payload["start_at"] = req.start_at
+            payload["after_window"] = format_schedule_window(req.start_at, req.end_at or req.start_at)
+        if req.end_at:
+            payload["end_at"] = req.end_at
+        if req.waste_avoided_kg is not None:
+            payload["waste_avoided_kg"] = req.waste_avoided_kg
+
+    card = ActionCardORM(
+        kind="schedule_change",
+        payload=payload,
     )
     db.add(card)
     await db.commit()
