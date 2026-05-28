@@ -112,7 +112,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const resizeStartRef = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
+  const resizeStartRef = useRef<{ px: number; py: number; w: number; h: number; panelLeft: number; panelTop: number } | null>(null);
   const draggable = useDraggable({
     storageKey: "bp-copilot-position-v1",
     disabled: expanded,
@@ -131,19 +131,34 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const onResizePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    resizeStartRef.current = { px: e.clientX, py: e.clientY, w: panelSize.w, h: panelSize.h };
+    const panelEl = (e.currentTarget as HTMLElement).closest("[data-drag-root]") as HTMLElement | null;
+    const rect = panelEl?.getBoundingClientRect();
+    resizeStartRef.current = {
+      px: e.clientX,
+      py: e.clientY,
+      w: panelSize.w,
+      h: panelSize.h,
+      panelLeft: rect?.left ?? 0,
+      panelTop: rect?.top ?? 0,
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [panelSize]);
 
   const onResizePointerMove = useCallback((e: React.PointerEvent) => {
     if (!resizeStartRef.current) return;
-    const dw = e.clientX - resizeStartRef.current.px;
-    const dh = e.clientY - resizeStartRef.current.py;
-    setPanelSize({
-      w: Math.max(340, Math.min(window.innerWidth - 40, resizeStartRef.current.w + dw)),
-      h: Math.max(400, Math.min(window.innerHeight - 80, resizeStartRef.current.h + dh)),
+    // Handle is at top-left: moving left/up expands the panel
+    const dx = resizeStartRef.current.px - e.clientX;
+    const dy = resizeStartRef.current.py - e.clientY;
+    const newW = Math.max(340, Math.min(window.innerWidth - 40, resizeStartRef.current.w + dx));
+    const newH = Math.max(400, Math.min(window.innerHeight - 80, resizeStartRef.current.h + dy));
+    const actualDw = newW - resizeStartRef.current.w;
+    const actualDh = newH - resizeStartRef.current.h;
+    setPanelSize({ w: newW, h: newH });
+    draggable.setPosition({
+      x: resizeStartRef.current.panelLeft - actualDw,
+      y: resizeStartRef.current.panelTop - actualDh,
     });
-  }, []);
+  }, [draggable]);
 
   const onResizePointerUp = useCallback(() => {
     resizeStartRef.current = null;
@@ -558,11 +573,11 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           onPointerMove={onResizePointerMove}
           onPointerUp={onResizePointerUp}
           onPointerCancel={onResizePointerUp}
-          className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize z-10 flex items-end justify-end p-1"
+          className="absolute top-0 left-0 w-5 h-5 cursor-nw-resize z-10 flex items-start justify-start p-1"
           title="Drag to resize"
         >
           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-slate-600">
-            <path d="M1 7L7 1M4 7L7 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M7 7L1 1M4 7L1 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
         </div>
       )}
