@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
-import { fetchFacilities, fetchProductionLines, fetchProducts, createProductionOrder, updateOrderStatus, cancelProductionOrder, markOrderProduced, validateProduction, type BackendProductionLine, type BackendProductionOrder, type BackendProduct, type BackendFacility, type BackendValidationResult } from "../../lib/api";
+import { fetchFacilities, fetchProductionLines, fetchProducts, fetchOrders, createProductionOrder, updateOrderStatus, cancelProductionOrder, markOrderProduced, validateProduction, type BackendProductionLine, type BackendProductionOrder, type BackendProduct, type BackendFacility, type BackendValidationResult, type BackendOrder } from "../../lib/api";
 import { requestShortfallTransferPlan, requestShortfallSubstitution, confirmActionCard } from "../../lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,6 +98,20 @@ function AssignModal({
   const [requestingKey, setRequestingKey] = useState<string | null>(null);
 
   const selectedProduct = products.find(p => p.sku_id === selectedSkuId);
+
+  // Draft orders for "View draft" shortcut when a PO already exists for a shortfall ingredient.
+  const [draftOrders, setDraftOrders] = useState<BackendOrder[]>([]);
+  useEffect(() => {
+    const hasShortfall = validation?.ingredients.some(i => i.shortfall_kg > 0) ?? false;
+    if (!hasShortfall) { setDraftOrders([]); return; }
+    fetchOrders().then(orders => {
+      if (!orders) return;
+      setDraftOrders(orders.filter(o => o.status === "draft" || o.status === "pending_confirm"));
+    });
+  }, [validation]);
+
+  const draftForIngredient = (ingredientId: string): BackendOrder | null =>
+    draftOrders.find(o => o.items.some(it => it.ingredient_id === ingredientId)) ?? null;
 
   const openSupplierOrdering = (ingredientId: string, quantityKg: number) => {
     const qs = new URLSearchParams({
@@ -383,12 +397,24 @@ function AssignModal({
                             <div className="text-[11px] text-amber-400 flex items-center gap-1.5">
                               <Icon name="warn" size={10} /> No other facility has stock
                             </div>
-                            <button
-                              onClick={() => openSupplierOrdering(it.ingredient_id, it.uncovered_kg > 0 ? it.uncovered_kg : it.shortfall_kg)}
-                              className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
-                            >
-                              Order from supplier
-                            </button>
+                            {(() => {
+                              const draft = draftForIngredient(it.ingredient_id);
+                              return draft ? (
+                                <button
+                                  onClick={() => router.push(`/scorecard?tab=suppliers&open_supplier=${encodeURIComponent(draft.supplier_id)}`)}
+                                  className="shrink-0 h-7 px-2.5 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 text-[11px] font-medium transition"
+                                >
+                                  View draft PO
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openSupplierOrdering(it.ingredient_id, it.uncovered_kg > 0 ? it.uncovered_kg : it.shortfall_kg)}
+                                  className="shrink-0 h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                                >
+                                  Order from supplier
+                                </button>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -479,20 +505,32 @@ function AssignModal({
                     )}
                   </div>
                   <div className="divide-y divide-slate-800/60">
-                    {shortfallIngredients.map(i => (
-                      <div key={i.ingredient_id} className="px-3 py-2 flex items-center justify-between gap-2 text-[12px]">
-                        <span className="text-slate-200 truncate">{i.name ?? i.ingredient_id}</span>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="font-mono text-red-400 text-[11px]">short {i.shortfall_kg.toFixed(1)} kg</span>
-                          <button
-                            onClick={() => openSupplierOrdering(i.ingredient_id, i.shortfall_kg)}
-                            className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
-                          >
-                            Order
-                          </button>
+                    {shortfallIngredients.map(i => {
+                      const draft = draftForIngredient(i.ingredient_id);
+                      return (
+                        <div key={i.ingredient_id} className="px-3 py-2 flex items-center justify-between gap-2 text-[12px]">
+                          <span className="text-slate-200 truncate">{i.name ?? i.ingredient_id}</span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="font-mono text-red-400 text-[11px]">short {i.shortfall_kg.toFixed(1)} kg</span>
+                            {draft ? (
+                              <button
+                                onClick={() => router.push(`/scorecard?tab=suppliers&open_supplier=${encodeURIComponent(draft.supplier_id)}`)}
+                                className="h-7 px-2.5 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 text-[11px] font-medium transition"
+                              >
+                                View draft PO
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openSupplierOrdering(i.ingredient_id, i.shortfall_kg)}
+                                className="h-7 px-2.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[11px] font-medium transition"
+                              >
+                                Order
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -994,25 +1032,51 @@ export default function ProductionPage() {
         )}
 
         {!loading && !error && lines.length > 0 && (
-          <>
-            {/* Facility group header when showing all */}
-            {activeFacilityId === null && (
-              <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-4">All facilities · {lines.length} lines</div>
-            )}
-
+          activeFacilityId === null ? (
+            // Per-facility grouped view when "All facilities" is selected
+            <div className="space-y-8">
+              {facilities
+                .map(f => ({ facility: f, fLines: lines.filter(l => l.facility_id === f.facility_id) }))
+                .filter(g => g.fLines.length > 0)
+                .map(({ facility, fLines }) => (
+                  <div key={facility.facility_id}>
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-800">
+                      <Icon name="factory" size={14} className="text-blue-400 shrink-0" />
+                      <span className="text-[13px] font-semibold text-slate-200">{facility.name}</span>
+                      {facility.city && <span className="text-[12px] text-slate-500">{facility.city}</span>}
+                      <span className="ml-auto text-[11px] text-slate-500 font-mono">{fLines.length} line{fLines.length !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {fLines.map(line => (
+                        <LineCard
+                          key={line.line_id}
+                          line={line}
+                          facilityId={facility.facility_id}
+                          products={products}
+                          onRefresh={() => load({ background: true })}
+                          onToast={showToast}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          ) : (
+            // Single facility flat view
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {lines.map(line => (
                 <LineCard
                   key={line.line_id}
                   line={line}
-                  facilityId={activeFacilityId ?? line.facility_id}
+                  facilityId={activeFacilityId}
                   products={products}
                   onRefresh={() => load({ background: true })}
                   onToast={showToast}
                 />
               ))}
             </div>
-          </>
+          )
         )}
       </div>
 
