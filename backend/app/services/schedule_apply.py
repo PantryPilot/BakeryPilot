@@ -112,11 +112,9 @@ async def apply_schedule_change(
     retailer_order_id: str | None = None,
     now: datetime | None = None,
 ) -> ProductionSchedule:
-    """Supersede the matched schedule and insert an approved replacement row."""
+    """Apply a confirmed schedule_change by updating the matched row in place."""
     now = now or datetime.now(timezone.utc)
     original = await find_schedule_for_change(db, payload, facility_id, line_id)
-    if original is not None:
-        original.status = "complete"
 
     start_at, end_at, version = resolve_schedule_window(payload, original, now)
     waste = float(payload.get("waste_avoided_kg") or 0)
@@ -126,6 +124,22 @@ async def apply_schedule_change(
         po_uuid = uuid.UUID(retailer_order_id)
     elif payload.get("retailer_order_id"):
         po_uuid = uuid.UUID(str(payload["retailer_order_id"]))
+
+    if original is not None:
+        original.facility_id = facility_id
+        original.line_id = line_id
+        original.sku_id = substitute_sku_id
+        original.start_at = start_at
+        original.end_at = end_at
+        original.quantity_units = requested_units
+        original.status = "approved"
+        original.waste_avoided_kg = waste
+        original.action_card_id = uuid.UUID(card_id)
+        original.version = version
+        if po_uuid is not None:
+            original.retailer_order_id = po_uuid
+        await db.flush()
+        return original
 
     new_schedule = ProductionSchedule(
         facility_id=facility_id,
