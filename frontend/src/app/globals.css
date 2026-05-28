@@ -627,7 +627,7 @@ main {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 /* Light theme: soften teal pill (Refrigerated) — teal-300 is too bright on white */

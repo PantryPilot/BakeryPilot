@@ -23,13 +23,26 @@ const NAV: Array<{ id: string; route: string; labelKey: TranslationKey; icon: st
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-export function Sidebar() {
-  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, t } = useApp();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+type SidebarContentProps = {
+  mobile: boolean;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (v: boolean) => void;
+  setMobileSidebarOpen: (v: boolean) => void;
+  pathname: string;
+  searchParams: ReturnType<typeof useSearchParams>;
+  t: (key: import("../lib/i18n").TranslationKey) => string;
+};
 
-  // Shared sidebar content rendered for both desktop and mobile overlay
-  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+function SidebarContent({
+  mobile,
+  sidebarCollapsed,
+  setSidebarCollapsed,
+  setMobileSidebarOpen,
+  pathname,
+  searchParams,
+  t,
+}: SidebarContentProps) {
+  return (
     <aside data-tour="sidebar" className={`
       flex flex-col bg-[#0a0d14] border-r border-slate-800/80 h-full
       ${mobile
@@ -72,7 +85,6 @@ export function Sidebar() {
               {...(item.tour ? { "data-tour": item.tour } : {})}
               className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors duration-150 relative ${active ? "text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
             >
-              {/* Active indicator with smooth transition */}
               <div className={`absolute left-0 top-0 bottom-0 w-[2px] rounded-r-sm bg-blue-500 transition-all duration-200 ${active ? "opacity-100" : "opacity-0"}`}/>
               <Icon
                 name={item.icon}
@@ -116,12 +128,26 @@ export function Sidebar() {
       </button>
     </aside>
   );
+}
+
+export function Sidebar() {
+  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, t } = useApp();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   return (
     <>
       {/* Desktop sidebar */}
       <div className="hidden md:flex h-full">
-        <SidebarContent mobile={false}/>
+        <SidebarContent
+          mobile={false}
+          sidebarCollapsed={sidebarCollapsed}
+          setSidebarCollapsed={setSidebarCollapsed}
+          setMobileSidebarOpen={setMobileSidebarOpen}
+          pathname={pathname}
+          searchParams={searchParams}
+          t={t}
+        />
       </div>
 
       {/* Mobile overlay drawer */}
@@ -134,7 +160,15 @@ export function Sidebar() {
           />
           {/* Drawer */}
           <div className="fixed top-0 left-0 bottom-0 z-50 md:hidden shadow-2xl">
-            <SidebarContent mobile={true}/>
+            <SidebarContent
+              mobile={true}
+              sidebarCollapsed={sidebarCollapsed}
+              setSidebarCollapsed={setSidebarCollapsed}
+              setMobileSidebarOpen={setMobileSidebarOpen}
+              pathname={pathname}
+              searchParams={searchParams}
+              t={t}
+            />
           </div>
         </>
       )}

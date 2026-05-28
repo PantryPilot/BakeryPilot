@@ -36,7 +36,7 @@ const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 200;
 const PLANT_CX = 640;
-const RETAILER_X = 980;
+const RETAILER_X = 900;
 const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
