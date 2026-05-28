@@ -41,23 +41,8 @@ const PLANT_TO_FACILITY: Record<string, string> = {
 
 const LANE_H = 44;
 const TIMELINE_HOURS = 24;
-const TIMELINE_MIN_ZOOM_HOURS = 2;
-const TIMELINE_ZOOM_STEPS = [24, 12, 8, 6, 4, 2] as const;
-
-function clampViewportStart(startHour: number, zoomHours: number): number {
-  return Math.max(0, Math.min(TIMELINE_HOURS - zoomHours, startHour));
-}
-
-function buildViewportHours(startHour: number, zoomHours: number): number[] {
-  return Array.from({ length: zoomHours }, (_, i) => startHour + i);
-}
-
-function formatViewportRange(startHour: number, zoomHours: number): string {
-  const fmt = (h: number) => `${String(Math.floor(h) % 24).padStart(2, "0")}:00`;
-  const endHour = startHour + zoomHours;
-  if (endHour >= TIMELINE_HOURS) return `${fmt(startHour)} – 24:00`;
-  return `${fmt(startHour)} – ${fmt(endHour)}`;
-}
+const HOURS = Array.from({ length: TIMELINE_HOURS }, (_, i) => i);
+const GANTT_GRID_COLS = `repeat(${HOURS.length}, minmax(0, 1fr))`;
 
 function hourLeftPct(hour: number, timelineStart: number, slotCount: number): number {
   return ((hour - timelineStart) / slotCount) * 100;
@@ -75,19 +60,31 @@ type ScheduledRun = ProductionRun & {
   lineId: string;
 };
 
-type GanttLaneModel = { key: string; plant: string; line: number; runs: ScheduledRun[] };
+type GanttLaneModel = { key: string; plant: string; line: number; label: string; runs: ScheduledRun[] };
 
 const DRAG_SNAP_HOURS = 0.25;
 const DRAG_THRESHOLD_PX = 4;
 
 function toDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function shiftDateKey(dateKey: string, days: number): string {
-  const d = new Date(`${dateKey}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
+  const [y, m, day] = dateKey.split("-").map(Number);
+  const d = new Date(y, m - 1, day);
+  d.setDate(d.getDate() + days);
   return toDateKey(d);
+}
+
+function timelineHour(d: Date): number {
+  return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+}
+
+function formatClockLabel(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function quickDatesAround(anchorDate: string): string[] {
@@ -117,12 +114,12 @@ const GANTT_RUN_TILE =
   "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-grab active:cursor-grabbing touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
 
 function formatDateLabel(dateKey: string): string {
-  const d = new Date(`${dateKey}T12:00:00Z`);
+  const [y, m, day] = dateKey.split("-").map(Number);
+  const d = new Date(y, m - 1, day);
   return d.toLocaleDateString("en-CA", {
     weekday: "short",
     day: "numeric",
     month: "short",
-    timeZone: "UTC",
   });
 }
 
@@ -141,8 +138,8 @@ function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
         line: lineNum,
         sku: r.sku_id,
         qty: r.quantity,
-        start: start.getUTCHours() + start.getUTCMinutes() / 60,
-        end: end.getUTCHours() + end.getUTCMinutes() / 60,
+        start: timelineHour(start),
+        end: timelineHour(end),
         allergen: "none",
         risk: "ok",
         lots: r.lot_assignments,
@@ -161,21 +158,54 @@ function lineNumberFromId(lineId: string): number {
   return parseInt(lineId.replace(/\D/g, ""), 10) || 1;
 }
 
-function utcIsoFromDateAndTime(dateKey: string, time: string): string {
+function facilityDisplayName(plantOrFacilityId: string, facilities: BackendFacility[]): string {
+  const mapped = FACILITY_MAP[plantOrFacilityId] ?? plantOrFacilityId;
+  const fromStatic = FACILITIES.find(f => f.id === mapped)?.name;
+  if (fromStatic) return fromStatic;
+  const backendId = PLANT_TO_FACILITY[mapped] ?? plantOrFacilityId;
+  const fromApi = facilities.find(
+    f => f.facility_id === backendId || f.facility_id === plantOrFacilityId,
+  )?.name;
+  if (fromApi) return fromApi;
+  return mapped.replace(/^plant[-_]/, "").replace(/-/g, " ");
+}
+
+function lineLabelFor(
+  plantId: string,
+  lineNum: number,
+  productionLines: BackendProductionLine[],
+  facilities: BackendFacility[],
+): string {
+  const match = productionLines.find(
+    ln =>
+      lineNumberFromId(ln.line_id) === lineNum &&
+      ((FACILITY_MAP[ln.facility_id] ?? ln.facility_id) === plantId ||
+        ln.facility_id === PLANT_TO_FACILITY[plantId]),
+  );
+  if (match?.name) return match.name;
+  return `${facilityDisplayName(plantId, facilities)} Line ${lineNum}`;
+}
+
+function skuLabel(skuId: string, productNames?: Map<string, string>): string {
+  return productNames?.get(skuId) ?? SKUS.find(s => s.id === skuId)?.name ?? skuId.replace(/^sku-/, "").replace(/-/g, " ");
+}
+
+function isoFromDateAndTime(dateKey: string, time: string): string {
   const [hh, mm] = time.split(":").map(v => parseInt(v, 10));
-  const d = new Date(`${dateKey}T00:00:00.000Z`);
-  d.setUTCHours(hh || 0, mm || 0, 0, 0);
-  return d.toISOString();
+  const [y, m, day] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, day, hh || 0, mm || 0, 0, 0).toISOString();
 }
 
 function RunHoverCard({
   run,
   anchorEl,
+  productNames,
 }: {
   run: ProductionRun;
   anchorEl: HTMLElement | null;
+  productNames?: Map<string, string>;
 }) {
-  const sku = SKUS.find(s => s.id === run.sku);
+  const name = skuLabel(run.sku, productNames);
   const [pos, setPos] = useState({ left: 0, top: 0 });
 
   useLayoutEffect(() => {
@@ -204,7 +234,7 @@ function RunHoverCard({
       style={{ left: pos.left, top: pos.top }}
     >
       <div className="font-mono text-[10px] text-[var(--bp-text-subtle)] mb-1">{run.id}</div>
-      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1.5">{sku?.name || run.sku}</div>
+      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1.5">{name}</div>
       <div className="text-[var(--bp-text-muted)]">Lots consumed</div>
       {run.lots.length > 0
         ? run.lots.map(l => <div key={l} className="font-mono text-[11px] text-[var(--bp-text-secondary)]">· {l}</div>)
@@ -250,21 +280,63 @@ function facilityIdForLane(lane: Pick<GanttLaneModel, "plant">): string {
   return PLANT_TO_FACILITY[lane.plant] ?? lane.plant;
 }
 
-function applyMovePreview(lanes: GanttLaneModel[], preview: MovePreview | null): GanttLaneModel[] {
-  if (!preview) return lanes;
-  const run = lanes.flatMap(l => l.runs).find(r => r.id === preview.runId);
-  if (!run) return lanes;
-  const movedRun: ScheduledRun = { ...run, start: preview.start, end: preview.end };
-  return lanes.map(ln => {
-    if (ln.key === preview.sourceLaneKey && ln.key !== preview.targetLaneKey) {
-      return { ...ln, runs: ln.runs.filter(r => r.id !== preview.runId) };
-    }
-    if (ln.key === preview.targetLaneKey) {
-      const others = ln.runs.filter(r => r.id !== preview.runId);
-      return { ...ln, runs: [...others, movedRun].sort((a, b) => a.start - b.start) };
-    }
-    return ln;
-  });
+function DragRunGhost({
+  preview,
+  run,
+  lanes,
+  hours,
+  anchorEl,
+  productNames,
+}: {
+  preview: MovePreview;
+  run: ScheduledRun | undefined;
+  lanes: GanttLaneModel[];
+  hours: number[];
+  anchorEl: HTMLElement | null;
+  productNames?: Map<string, string>;
+}) {
+  const name = run ? skuLabel(run.sku, productNames) : "";
+  const [pos, setPos] = useState({ left: 0, top: 0, width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    if (!anchorEl || !run) return;
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      const trackWidth = anchorEl.clientWidth || rect.width;
+      const laneIdx = lanes.findIndex(l => l.key === preview.targetLaneKey);
+      if (laneIdx < 0) return;
+      const leftPct = hourLeftPct(preview.start, hours[0], hours.length);
+      const widthPct = hourWidthPct(preview.start, preview.end, hours.length);
+      setPos({
+        left: rect.left + (leftPct / 100) * trackWidth + 3,
+        top: rect.top + GANTT_HEADER_H + laneIdx * LANE_H + 6,
+        width: Math.max(24, (widthPct / 100) * trackWidth - 6),
+        height: LANE_H - 12,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorEl, hours, lanes, preview, run]);
+
+  if (!run || !anchorEl || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className={`fixed z-40 pointer-events-none rounded-lg border border-l-[3px] shadow-lg ring-2 ring-blue-400/50 ${runTileStyle(run.risk)} flex items-center gap-2 px-2.5 opacity-95`}
+      style={{ left: pos.left, top: pos.top, width: pos.width, height: pos.height }}
+    >
+      <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{name}</span>
+      <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
+        {(run.qty / 1000).toFixed(1)}k
+      </span>
+    </div>,
+    document.body,
+  );
 }
 
 function RunContextMenu({
@@ -272,11 +344,13 @@ function RunContextMenu({
   onClose,
   onDelete,
   deletingId,
+  productNames,
 }: {
   menu: RunMenuState;
   onClose: () => void;
   onDelete: (run: ScheduledRun) => void;
   deletingId: string | null;
+  productNames?: Map<string, string>;
 }) {
   useEffect(() => {
     if (!menu) return;
@@ -292,8 +366,8 @@ function RunContextMenu({
   }, [menu, onClose]);
 
   if (!menu) return null;
-  const sku = SKUS.find(s => s.id === menu.run.sku);
   const busy = deletingId === menu.run.id;
+  const skuName = skuLabel(menu.run.sku, productNames);
   return createPortal(
     <div
       className="fixed z-[10000] min-w-[148px] rounded-lg border border-[var(--bp-border)] bg-[var(--bp-surface)] py-1 shadow-xl ring-1 ring-white/[0.04]"
@@ -307,7 +381,7 @@ function RunContextMenu({
         className="w-full px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
         onClick={() => onDelete(menu.run)}
       >
-        {busy ? "Deleting…" : `Delete ${sku?.name ?? menu.run.sku}`}
+        {busy ? "Deleting…" : `Delete ${skuName}`}
       </button>
     </div>,
     document.body,
@@ -318,6 +392,7 @@ function GanttLane({
   lane,
   hours,
   nowHour,
+  nowAt,
   isFirst,
   showNowLine,
   rowIndex,
@@ -325,10 +400,12 @@ function GanttLane({
   onRunDragStart,
   draggingRunId,
   savingRunId,
+  productNames,
 }: {
   lane: GanttLaneModel;
   hours: number[];
   nowHour: number;
+  nowAt: Date;
   isFirst: boolean;
   showNowLine: boolean;
   rowIndex: number;
@@ -336,11 +413,11 @@ function GanttLane({
   onRunDragStart: (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => void;
   draggingRunId: string | null;
   savingRunId: string | null;
+  productNames?: Map<string, string>;
 }) {
-  const sku = (id: string) => SKUS.find(s => s.id === id);
   const [hoveredRun, setHoveredRun] = useState<{ run: ScheduledRun; el: HTMLElement } | null>(null);
   const showNow = showNowLine && nowHour >= hours[0] && nowHour < hours[0] + hours.length;
-  const nowLabel = `${String(Math.floor(nowHour)).padStart(2, "0")}:${String(Math.round((nowHour % 1) * 60)).padStart(2, "0")}`;
+  const nowLabel = formatClockLabel(nowAt);
   return (
     <div
       className={`relative w-full border-b border-[var(--bp-border-soft)] ${laneRowBg(rowIndex)}`}
@@ -360,26 +437,22 @@ function GanttLane({
           style={{ left: `${hourLeftPct(nowHour, hours[0], hours.length)}%` }}
         >
           {isFirst && (
-            <div className="absolute -top-2.5 -translate-x-1/2 rounded-full bg-blue-500/35 px-1.5 py-0.5 text-[9px] font-mono text-blue-100 whitespace-nowrap ring-1 ring-blue-400/50">
+            <div className="absolute top-1 -translate-x-1/2 rounded-full bg-blue-500/35 px-1.5 py-0.5 text-[9px] font-mono text-blue-100 whitespace-nowrap ring-1 ring-blue-400/50">
               now · {nowLabel}
             </div>
           )}
         </div>
       )}
       {lane.runs.map(r => {
-        const viewportEnd = hours[0] + hours.length;
-        if (r.end <= hours[0] || r.start >= viewportEnd) return null;
-        const displayStart = Math.max(r.start, hours[0]);
-        const displayEnd = Math.min(r.end, viewportEnd);
-        const leftPct = hourLeftPct(displayStart, hours[0], hours.length);
-        const widthPct = hourWidthPct(displayStart, displayEnd, hours.length);
+        const leftPct = hourLeftPct(r.start, hours[0], hours.length);
+        const widthPct = hourWidthPct(r.start, r.end, hours.length);
         const allergenTone = r.allergen === "nuts" ? "red" : r.allergen === "milk" ? "amber" : "slate";
         const isDragging = draggingRunId === r.id;
         const isSaving = savingRunId === r.id;
         return (
           <div
             key={r.id}
-            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)} ${isDragging ? "z-30 opacity-90 ring-2 ring-blue-400/60" : ""} ${isSaving ? "opacity-50 pointer-events-none" : ""}`}
+            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)} ${isDragging ? "opacity-35" : ""} ${isSaving ? "opacity-50 pointer-events-none" : ""}`}
             style={{ left: `calc(${leftPct}% + 3px)`, width: `calc(${widthPct}% - 6px)` }}
             onMouseEnter={e => {
               if (draggingRunId) return;
@@ -389,7 +462,7 @@ function GanttLane({
             onContextMenu={e => onRunContextMenu(e, r)}
             onPointerDown={e => onRunDragStart(e, r, lane.key)}
           >
-            <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{sku(r.sku)?.name || r.sku}</span>
+            <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{skuLabel(r.sku, productNames)}</span>
             <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
               {(r.qty / 1000).toFixed(1)}k
             </span>
@@ -397,14 +470,16 @@ function GanttLane({
           </div>
         );
       })}
-      {hoveredRun && !draggingRunId && <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} />}
+      {hoveredRun && !draggingRunId && (
+        <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} productNames={productNames} />
+      )}
       {lane.runs.length > 1 && lane.runs.slice(0, -1).map((r, i) => {
         const next = lane.runs[i + 1];
         const xPct = hourLeftPct(next.start, hours[0], hours.length);
         if (r.allergen !== next.allergen && r.allergen !== "none" && next.allergen !== "none") {
           return (
             <div key={i} className="absolute top-0 bottom-0 border-l-2 border-dashed border-amber-500/60" style={{ left: `calc(${xPct}% - 1px)` }}>
-              <div className="absolute -top-2 left-1 text-[9px] font-mono text-amber-300 whitespace-nowrap bg-[#0a0d14] px-1">{r.allergen}→{next.allergen} · 90m</div>
+              <div className="absolute top-0.5 left-1 text-[9px] font-mono text-amber-300 whitespace-nowrap bg-[var(--bp-surface-soft)] px-1">{r.allergen}→{next.allergen} · 90m</div>
             </div>
           );
         }
@@ -416,29 +491,25 @@ function GanttLane({
 
 function GanttTimeline({
   lanes,
-  viewportStart,
-  viewportHours,
   nowHour,
+  nowAt,
   showNowLine,
   productionLines,
   onRunContextMenu,
   onRunMove,
+  productNames,
 }: {
   lanes: GanttLaneModel[];
-  viewportStart: number;
-  viewportHours: number;
   nowHour: number;
+  nowAt: Date;
   showNowLine: boolean;
   productionLines: BackendProductionLine[];
   onRunContextMenu: (e: React.MouseEvent, run: ScheduledRun) => void;
   onRunMove: (run: ScheduledRun, update: UpdateScheduleInput) => Promise<boolean>;
+  productNames?: Map<string, string>;
 }) {
   const timelineRef = useRef<HTMLDivElement>(null);
-  const hours = useMemo(
-    () => buildViewportHours(viewportStart, viewportHours),
-    [viewportStart, viewportHours],
-  );
-  const gridCols = `repeat(${hours.length}, minmax(0, 1fr))`;
+  const hours = HOURS;
   const [drag, setDrag] = useState<{
     run: ScheduledRun;
     sourceLaneKey: string;
@@ -450,14 +521,18 @@ function GanttTimeline({
   const [preview, setPreview] = useState<MovePreview | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  const displayLanes = useMemo(() => applyMovePreview(lanes, preview), [lanes, preview]);
+  const draggingRun = useMemo(
+    () => (drag ? lanes.flatMap(l => l.runs).find(r => r.id === drag.run.id) : undefined),
+    [drag, lanes],
+  );
 
   useEffect(() => {
     if (!drag) return;
 
     const onMove = (e: PointerEvent) => {
-      const rect = timelineRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const el = timelineRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
       const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * hours.length;
       const start = snapHour(drag.originStart + deltaHours);
       const end = start + drag.durationHours;
@@ -479,19 +554,22 @@ function GanttTimeline({
     };
 
     const onUp = async (e: PointerEvent) => {
-      const rect = timelineRef.current?.getBoundingClientRect();
+      const el = timelineRef.current;
+      const rect = el?.getBoundingClientRect();
       const moved =
+        el != null &&
         rect != null &&
         (Math.abs(e.clientX - drag.startClientX) > DRAG_THRESHOLD_PX ||
           Math.abs(e.clientY - drag.startClientY) > DRAG_THRESHOLD_PX);
 
-      if (!rect || !moved) {
+      if (!el || !rect || !moved) {
         setDrag(null);
         setPreview(null);
         return;
       }
 
-      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * hours.length;
+      const trackWidth = rect.width;
+      const deltaHours = ((e.clientX - drag.startClientX) / trackWidth) * hours.length;
       const start = snapHour(drag.originStart + deltaHours);
       const laneIdx = Math.max(
         0,
@@ -533,7 +611,7 @@ function GanttTimeline({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [drag, hours.length, lanes, onRunMove, productionLines, viewportStart, viewportHours]);
+  }, [drag, hours.length, lanes, onRunMove, productionLines]);
 
   const beginDrag = useCallback(
     (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => {
@@ -562,7 +640,7 @@ function GanttTimeline({
     <div ref={timelineRef} className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
       <div
         className={`grid w-full ${GANTT_HEADER}`}
-        style={{ gridTemplateColumns: gridCols, height: GANTT_HEADER_H }}
+        style={{ gridTemplateColumns: GANTT_GRID_COLS, height: GANTT_HEADER_H }}
       >
         {hours.map(h => (
           <div
@@ -573,12 +651,13 @@ function GanttTimeline({
           </div>
         ))}
       </div>
-      {displayLanes.map((ln, i) => (
+      {lanes.map((ln, i) => (
         <GanttLane
           key={ln.key}
           lane={ln}
           hours={hours}
           nowHour={nowHour}
+          nowAt={nowAt}
           isFirst={i === 0}
           showNowLine={showNowLine}
           rowIndex={i}
@@ -586,8 +665,19 @@ function GanttTimeline({
           onRunDragStart={beginDrag}
           draggingRunId={drag?.run.id ?? null}
           savingRunId={savingId}
+          productNames={productNames}
         />
       ))}
+      {preview && drag && (
+        <DragRunGhost
+          preview={preview}
+          run={draggingRun}
+          lanes={lanes}
+          hours={hours}
+          anchorEl={timelineRef.current}
+          productNames={productNames}
+        />
+      )}
     </div>
   );
 }
@@ -620,17 +710,13 @@ function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; 
   );
 }
 
-function skuLabel(skuId: string, productNames?: Map<string, string>): string {
-  return productNames?.get(skuId) ?? SKUS.find(s => s.id === skuId)?.name ?? skuId.replace(/^sku-/, "").replace(/-/g, " ");
-}
-
 function diffRunToMini(run: BackendScheduleDiffRun, state: string, lane = "Line") {
   const start = new Date(run.start_at);
   const end = new Date(run.end_at);
   return {
     lane,
-    start: start.getUTCHours() + start.getUTCMinutes() / 60,
-    end: end.getUTCHours() + end.getUTCMinutes() / 60,
+    start: timelineHour(start),
+    end: timelineHour(end),
     sku: skuLabel(run.sku_id),
     state,
     window: formatScheduleWindow(run.start_at, run.end_at),
@@ -865,8 +951,8 @@ function AddScheduleModal({
       setError("Quantity must be a positive number.");
       return;
     }
-    const start_at = utcIsoFromDateAndTime(activeDate, startTime);
-    const end_at = utcIsoFromDateAndTime(activeDate, endTime);
+    const start_at = isoFromDateAndTime(activeDate, startTime);
+    const end_at = isoFromDateAndTime(activeDate, endTime);
     if (new Date(end_at) <= new Date(start_at)) {
       setError("End time must be after start time.");
       return;
@@ -899,7 +985,7 @@ function AddScheduleModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
           <div>
             <div className="text-[14px] font-semibold text-slate-100">Add schedule run</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">{formatDateLabel(activeDate)} · UTC times</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{formatDateLabel(activeDate)} · local times</div>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-slate-800 text-slate-400">
             <Icon name="x" size={16} />
@@ -936,11 +1022,11 @@ function AddScheduleModal({
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[11px] uppercase tracking-wider text-slate-500">Start (UTC)</span>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">Start</span>
               <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className={`mt-1 ${inputCls}`} />
             </label>
             <label className="block">
-              <span className="text-[11px] uppercase tracking-wider text-slate-500">End (UTC)</span>
+              <span className="text-[11px] uppercase tracking-wider text-slate-500">End</span>
               <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className={`mt-1 ${inputCls}`} />
             </label>
           </div>
@@ -1044,13 +1130,12 @@ export default function SchedulePage() {
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [timelineZoomHours, setTimelineZoomHours] = useState<number>(TIMELINE_HOURS);
-  const [timelineStartHour, setTimelineStartHour] = useState(0);
   const [runMenu, setRunMenu] = useState<RunMenuState>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<BackendFacility[]>([]);
   const [productionLines, setProductionLines] = useState<BackendProductionLine[]>([]);
   const [products, setProducts] = useState<BackendProduct[]>([]);
+  const [nowAt, setNowAt] = useState(() => new Date());
   const dateInputRef = useRef<HTMLInputElement>(null);
   const { data: backendSchedules, status: scheduleStatus } = useSchedules(scheduleRefreshKey);
 
@@ -1068,12 +1153,16 @@ export default function SchedulePage() {
     }
   }, [showScheduleProposal, pendingScheduleCardId]);
 
-  const todayKey = useMemo(() => toDateKey(new Date()), []);
-
-  const nowHour = useMemo(() => {
-    const n = new Date();
-    return n.getUTCHours() + n.getUTCMinutes() / 60;
+  useEffect(() => {
+    const tick = () => setNowAt(new Date());
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
   }, []);
+
+  const todayKey = useMemo(() => toDateKey(nowAt), [nowAt]);
+
+  const nowHour = useMemo(() => timelineHour(nowAt), [nowAt]);
 
   const allRuns = useMemo<ScheduledRun[]>(() => {
     if (scheduleStatus === "loading") return [];
@@ -1101,6 +1190,11 @@ export default function SchedulePage() {
 
   const isEmptyDate = (runCountByDate[activeDate] ?? 0) === 0;
 
+  const productNames = useMemo(
+    () => new Map(products.map(p => [p.sku_id, p.name])),
+    [products],
+  );
+
   const runs = useMemo(() => {
     const forDate = allRuns.filter(r => r.dateKey === activeDate);
     return plant === "all" ? forDate : forDate.filter(r => r.plant === plant);
@@ -1119,17 +1213,31 @@ export default function SchedulePage() {
       if (!visiblePlants.has(plantId)) return;
       const lineNum = lineNumberFromId(ln.line_id);
       const key = `${plantId}-L${lineNum}`;
-      byKey[key] = { key, plant: plantId, line: lineNum, runs: [] };
+      byKey[key] = {
+        key,
+        plant: plantId,
+        line: lineNum,
+        label: ln.name || lineLabelFor(plantId, lineNum, productionLines, facilities),
+        runs: [],
+      };
     });
 
     runs.forEach(r => {
       const key = `${r.plant}-L${r.line}`;
-      if (!byKey[key]) byKey[key] = { key, plant: r.plant, line: r.line, runs: [] };
+      if (!byKey[key]) {
+        byKey[key] = {
+          key,
+          plant: r.plant,
+          line: r.line,
+          label: lineLabelFor(r.plant, r.line, productionLines, facilities),
+          runs: [],
+        };
+      }
       byKey[key].runs.push(r);
     });
 
-    return Object.values(byKey).sort((a, b) => (a.plant + a.line).localeCompare(b.plant + b.line));
-  }, [runs, plant, productionLines]);
+    return Object.values(byKey).sort((a, b) => a.label.localeCompare(b.label));
+  }, [runs, plant, productionLines, facilities]);
 
   const defaultFacilityForAdd =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
@@ -1141,7 +1249,7 @@ export default function SchedulePage() {
   }, []);
 
   const handleDeleteRun = useCallback(async (run: ScheduledRun) => {
-    const skuName = SKUS.find(s => s.id === run.sku)?.name ?? run.sku;
+    const skuName = skuLabel(run.sku, productNames);
     if (!window.confirm(`Delete schedule run for ${skuName}?`)) return;
     setDeletingRunId(run.id);
     const ok = await deleteSchedule(run.id);
@@ -1149,7 +1257,7 @@ export default function SchedulePage() {
     setRunMenu(null);
     if (ok) bumpScheduleRefresh();
     else window.alert("Could not delete schedule run.");
-  }, [bumpScheduleRefresh]);
+  }, [bumpScheduleRefresh, productNames]);
 
   const handleRunMove = useCallback(async (run: ScheduledRun, update: UpdateScheduleInput) => {
     const result = await updateSchedule(run.id, update);
@@ -1160,36 +1268,6 @@ export default function SchedulePage() {
     window.alert("Could not update schedule run.");
     return false;
   }, [bumpScheduleRefresh]);
-
-  const timelineZoomIndex = TIMELINE_ZOOM_STEPS.indexOf(
-    timelineZoomHours as (typeof TIMELINE_ZOOM_STEPS)[number],
-  );
-  const canZoomIn = timelineZoomIndex >= 0 && timelineZoomIndex < TIMELINE_ZOOM_STEPS.length - 1;
-  const canZoomOut = timelineZoomIndex > 0;
-  const canPanTimeline = timelineZoomHours < TIMELINE_HOURS;
-  const timelinePanStep = Math.max(1, Math.floor(timelineZoomHours / 4));
-
-  const zoomTimeline = useCallback((direction: "in" | "out") => {
-    const idx = TIMELINE_ZOOM_STEPS.indexOf(
-      timelineZoomHours as (typeof TIMELINE_ZOOM_STEPS)[number],
-    );
-    const safeIdx = idx >= 0 ? idx : 0;
-    const nextIdx = direction === "in" ? safeIdx + 1 : safeIdx - 1;
-    if (nextIdx < 0 || nextIdx >= TIMELINE_ZOOM_STEPS.length) return;
-    const nextZoom = TIMELINE_ZOOM_STEPS[nextIdx];
-    const center = timelineStartHour + timelineZoomHours / 2;
-    setTimelineZoomHours(nextZoom);
-    setTimelineStartHour(clampViewportStart(center - nextZoom / 2, nextZoom));
-  }, [timelineStartHour, timelineZoomHours]);
-
-  const panTimeline = useCallback((deltaHours: number) => {
-    setTimelineStartHour(prev => clampViewportStart(prev + deltaHours, timelineZoomHours));
-  }, [timelineZoomHours]);
-
-  const resetTimelineZoom = useCallback(() => {
-    setTimelineZoomHours(TIMELINE_HOURS);
-    setTimelineStartHour(0);
-  }, []);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -1293,64 +1371,6 @@ export default function SchedulePage() {
             {plant !== "all" ? ` · ${FACILITIES.find(f => f.id === plant)?.name ?? plant}` : ""}
           </div>
           <div className="flex-1"/>
-          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40">
-            <button
-              type="button"
-              aria-label="Zoom out timeline"
-              disabled={!canZoomOut}
-              onClick={() => zoomTimeline("out")}
-              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
-            >
-              −
-            </button>
-            <span
-              className="px-1.5 text-[11px] font-mono text-slate-400 tabular-nums min-w-[6.5rem] text-center"
-              title={`Showing ${timelineZoomHours} hour window`}
-            >
-              {formatViewportRange(timelineStartHour, timelineZoomHours)}
-            </span>
-            <button
-              type="button"
-              aria-label="Zoom in timeline"
-              disabled={!canZoomIn}
-              onClick={() => zoomTimeline("in")}
-              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
-            >
-              +
-            </button>
-            {canPanTimeline && (
-              <>
-                <span className="w-px h-4 bg-slate-700" aria-hidden />
-                <button
-                  type="button"
-                  aria-label="Pan timeline earlier"
-                  disabled={timelineStartHour <= 0}
-                  onClick={() => panTimeline(-timelinePanStep)}
-                  className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  aria-label="Pan timeline later"
-                  disabled={timelineStartHour + timelineZoomHours >= TIMELINE_HOURS}
-                  onClick={() => panTimeline(timelinePanStep)}
-                  className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
-                >
-                  ›
-                </button>
-              </>
-            )}
-            {timelineZoomHours < TIMELINE_HOURS && (
-              <button
-                type="button"
-                onClick={resetTimelineZoom}
-                className="ml-0.5 px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-slate-200 whitespace-nowrap"
-              >
-                Full day
-              </button>
-            )}
-          </div>
           <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 whitespace-nowrap ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
             <Icon name="diff" size={12}/> {showDiff ? "Hide" : "Show"} agent proposal
           </button>
@@ -1407,22 +1427,19 @@ export default function SchedulePage() {
                   className={`flex items-center px-3 border-b border-[var(--bp-border-soft)] ${laneRowBg(i)}`}
                   style={{ height: LANE_H }}
                 >
-                  <span className={GANTT_ROW_LABEL}>
-                    {FACILITIES.find(f => f.id === ln.plant)?.name || ln.plant}{" "}
-                    <span className="font-mono text-[var(--bp-text-muted)]">L{ln.line}</span>
-                  </span>
+                  <span className={GANTT_ROW_LABEL}>{ln.label}</span>
                 </div>
               ))}
             </div>
             <GanttTimeline
               lanes={lanes}
-              viewportStart={timelineStartHour}
-              viewportHours={timelineZoomHours}
               nowHour={nowHour}
+              nowAt={nowAt}
               showNowLine={activeDate === todayKey}
               productionLines={productionLines}
               onRunContextMenu={handleRunContextMenu}
               onRunMove={handleRunMove}
+              productNames={productNames}
             />
           </div>
         </div>
@@ -1459,6 +1476,7 @@ export default function SchedulePage() {
           onClose={() => setRunMenu(null)}
           onDelete={handleDeleteRun}
           deletingId={deletingRunId}
+          productNames={productNames}
         />
       </div>
     </div>
