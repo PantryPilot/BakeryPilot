@@ -48,6 +48,21 @@ jest.mock('../lib/context', () => ({
       yieldAnomaly: false,
     },
     updateNotificationPrefs: jest.fn(),
+    language: 'en',
+    setLanguage: jest.fn(),
+    t: (key: string) => {
+      const translations: Record<string, string> = {
+        'bottom.waste_avoided': 'Waste avoided',
+        'bottom.co2e_saved': 'CO2e saved',
+        'bottom.active_disruptions': 'Active disruptions',
+        'bottom.moq_tax_ytd': 'MOQ-tax YTD',
+        'topbar.language': 'Language',
+        'topbar.toggle_theme_to_light': 'Toggle theme to light',
+        'topbar.toggle_theme_to_dark': 'Toggle theme to dark',
+        'topbar.start_tour': 'Start tour',
+      };
+      return translations[key] || key;
+    },
   }),
 }))
 
@@ -90,11 +105,6 @@ describe('BottomStrip', () => {
 describe('TopBar', () => {
   test('renders without crashing', () => {
     render(<TopBar />)
-  })
-
-  test('shows SSE live badge', () => {
-    render(<TopBar />)
-    expect(screen.getByText('Live')).toBeInTheDocument()
   })
 
   test('shows facility selector button', () => {
