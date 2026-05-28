@@ -15,12 +15,23 @@ _UUID_RE = re.compile(
 )
 
 
+def _fetch_real_run_ids() -> list[str]:
+    """Fetch the list of run_ids that actually exist in the database."""
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/api/yield", timeout=5)
+        if resp.status_code != 200:
+            return []
+        return [r["run_id"] for r in resp.json() if r.get("run_id")]
+    except httpx.HTTPError:
+        return []
+
+
 def _require_valid_run_id(run_id: str) -> None:
-    """Reject obviously-bad run_ids so the LLM gets immediate feedback to call
-    list_recent_yield_runs instead of hallucinating a UUID."""
+    """Reject hallucinated run_ids and feed the LLM real ones so it can
+    self-correct without another planning round."""
     if not isinstance(run_id, str) or not run_id.strip():
         raise ToolException(
-            "run_id is required and must be a real UUID returned by list_recent_yield_runs."
+            "run_id is required. Call list_recent_yield_runs first and pass a run_id from the response."
         )
     cleaned = run_id.strip().lower()
     if cleaned in {"null", "none", "undefined", "nan"}:
@@ -29,7 +40,16 @@ def _require_valid_run_id(run_id: str) -> None:
         )
     if not _UUID_RE.match(cleaned):
         raise ToolException(
-            f"'{run_id}' is not a valid UUID. Call list_recent_yield_runs first and pass a run_id from the response (looks like 'e8534ba1-e49c-487c-bb15-96a86bfbd188')."
+            f"'{run_id}' is not a valid UUID. Call list_recent_yield_runs first and pass a run_id from the response."
+        )
+    # Existence check — prevents hallucinated UUIDs that happen to match the format.
+    real_ids = _fetch_real_run_ids()
+    if real_ids and run_id not in real_ids:
+        sample = ", ".join(real_ids[:5])
+        raise ToolException(
+            f"run_id '{run_id}' does not exist in the database. "
+            f"Do NOT invent UUIDs. Real run_ids currently in the DB: [{sample}]. "
+            f"Pick one of these (or call list_recent_yield_runs for the full list with line/sku/variance details) and retry."
         )
 
 
