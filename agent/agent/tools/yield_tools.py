@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 import httpx
@@ -7,6 +8,29 @@ import opik
 from langchain_core.tools import tool, ToolException
 
 from agent.config import BACKEND_URL
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _require_valid_run_id(run_id: str) -> None:
+    """Reject obviously-bad run_ids so the LLM gets immediate feedback to call
+    list_recent_yield_runs instead of hallucinating a UUID."""
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ToolException(
+            "run_id is required and must be a real UUID returned by list_recent_yield_runs."
+        )
+    cleaned = run_id.strip().lower()
+    if cleaned in {"null", "none", "undefined", "nan"}:
+        raise ToolException(
+            f"'{run_id}' is not a run_id. Call list_recent_yield_runs first and pick a real run_id from the response."
+        )
+    if not _UUID_RE.match(cleaned):
+        raise ToolException(
+            f"'{run_id}' is not a valid UUID. Call list_recent_yield_runs first and pass a run_id from the response (looks like 'e8534ba1-e49c-487c-bb15-96a86bfbd188')."
+        )
 
 
 @tool
@@ -54,6 +78,7 @@ def get_yield_variance(
     actual_vs_theoretical (ingredient-level), total_dollar_leak, status,
     equipment_notes.
     """
+    _require_valid_run_id(run_id)
     resp = httpx.get(f"{BACKEND_URL}/api/yield/{run_id}", timeout=10)
     if resp.status_code == 404:
         raise ToolException(f"yield run {run_id} not found; call list_recent_yield_runs first")
@@ -93,6 +118,7 @@ def diagnose_anomaly(
     to diagnose a yield anomaly. Returns candidate_causes (with confidence and
     supporting_data) and a recommended action.
     """
+    _require_valid_run_id(run_id)
     resp = httpx.get(f"{BACKEND_URL}/api/yield/{run_id}/diagnose", timeout=15)
     if resp.status_code == 404:
         raise ToolException(f"yield run {run_id} not found; call list_recent_yield_runs first")
