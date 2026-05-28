@@ -1217,16 +1217,15 @@ export default function SchedulePage() {
   }, [allRuns, activeDate, plant]);
 
   const lanes = useMemo(() => {
-    const visiblePlants = new Set(
-      plant === "all"
-        ? [...new Set(productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id)), ...runs.map(r => r.plant)]
-        : [plant],
-    );
+    const stablePlants = new Set([
+      ...productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id),
+      ...allRuns.map(r => r.plant),
+    ]);
     const byKey: Record<string, GanttLaneModel> = {};
 
     productionLines.forEach(ln => {
       const plantId = FACILITY_MAP[ln.facility_id] ?? ln.facility_id;
-      if (!visiblePlants.has(plantId)) return;
+      if (!stablePlants.has(plantId)) return;
       const lineNum = lineNumberFromId(ln.line_id);
       const key = `${plantId}-L${lineNum}`;
       byKey[key] = {
@@ -1253,7 +1252,7 @@ export default function SchedulePage() {
     });
 
     return Object.values(byKey).sort((a, b) => a.label.localeCompare(b.label));
-  }, [runs, plant, productionLines, facilities]);
+  }, [runs, allRuns, productionLines, facilities]);
 
   const defaultFacilityForAdd =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";

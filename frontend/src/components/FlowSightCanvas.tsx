@@ -25,7 +25,8 @@ const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
 const PLANT_ROW_START = 180;
 const PLANT_ROW_GAP = 80;
-const SINGLE_PLANT_Y = PLANT_ROW_START + 2 * PLANT_ROW_GAP;
+const SUPPLIER_ROW_START = 130;
+const SUPPLIER_ROW_GAP = 100;
 
 type PlantData = {
   id: string;
@@ -822,12 +823,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     [facilities, utilByFacility],
   );
 
-  const plantPos = useMemo(() => {
-    if (facilityFilter === "all") return allPlantPos;
-    const filtered = allPlantPos.filter(p => p.id === facilityFilter);
-    if (filtered.length === 0) return [];
-    return [{ ...filtered[0], y: SINGLE_PLANT_Y }];
-  }, [allPlantPos, facilityFilter]);
+  const plantPos = allPlantPos;
 
   useEffect(() => {
     if (facilityFilter !== "all" && activePlant && activePlant.id !== facilityFilter) {
@@ -844,18 +840,10 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
 
   const supplierBackendId = useCallback((frontendId: string) => frontendId.replace(/^s-/, "sup_"), []);
 
-  const supplierIdsForFlows = useMemo(
-    () => new Set(activeOrders.map(o => o.supplier_id)),
-    [activeOrders],
+  const supplierPos = useMemo(
+    () => suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: SUPPLIER_ROW_START + i * SUPPLIER_ROW_GAP })),
+    [suppliers],
   );
-
-  const supplierPos = useMemo(() => {
-    const list =
-      facilityFilter === "all"
-        ? suppliers
-        : suppliers.filter(s => supplierIdsForFlows.has(supplierBackendId(s.id)));
-    return list.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
-  }, [suppliers, facilityFilter, supplierIdsForFlows, supplierBackendId]);
 
   const inboundFlows = useMemo((): InboundFlow[] => {
     const plantByFacility = new Map(plantPos.map(p => [p.facilityId, p]));

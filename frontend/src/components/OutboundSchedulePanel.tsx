@@ -347,12 +347,8 @@ export function OutboundSchedulePanel({
   }, [allRuns, activeDate, plant]);
 
   const lanes = useMemo(() => {
-    const visibleFacilities = facilities.filter(f => {
-      if (plant === "all") return true;
-      return (FACILITY_MAP[f.facility_id] ?? f.facility_id) === plant;
-    });
     const byKey: Record<string, OutboundLane> = {};
-    visibleFacilities.forEach(f => {
+    facilities.forEach(f => {
       byKey[f.facility_id] = {
         key: f.facility_id,
         facilityId: f.facility_id,
@@ -372,7 +368,7 @@ export function OutboundSchedulePanel({
       byKey[r.facilityId].runs.push(r);
     });
     return Object.values(byKey).sort((a, b) => a.label.localeCompare(b.label));
-  }, [runs, facilities, plant]);
+  }, [runs, facilities]);
 
   const defaultFacilityId =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
