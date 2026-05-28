@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [tableFilterSpecs, setTableFilterSpecs] = useState<AdminTableFilter[]>([]);
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+  const [rowSearch, setRowSearch] = useState("");
 
   const perPage = 50;
 
@@ -90,6 +91,7 @@ export default function AdminPage() {
     setSearch("");
     setActiveFilters({});
     setTableFilterSpecs([]);
+    setRowSearch("");
     loadTableFilters(name);
     loadRows(name, 1, null, {});
   };
@@ -250,14 +252,14 @@ export default function AdminPage() {
               total={tableData?.total ?? 0}
               loading={dataLoading}
             />
-            {tableFilterSpecs.length > 0 && (
-              <TableFilterBar
-                filters={tableFilterSpecs}
-                active={activeFilters}
-                onChange={applyFilter}
-                onClear={clearFilters}
-              />
-            )}
+            <TableFilterBar
+              filters={tableFilterSpecs}
+              active={activeFilters}
+              onChange={applyFilter}
+              onClear={clearFilters}
+              rowSearch={rowSearch}
+              onRowSearch={setRowSearch}
+            />
             <div className="flex-1 overflow-auto">
               {dataLoading && !tableData ? (
                 <div className="flex items-center justify-center h-full text-slate-500 text-[13px]">
@@ -271,6 +273,7 @@ export default function AdminPage() {
                   onSort={toggleSort}
                   expandedCell={expandedCell}
                   onExpandCell={setExpandedCell}
+                  rowSearch={rowSearch}
                 />
               ) : null}
             </div>
@@ -411,43 +414,65 @@ function TableFilterBar({
   active,
   onChange,
   onClear,
+  rowSearch,
+  onRowSearch,
 }: {
   filters: AdminTableFilter[];
   active: Record<string, string>;
   onChange: (column: string, value: string) => void;
   onClear: () => void;
+  rowSearch: string;
+  onRowSearch: (v: string) => void;
 }) {
-  const hasActive = Object.keys(active).length > 0;
+  const hasActive = Object.keys(active).length > 0 || rowSearch.length > 0;
 
   return (
     <div className="shrink-0 flex flex-wrap items-center gap-3 px-5 py-3 border-b border-slate-800/80 bg-[#0b0e16]/80">
       <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold shrink-0">
         Filters
       </span>
-      {filters.map((f) => (
-        <label key={f.column} className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-400 shrink-0">{f.label}</span>
-          <select
-            value={active[f.column] ?? ""}
-            onChange={(e) => onChange(f.column, e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 text-[12px] pl-2 pr-7 py-1.5 outline-none focus:border-blue-500/60 max-w-[220px]"
+      {/* Column-level dropdown filters (API-provided) */}
+      {filters.map((f) => {
+        const isActive = !!active[f.column];
+        return (
+          <label
+            key={f.column}
+            className={`flex items-center gap-2 rounded px-2 py-1 transition ${isActive ? "bg-amber-500/10" : ""}`}
           >
-            <option value="">All</option>
-            {f.options.map((opt: AdminTableFilterOption) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} ({opt.count.toLocaleString()})
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
+            <span className={`text-[11px] shrink-0 ${isActive ? "text-amber-300" : "text-slate-400"}`}>{f.label}</span>
+            <select
+              value={active[f.column] ?? ""}
+              onChange={(e) => onChange(f.column, e.target.value)}
+              className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 text-[12px] pl-2 pr-7 py-1.5 outline-none focus:border-blue-500/60 max-w-[220px]"
+            >
+              <option value="">All</option>
+              {f.options.map((opt: AdminTableFilterOption) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.count.toLocaleString()})
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
+      {/* Generic row text search */}
+      <label className={`flex items-center gap-2 rounded px-2 py-1 transition ${rowSearch ? "bg-amber-500/10" : ""}`}>
+        <span className={`text-[11px] shrink-0 ${rowSearch ? "text-amber-300" : "text-slate-400"}`}>Search</span>
+        <input
+          type="text"
+          value={rowSearch}
+          onChange={(e) => onRowSearch(e.target.value)}
+          placeholder="Filter visible rows…"
+          className="rounded-md border border-slate-700 bg-slate-900 text-slate-200 text-[12px] pl-2 pr-3 py-1.5 outline-none focus:border-blue-500/60 w-[180px]"
+        />
+      </label>
       {hasActive && (
         <button
           type="button"
-          onClick={onClear}
+          onClick={() => { onClear(); onRowSearch(""); }}
           className="text-[11px] text-slate-500 hover:text-slate-200 transition"
         >
-          Clear filters
+          Clear all
         </button>
       )}
     </div>
@@ -488,6 +513,7 @@ function DataGrid({
   onSort,
   expandedCell,
   onExpandCell,
+  rowSearch,
 }: {
   columns: AdminColumnInfo[];
   rows: Record<string, unknown>[];
@@ -495,8 +521,17 @@ function DataGrid({
   onSort: (col: string) => void;
   expandedCell: string | null;
   onExpandCell: (key: string | null) => void;
+  rowSearch?: string;
 }) {
-  if (rows.length === 0) {
+  const visibleRows = rowSearch
+    ? rows.filter((row) =>
+        Object.values(row).some((v) =>
+          String(v ?? "").toLowerCase().includes(rowSearch.toLowerCase()),
+        ),
+      )
+    : rows;
+
+  if (visibleRows.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-slate-500 text-[13px]">
         No rows in this table
@@ -533,7 +568,7 @@ function DataGrid({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, rowIdx) => (
+        {visibleRows.map((row, rowIdx) => (
           <tr
             key={rowIdx}
             className={`border-b border-slate-800/40 transition-colors ${
@@ -549,7 +584,7 @@ function DataGrid({
               return (
                 <td
                   key={col.name}
-                  className="px-3 py-2 text-slate-900 font-mono border-r border-slate-800/25 last:border-r-0 align-top bp-admin-cell"
+                  className="px-3 py-2 text-slate-300 font-mono border-r border-slate-800/25 last:border-r-0 align-top bp-admin-cell"
                 >
                   <CellValue
                     column={col.name}
@@ -590,7 +625,7 @@ function CellValue({
   if (typeof value === "boolean") {
     return (
       <span
-        className={value ? "text-emerald-800" : "text-red-800"}
+        className={value ? "text-emerald-400" : "text-red-400"}
       >
         {String(value)}
       </span>
@@ -609,7 +644,7 @@ function CellValue({
         href={str}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-slate-900 font-medium underline underline-offset-2 decoration-slate-400 hover:text-blue-700 hover:decoration-blue-700 break-all"
+        className="text-blue-400 font-medium underline underline-offset-2 decoration-blue-500/40 hover:text-blue-300 break-all"
         title={str}
       >
         {str}
@@ -631,24 +666,24 @@ function CellValue({
     return (
       <button
         onClick={onToggle}
-        className="text-left max-w-[400px] break-all text-slate-900 hover:text-blue-700 transition"
+        className="text-left max-w-[400px] break-all text-slate-300 hover:text-blue-300 transition"
       >
         {expanded ? (
-          <pre className="whitespace-pre-wrap text-[11px] text-slate-900 bg-slate-50 rounded p-2 mt-1 max-h-[300px] overflow-auto border border-slate-200">
+          <pre className="whitespace-pre-wrap text-[11px] text-slate-200 bg-slate-800 rounded p-2 mt-1 max-h-[300px] overflow-auto border border-slate-700">
             {display}
           </pre>
         ) : (
-          <span className="text-slate-900">{display}</span>
+          <span className="text-slate-300">{display}</span>
         )}
       </button>
     );
   }
 
   if (type === "uuid") {
-    return <span className="text-slate-700">{str.slice(0, 8)}…</span>;
+    return <span className="text-slate-500">{str.slice(0, 8)}…</span>;
   }
 
-  return <span className="text-slate-900">{str}</span>;
+  return <span className="text-slate-300">{str}</span>;
 }
 
 function Pagination({

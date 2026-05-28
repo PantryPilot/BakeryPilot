@@ -36,7 +36,7 @@ const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 200;
 const PLANT_CX = 640;
-const RETAILER_X = 1080;
+const RETAILER_X = 1100;
 const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
@@ -1022,6 +1022,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [hoveredInbound, setHoveredInbound] = useState<InboundFlow | null>(null);
   const [hoveredOutbound, setHoveredOutbound] = useState<OutboundFlow | null>(null);
   const [flowTooltipPos, setFlowTooltipPos] = useState({ x: 0, y: 0 });
+  const [hoveredCol, setHoveredCol] = useState<string | null>(null);
   const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
   const closePlant = useCallback(() => {
@@ -1233,20 +1234,38 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           { x: SUPPLIER_X, label: "Suppliers" },
           { x: PLANT_CX, label: "Plants" },
           { x: RETAILER_X, label: "Retailers" },
-        ].map(col => (
-          <text
-            key={col.label}
-            x={col.x}
-            y={COL_LABEL_Y}
-            textAnchor="middle"
-            fontSize="10"
-            fill="var(--bp-text-subtle)"
-            fontFamily="ui-monospace, monospace"
-            letterSpacing="0.12em"
-          >
-            {col.label.toUpperCase()}
-          </text>
-        ))}
+        ].map(col => {
+          const hovered = hoveredCol === col.label;
+          return (
+            <g
+              key={col.label}
+              style={{ cursor: "default" }}
+              onMouseEnter={() => setHoveredCol(col.label)}
+              onMouseLeave={() => setHoveredCol(null)}
+            >
+              <rect
+                x={col.x - 42} y={COL_LABEL_Y - 11}
+                width="84" height="18" rx="4"
+                fill={hovered ? "var(--bp-flow-node-bg)" : "none"}
+                stroke={hovered ? "var(--bp-border-soft)" : "none"}
+                strokeWidth="1"
+                style={{ transition: "fill 0.15s ease, stroke 0.15s ease" }}
+              />
+              <text
+                x={col.x}
+                y={COL_LABEL_Y}
+                textAnchor="middle"
+                fontSize="10"
+                fill={hovered ? "var(--bp-text-strong)" : "var(--bp-text-subtle)"}
+                fontFamily="ui-monospace, monospace"
+                letterSpacing="0.12em"
+                style={{ transition: "fill 0.15s ease" }}
+              >
+                {col.label.toUpperCase()}
+              </text>
+            </g>
+          );
+        })}
 
         {layers.procure && inboundFlows.map((f, idx) => {
           const pending = f.status === "draft" || f.status === "pending_confirm";
@@ -1259,7 +1278,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
               <path
                 d={pathD}
                 stroke="transparent"
-                strokeWidth="16"
+                strokeWidth="32"
                 fill="none"
                 style={{ cursor: "pointer" }}
                 onMouseEnter={e => {
@@ -1295,7 +1314,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
               <path
                 d={pathD}
                 stroke="transparent"
-                strokeWidth="16"
+                strokeWidth="32"
                 fill="none"
                 style={{ cursor: "pointer" }}
                 onMouseEnter={e => {

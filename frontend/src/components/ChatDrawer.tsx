@@ -111,7 +111,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [sessionListOpen, setSessionListOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionListVersion, setSessionListVersion] = useState(0);
-  const [panelSize, setPanelSize] = useState({ w: 400, h: 560 });
+  const [panelSize, setPanelSize] = useState({ w: 420, h: 500 });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceWsRef = useRef<WebSocket | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -564,7 +564,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       className={
         expanded
           ? "fixed top-4 left-4 right-4 bottom-4 sm:top-8 sm:left-8 sm:right-8 sm:bottom-8 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden"
-          : `fixed bottom-32 right-2 sm:right-5 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden ${draggable.dragging || resizeStartRef.current ? "select-none" : ""}`
+          : `fixed bottom-[88px] right-2 sm:right-5 z-50 rounded-2xl border border-slate-700 bg-[#0c111c] shadow-2xl flex flex-col overflow-hidden ${draggable.dragging || resizeStartRef.current ? "select-none" : ""}`
       }
     >
       <div

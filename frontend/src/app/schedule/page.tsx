@@ -1540,7 +1540,12 @@ export default function SchedulePage() {
             }}
           />
         )}
-        {whatIfOpen && <WhatIfPanel onClose={() => setWhatIfOpen(false)}/>}
+        {whatIfOpen && (
+          <>
+            <div className="fixed inset-0 z-20" onClick={() => setWhatIfOpen(false)}/>
+            <WhatIfPanel onClose={() => setWhatIfOpen(false)}/>
+          </>
+        )}
         {addOpen && (
           <AddScheduleModal
             activeDate={activeDate}
