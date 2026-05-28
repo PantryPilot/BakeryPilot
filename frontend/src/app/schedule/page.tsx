@@ -1139,6 +1139,7 @@ export default function SchedulePage() {
     setShowScheduleProposal,
     scheduleRefreshKey,
     bumpScheduleRefresh,
+    t,
   } = useApp();
   const [scheduleTab, setScheduleTab] = useState<"production" | "outbound">("production");
   const [plant, setPlant] = useState("all");
@@ -1288,7 +1289,7 @@ export default function SchedulePage() {
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
-          title="Schedule"
+          title={t("schedule.title")}
           sub={
             scheduleTab === "production"
               ? "Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
