@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -37,6 +38,16 @@ async def _resolve_schedule(db: AsyncSession, schedule_id: str) -> ScheduleORM |
     return await resolve_schedule(db, schedule_id)
 
 
+def _schedule_not_found_detail(schedule_id: str) -> str:
+    hint = ""
+    if schedule_id not in ("current", "latest"):
+        try:
+            uuid.UUID(schedule_id)
+        except ValueError:
+            hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
+    return f"schedule {schedule_id} not found.{hint}"
+
+
 def _to_model(s: ScheduleORM) -> ProductionSchedule:
     run = ScheduleRun(
         run_id=str(s.schedule_id),
@@ -71,13 +82,7 @@ async def get_schedule(
 ) -> ProductionSchedule:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        hint = ""
-        if schedule_id not in ("current", "latest"):
-            try:
-                uuid.UUID(schedule_id)
-            except ValueError:
-                hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
-        raise HTTPException(404, f"schedule {schedule_id} not found.{hint}")
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
     return _to_model(s)
 
 
@@ -92,13 +97,7 @@ async def schedule_diff(
 ) -> ScheduleDiff:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        hint = ""
-        if schedule_id not in ("current", "latest"):
-            try:
-                uuid.UUID(schedule_id)
-            except ValueError:
-                hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
-        raise HTTPException(404, f"schedule {schedule_id} not found.{hint}")
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
     return build_schedule_diff(s)
 
 
