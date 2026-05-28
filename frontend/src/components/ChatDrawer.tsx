@@ -106,6 +106,7 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [sessionListVersion, setSessionListVersion] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const inflightRef = useRef(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
@@ -168,6 +169,14 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   }, [messages, isThinking]);
 
   useEffect(() => () => { cancelStreamRef.current?.(); }, []);
+
+  // Auto-grow the composer up to ~10 lines as the user types.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [input]);
 
   const handleNewSession = useCallback(() => {
     cancelStreamRef.current?.();
@@ -481,15 +490,16 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       <div className="border-t border-slate-800 p-3 shrink-0">
         <div className={`flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
           <textarea
+            ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            placeholder="Ask anything…"
+            placeholder="Ask anything… (Shift+Enter for new line)"
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-[13px] text-slate-100 placeholder:text-slate-500 max-h-24"
-            style={{ minHeight: 22 }}
+            className="flex-1 bg-transparent resize-none outline-none text-[13px] leading-relaxed text-slate-100 placeholder:text-slate-500 py-1"
+            style={{ minHeight: 24, maxHeight: 220 }}
           />
           <button
             onClick={toggleRecording}
@@ -732,19 +742,27 @@ interface ChatBoxProps {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ChatBox({ value, setValue, onSend, compact, suggested, onVoice }: ChatBoxProps) {
   const handleSend = () => onSend();
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [value]);
   return (
     <div className="border-t border-slate-800 p-3 shrink-0">
       <div className="flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 focus-within:border-blue-500/60 transition">
         <textarea
+          ref={taRef}
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
           }}
-          placeholder="Ask anything…"
+          placeholder="Ask anything… (Shift+Enter for new line)"
           rows={1}
-          className="flex-1 bg-transparent resize-none outline-none text-[13px] text-slate-100 placeholder:text-slate-500 max-h-32"
-          style={{ minHeight: 24 }}
+          className="flex-1 bg-transparent resize-none outline-none text-[13px] leading-relaxed text-slate-100 placeholder:text-slate-500 py-1"
+          style={{ minHeight: 24, maxHeight: 240 }}
         />
         {onVoice && (
           <button onClick={onVoice} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">
