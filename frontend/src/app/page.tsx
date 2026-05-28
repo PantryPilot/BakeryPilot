@@ -3,9 +3,12 @@ import Link from "next/link";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/atoms";
 import { useDashboardLoops } from "../lib/hooks";
+import { useApp } from "../lib/context";
+import type { TranslationKey } from "../lib/i18n";
 
 interface LoopMeta {
-  desc: string;
+  descKey: TranslationKey;
+  labelKey: TranslationKey;
   icon: string;
   color: string;
   href: string;
@@ -13,10 +16,10 @@ interface LoopMeta {
 
 // Visual layout / copy stays UI-owned; metrics come from the backend.
 const LOOP_META: Record<string, LoopMeta> = {
-  inbound:    { desc: "Supplier reliability, PO landed cost, MOQ-tax",       icon: "truck",    color: "blue",    href: "/scorecard" },
-  production: { desc: "Live yield, line schedule, changeover cost",          icon: "calendar", color: "amber",   href: "/schedule" },
-  outbound:   { desc: "Retailer fulfilment, forecast vs PO, shelf-life",     icon: "bars",     color: "purple",  href: "/scorecard" },
-  network:    { desc: "Cross-plant balancing, transfer arcs, FlowSight",     icon: "grid",     color: "emerald", href: "/facilities" },
+  inbound:    { labelKey: "home.loop_inbound",    descKey: "home.loop_desc_inbound",    icon: "truck",    color: "blue",    href: "/scorecard" },
+  production: { labelKey: "home.loop_production", descKey: "home.loop_desc_production", icon: "calendar", color: "amber",   href: "/schedule" },
+  outbound:   { labelKey: "home.loop_outbound",   descKey: "home.loop_desc_outbound",   icon: "bars",     color: "purple",  href: "/scorecard" },
+  network:    { labelKey: "home.loop_network",    descKey: "home.loop_desc_network",    icon: "grid",     color: "emerald", href: "/facilities" },
 };
 
 const FALLBACK_LOOPS = [
@@ -41,38 +44,41 @@ const TEXT: Record<string, string> = {
 
 export default function HomePage() {
   const loops = useDashboardLoops();
+  const { t } = useApp();
   const cards = loops.data.length > 0 ? loops.data : FALLBACK_LOOPS;
 
   return (
     <div className="h-full overflow-y-auto bg-[#070a11]">
       <div className="max-w-[1200px] mx-auto p-5 sm:p-8 lg:p-10">
         <div className="mb-8 sm:mb-10">
-          <Pill tone="blue" className="mb-3">First run</Pill>
+          <Pill tone="blue" className="mb-3">{t("home.first_run")}</Pill>
           <h1 className="text-[32px] sm:text-[44px] font-semibold text-slate-100 leading-tight tracking-tight">BakeryPilot</h1>
           <p className="text-[14px] sm:text-[16px] text-slate-400 mt-2 max-w-[640px] leading-relaxed">
-            Agentic ops copilot for four plants, hundreds of SKUs, thousands of tonnes weekly.
-            Choose a loop to start, or open FlowSight to see the whole network live.
+            {t("home.tagline")}
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
           {cards.map(l => {
-            const meta = LOOP_META[l.id] ?? { desc: "", icon: "grid", color: "blue", href: "/" };
+            const meta = LOOP_META[l.id];
+            const label = meta ? t(meta.labelKey) : l.label;
+            const desc = meta ? t(meta.descKey) : "";
+            const fallbackMeta = meta ?? { icon: "grid", color: "blue", href: "/" };
             return (
-              <Link key={l.id} href={meta.href} className={`text-left rounded-xl border ${ACCENT[meta.color]} bg-slate-900/40 p-5 transition group block`}>
+              <Link key={l.id} href={fallbackMeta.href} className={`text-left rounded-xl border ${ACCENT[fallbackMeta.color]} bg-slate-900/40 p-5 transition group block`}>
                 <div className="flex items-start justify-between mb-3">
-                  <div className={`w-10 h-10 rounded-lg bg-slate-800/60 flex items-center justify-center ${TEXT[meta.color]}`}>
-                    <Icon name={meta.icon} size={18}/>
+                  <div className={`w-10 h-10 rounded-lg bg-slate-800/60 flex items-center justify-center ${TEXT[fallbackMeta.color]}`}>
+                    <Icon name={fallbackMeta.icon} size={18}/>
                   </div>
                   <Icon name="chevron" size={14} className="text-slate-600 -rotate-90 group-hover:text-slate-300"/>
                 </div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Loop</div>
-                <div className="text-[20px] font-semibold text-slate-100 mt-0.5">{l.label}</div>
-                <div className="text-[12px] text-slate-400 mt-1">{meta.desc}</div>
+                <div className="text-[20px] font-semibold text-slate-100 mt-0.5">{label}</div>
+                <div className="text-[12px] text-slate-400 mt-1">{desc}</div>
                 <div className="mt-4 flex items-center gap-4 pt-3 border-t border-slate-800">
                   {l.stats.map((s, i) => (
                     <div key={i}>
-                      <div className={`text-[16px] font-mono tabular-nums ${TEXT[meta.color]}`}>{s.k}</div>
+                      <div className={`text-[16px] font-mono tabular-nums ${TEXT[fallbackMeta.color]}`}>{s.k}</div>
                       <div className="text-[10px] text-slate-500">{s.v}</div>
                     </div>
                   ))}

@@ -1778,7 +1778,7 @@ function PerformanceTab() {
 }
 
 function ScorecardInner() {
-  const { openChatContext } = useApp();
+  const { openChatContext, t: i18nT } = useApp();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState("performance");
 
@@ -1790,11 +1790,11 @@ function ScorecardInner() {
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
-          title="Scorecard"
+          title={i18nT("scorecard.title")}
           sub="Supplier performance · ESG · forecast vs. actuals"
           right={
             <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40">
-              {[{ id: "suppliers", label: "Suppliers" }, { id: "performance", label: "Performance" }].map(t => (
+              {[{ id: "suppliers", label: i18nT("scorecard.tab_suppliers") }, { id: "performance", label: i18nT("scorecard.tab_performance") }].map(t => (
                 <button key={t.id} onClick={() => setTab(t.id)} className={`px-3 py-1.5 rounded-md text-[12px] ${tab === t.id ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>{t.label}</button>
               ))}
             </div>

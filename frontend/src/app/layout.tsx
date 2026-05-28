@@ -6,6 +6,7 @@ import { Sidebar, TopBar } from "../components/Shell";
 import { ChatDrawerWrapper } from "../components/ChatDrawerWrapper";
 import { AlertBanner } from "../components/AlertBanner";
 import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT, DEFAULT_THEME, THEME_STORAGE_KEY } from "../lib/theme";
+import { DEFAULT_LANGUAGE, LANGUAGE_STORAGE_KEY } from "../lib/i18n";
 
 export const metadata: Metadata = {
   title: "BakeryPilot",
@@ -22,8 +23,12 @@ const themeInitScript = `
     const accent = storedAccent === "blue" || storedAccent === "emerald" || storedAccent === "violet" || storedAccent === "amber" || storedAccent === "teal" || storedAccent === "indigo"
       ? storedAccent
       : "${DEFAULT_ACCENT}";
+    const storedLang = window.localStorage.getItem("${LANGUAGE_STORAGE_KEY}");
+    const lang = storedLang === "fr" || storedLang === "en" ? storedLang : "${DEFAULT_LANGUAGE}";
     root.dataset.theme = theme;
     root.dataset.accent = accent;
+    root.dataset.lang = lang;
+    root.lang = lang;
     root.style.colorScheme = theme;
   } catch {}
 })();
@@ -31,7 +36,7 @@ const themeInitScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme={DEFAULT_THEME} data-accent={DEFAULT_ACCENT} suppressHydrationWarning>
+    <html lang={DEFAULT_LANGUAGE} data-theme={DEFAULT_THEME} data-accent={DEFAULT_ACCENT} data-lang={DEFAULT_LANGUAGE} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

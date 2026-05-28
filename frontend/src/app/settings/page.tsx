@@ -59,6 +59,7 @@ export default function SettingsPage() {
     theme, setTheme, accent, setAccent,
     user, updateUser,
     notificationPrefs, updateNotificationPrefs,
+    t,
   } = useApp();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [role, setRole] = useState(user.role);
@@ -87,7 +88,7 @@ export default function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-[720px] mx-auto p-6 space-y-5">
-        <SectionHeader title="Settings" sub="Profile, appearance, and notification preferences" />
+        <SectionHeader title={t("settings.title")} sub="Profile, appearance, and notification preferences" />
 
         {/* ── Profile ── */}
         <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">

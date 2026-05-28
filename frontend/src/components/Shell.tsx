@@ -8,21 +8,23 @@ import { FACILITIES } from "../lib/data";
 import { useApp } from "../lib/context";
 import { useEsgCounter } from "../lib/hooks";
 
-const NAV = [
-  { id: "home",       route: "/",                        label: "Home",       icon: "home",     tour: ""                  },
-  { id: "facilities", route: "/facilities",              label: "FlowSight",  icon: "grid",     tour: "nav-flowsight"     },
-  { id: "materials",  route: "/materials",               label: "Inventory",  icon: "box",      tour: "nav-inventory"     },
-  { id: "production", route: "/production",              label: "Production", icon: "factory",  tour: "nav-production"    },
-  { id: "suppliers",  route: "/scorecard?tab=suppliers", label: "Suppliers",  icon: "truck",    tour: "nav-suppliers"     },
-  { id: "schedule",   route: "/schedule",                label: "Schedule",   icon: "calendar", tour: "nav-schedule"      },
-  { id: "settings",  route: "/settings",                 label: "Settings",   icon: "settings", tour: ""                  },
-  { id: "admin",      route: "/admin",                   label: "Admin",      icon: "database", tour: ""                  },
+import type { TranslationKey } from "../lib/i18n";
+
+const NAV: Array<{ id: string; route: string; labelKey: TranslationKey; icon: string; tour: string }> = [
+  { id: "home",       route: "/",                        labelKey: "sidebar.home",       icon: "home",     tour: ""                  },
+  { id: "facilities", route: "/facilities",              labelKey: "sidebar.flowsight",  icon: "grid",     tour: "nav-flowsight"     },
+  { id: "materials",  route: "/materials",               labelKey: "sidebar.inventory",  icon: "box",      tour: "nav-inventory"     },
+  { id: "production", route: "/production",              labelKey: "sidebar.production", icon: "factory",  tour: "nav-production"    },
+  { id: "suppliers",  route: "/scorecard?tab=suppliers", labelKey: "sidebar.suppliers",  icon: "truck",    tour: "nav-suppliers"     },
+  { id: "schedule",   route: "/schedule",                labelKey: "sidebar.schedule",   icon: "calendar", tour: "nav-schedule"      },
+  { id: "settings",  route: "/settings",                 labelKey: "sidebar.settings",   icon: "settings", tour: ""                  },
+  { id: "admin",      route: "/admin",                   labelKey: "sidebar.admin",      icon: "database", tour: ""                  },
 ];
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 export function Sidebar() {
-  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
+  const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, t } = useApp();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -44,7 +46,7 @@ export function Sidebar() {
         </div>
         <div className={`flex-1 min-w-0 overflow-hidden transition-all duration-200 ${(!mobile && sidebarCollapsed) ? "w-0 opacity-0" : "opacity-100"}`}>
           <div className="text-[14px] font-semibold text-slate-100 leading-none whitespace-nowrap">BakeryPilot</div>
-          <div className="text-[10px] text-slate-500 mt-0.5 tracking-wider uppercase whitespace-nowrap">Ops copilot</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 tracking-wider uppercase whitespace-nowrap">{t("sidebar.brand_tagline")}</div>
         </div>
       </div>
 
@@ -81,7 +83,7 @@ export function Sidebar() {
                 text-[13px] font-medium whitespace-nowrap overflow-hidden transition-all duration-200
                 ${(!mobile && sidebarCollapsed) ? "opacity-0 w-0 translate-x-2" : "opacity-100 translate-x-0"}
               `}>
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </Link>
           );
@@ -95,7 +97,7 @@ export function Sidebar() {
         }}
         className="border-t border-slate-800/80 py-3 text-slate-500 hover:text-slate-300 text-[11px] font-mono transition-colors duration-150 shrink-0"
       >
-        {mobile ? "✕ close" : sidebarCollapsed ? "›" : "‹ collapse"}
+        {mobile ? `✕ ${t("btn.close")}` : sidebarCollapsed ? "›" : t("sidebar.collapse")}
       </button>
     </aside>
   );
@@ -134,7 +136,7 @@ const KIND_ICON: Record<string, string> = {
 };
 
 function NotificationPanel({ onClose, excludeRef }: { onClose: () => void; excludeRef: React.RefObject<HTMLElement | null> }) {
-  const { notifications, dismissNotification, openChatContext } = useApp();
+  const { notifications, dismissNotification, openChatContext, t } = useApp();
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -160,14 +162,14 @@ function NotificationPanel({ onClose, excludeRef }: { onClose: () => void; exclu
       style={{ maxHeight: "min(480px, calc(100vh - 80px))" }}
     >
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800">
-        <span className="text-[12px] font-semibold text-slate-200 uppercase tracking-wider">Notifications</span>
+        <span className="text-[12px] font-semibold text-slate-200 uppercase tracking-wider">{t("topbar.notifications")}</span>
         <button onClick={onClose} className="text-slate-500 hover:text-slate-300 p-0.5">
           <Icon name="x" size={14}/>
         </button>
       </div>
 
       {notifications.length === 0 && (
-        <div className="px-4 py-8 text-[13px] text-slate-500 text-center">No notifications</div>
+        <div className="px-4 py-8 text-[13px] text-slate-500 text-center">{t("topbar.notifications_empty")}</div>
       )}
 
       <div className="overflow-y-auto" style={{ maxHeight: "400px" }}>
@@ -265,7 +267,7 @@ function userInitials(name: string): string {
 }
 
 export function TopBar() {
-  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user, theme, setTheme, notifications, hideToast } = useApp();
+  const { facility, setFacility, unreadCount, markNotificationsRead, mobileSidebarOpen, setMobileSidebarOpen, user, theme, setTheme, notifications, hideToast, language, setLanguage, t } = useApp();
   const [facilityOpen, setFacilityOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -352,15 +354,25 @@ export function TopBar() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"/>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"/>
           </span>
-          <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Live</span>
+          <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-300">{t("topbar.live")}</span>
           <span className="text-[10px] text-slate-500 font-mono hidden lg:inline">SSE · 42ms</span>
         </div>
+
+        {/* Language toggle (EN ⇄ FR) */}
+        <button
+          onClick={() => setLanguage(language === "en" ? "fr" : "en")}
+          className="px-2 py-1 rounded-md border border-slate-700 hover:border-slate-500 text-[11px] font-mono uppercase tracking-wider text-slate-300 hover:text-slate-100 transition-colors"
+          aria-label={t("topbar.language")}
+          title={t("topbar.language")}
+        >
+          {language === "en" ? "EN" : "FR"}
+        </button>
 
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={theme === "dark" ? t("topbar.toggle_theme_to_light") : t("topbar.toggle_theme_to_dark")}
           suppressHydrationWarning
         >
           <span key={theme} className="theme-toggle-icon" suppressHydrationWarning>
@@ -372,8 +384,8 @@ export function TopBar() {
         <button
           onClick={startTour}
           className="p-1.5 rounded-md hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 transition-colors"
-          aria-label="Start product tour"
-          title="Product tour"
+          aria-label={t("topbar.start_tour")}
+          title={t("topbar.start_tour")}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="9"/>
@@ -422,6 +434,7 @@ export function TopBar() {
 
 export function BottomStrip() {
   const { data: esg, status: esgStatus } = useEsgCounter();
+  const { t } = useApp();
   const colorMap: Record<string, string> = {
     green: "text-emerald-300",
     red:   "text-red-300",
@@ -435,10 +448,10 @@ export function BottomStrip() {
   const moqTaxValue = esgStatus === "live" && esg.moqTaxYtd !== undefined ? `$${esg.moqTaxYtd.toLocaleString()}` : "--";
 
   const stats = [
-    { label: "Waste avoided",      value: wasteValue, tone: "green", icon: "leaf", priority: true  },
-    { label: "CO2e saved",         value: co2Value,   tone: "green", icon: "drop", priority: false },
-    { label: "Active disruptions", value: disruptionsValue, tone: "slate", icon: "warn", priority: true  },
-    { label: "MOQ-tax YTD",        value: moqTaxValue,      tone: "amber", icon: "diff", priority: false },
+    { label: t("bottom.waste_avoided"),      value: wasteValue, tone: "green", icon: "leaf", priority: true  },
+    { label: t("bottom.co2e_saved"),         value: co2Value,   tone: "green", icon: "drop", priority: false },
+    { label: t("bottom.active_disruptions"), value: disruptionsValue, tone: "slate", icon: "warn", priority: true  },
+    { label: t("bottom.moq_tax_ytd"),        value: moqTaxValue,      tone: "amber", icon: "diff", priority: false },
   ];
 
   return (

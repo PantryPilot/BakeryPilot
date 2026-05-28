@@ -732,7 +732,7 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function MaterialsPage() {
-  const { openChatContext } = useApp();
+  const { openChatContext, t } = useApp();
   const [activeTab, setActiveTab] = useState<"ingredients" | "finished">("ingredients");
   const [facility, setFacility] = useState("all");
   const [storage, setStorage] = useState("All");
@@ -886,7 +886,7 @@ export default function MaterialsPage() {
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
-          title="Inventory"
+          title={t("materials.title")}
           sub={activeTab === "ingredients"
             ? `${mergedLots.length} active lots · ${mergedLots.filter(l => l.status === "critical").length} critical · ${mergedLots.filter(l => l.status === "warn").length} at risk · ${backendStatus === "live" ? "live data" : backendStatus === "loading" ? "loading…" : "offline (seed data)"}`
             : "Finished product inventory from production runs"

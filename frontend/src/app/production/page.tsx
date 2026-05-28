@@ -866,7 +866,7 @@ const SHORT_CODE_TO_ID: Record<string, string> = {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProductionPage() {
-  const { facility } = useApp();
+  const { facility, t } = useApp();
 
   const [facilities, setFacilities] = useState<BackendFacility[]>([]);
   const [lines, setLines] = useState<BackendProductionLine[]>([]);
@@ -923,10 +923,10 @@ export default function ProductionPage() {
           <div>
             <h1 className="text-[20px] font-semibold text-slate-100 flex items-center gap-2">
               <Icon name="factory" size={20} className="text-blue-400" />
-              Production
+              {t("production.title")}
             </h1>
             <p className="text-[13px] text-slate-500 mt-0.5">
-              {activeFacility ? `${activeFacility.name} · ${activeFacility.city ?? ""}` : "All facilities"}
+              {activeFacility ? `${activeFacility.name} · ${activeFacility.city ?? ""}` : t("materials.all_facilities")}
               {activeFacilityId === null && " — select a facility in the top bar to filter lines"}
             </p>
           </div>
