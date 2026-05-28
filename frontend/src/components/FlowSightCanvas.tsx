@@ -49,6 +49,8 @@ type PlantData = {
   id: string;
   facilityId: string;
   name: string;
+  /** Short site line inside the disc, e.g. "Ormont" from "(Ormont Drive)". */
+  subtitle?: string;
   city: string;
   x: number;
   y: number;
@@ -85,6 +87,135 @@ type OutboundFlow = {
 
 function formatIngredientLabel(id: string): string {
   return id.replace(/^ing_/, "").replace(/_/g, " ");
+}
+
+/** Max text width (px) that fits inside the plant disc without clipping. */
+function plantDiscTextWidth(radius: number): number {
+  return Math.floor((radius - 14) * 2);
+}
+
+function parsePlantDisplayName(raw: string): { title: string; subtitle?: string } {
+  const stripped = (raw.replace(/^FGF\s+/i, "").split(" · ")[0] || raw).trim();
+  const paren = stripped.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (!paren) return { title: stripped };
+  const title = paren[1].trim();
+  let site = paren[2].trim()
+    .replace(/\s+(Drive|Road|Rd|St|Street|Avenue|Ave|Blvd|Boulevard)\.?$/i, "")
+    .trim();
+  if (site.length > 12) site = `${site.slice(0, 11)}…`;
+  return { title, subtitle: site || undefined };
+}
+
+function PlantDiscLabels({
+  id,
+  title,
+  subtitle,
+  utilPct,
+  scheduleOn,
+  radius,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  utilPct: number;
+  scheduleOn: boolean;
+  radius: number;
+}) {
+  const clipId = `plant-disc-clip-${id}`;
+  const maxW = plantDiscTextWidth(radius);
+  const twoLines = Boolean(subtitle);
+  const titleSize = twoLines ? 11 : title.length > 10 ? 11 : 13;
+  const subSize = 8;
+
+  return (
+    <>
+      <defs>
+        <clipPath id={clipId}>
+          <circle r={radius - 6} />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        {scheduleOn ? (
+          <>
+            <text
+              textAnchor="middle"
+              y={twoLines ? -14 : -6}
+              fontSize={titleSize}
+              fontWeight="600"
+              fill="#e2e8f0"
+              textLength={maxW}
+              lengthAdjust="spacingAndGlyphs"
+            >
+              {title}
+            </text>
+            {subtitle && (
+              <text
+                textAnchor="middle"
+                y={-4}
+                fontSize={subSize}
+                fill="#94a3b8"
+                fontFamily="ui-monospace, monospace"
+                textLength={maxW}
+                lengthAdjust="spacingAndGlyphs"
+              >
+                {subtitle}
+              </text>
+            )}
+            {[0, 1, 2].map(i => (
+              <rect
+                key={i}
+                x={-22 + i * 15}
+                y={10}
+                width="12"
+                height="6"
+                rx="1"
+                fill="#3b82f6"
+                fillOpacity="0.6"
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <text
+              textAnchor="middle"
+              y={twoLines ? -12 : -4}
+              fontSize={titleSize}
+              fontWeight="600"
+              fill="#e2e8f0"
+              textLength={maxW}
+              lengthAdjust="spacingAndGlyphs"
+            >
+              {title}
+            </text>
+            {subtitle && (
+              <text
+                textAnchor="middle"
+                y={0}
+                fontSize={subSize}
+                fill="#94a3b8"
+                fontFamily="ui-monospace, monospace"
+                textLength={maxW}
+                lengthAdjust="spacingAndGlyphs"
+              >
+                {subtitle}
+              </text>
+            )}
+            <text
+              textAnchor="middle"
+              y={twoLines ? 14 : 12}
+              fontSize="9"
+              fill="#64748b"
+              fontFamily="ui-monospace, monospace"
+              textLength={maxW}
+              lengthAdjust="spacingAndGlyphs"
+            >
+              {utilPct}%
+            </text>
+          </>
+        )}
+      </g>
+    </>
+  );
 }
 
 function OrderStatusBadge({ status }: { status: string }) {
@@ -309,10 +440,12 @@ function buildPlantPositions(
     const ref = zoneMap.get("refrigerated")?.pct ?? 0.5;
     const dry = zoneMap.get("dry")?.pct ?? 0.5;
     const city = [f.city, f.province].filter(Boolean).join(", ");
+    const { title, subtitle } = parsePlantDisplayName(f.name);
     return {
       id: f.short_code,
       facilityId: f.facility_id,
-      name: f.name.replace(/^FGF\s+/i, "").split(" · ")[0] || f.name,
+      name: title,
+      subtitle,
       city: city || f.name,
       x: PLANT_CX,
       y: startY + i * PLANT_ROW_GAP,
@@ -405,6 +538,7 @@ function SupplierNode({ s, riskOn, onClick }: { s: Supplier & { x: number; y: nu
 function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   p: PlantData; onClick: () => void; scheduleOn: boolean; esgOn: boolean; yieldOn: boolean; shelfOn: boolean;
 }) {
+  const utilPct = Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100);
   const r = PLANT_RADIUS;
   const border = p.status === "warn" ? "#f59e0b" : p.status === "critical" ? "#ef4444" : "#22c55e";
   const segs = [
@@ -440,19 +574,14 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
           <animate attributeName="stroke-opacity" values="1;0.4;1" dur="1.2s" repeatCount="indefinite"/>
         </circle>
       )}
-      {scheduleOn ? (
-        <g>
-          {[0, 1, 2].map(i => (
-            <rect key={i} x={-30 + i * 20} y={-4} width="16" height="8" rx="1" fill="#3b82f6" fillOpacity="0.6"/>
-          ))}
-          <text textAnchor="middle" y="-16" fontSize="11" fill="#cbd5e1" fontFamily="ui-monospace, monospace">{p.name}</text>
-        </g>
-      ) : (
-        <>
-          <text textAnchor="middle" y="-3" fontSize="14" fontWeight="600" fill="#e2e8f0">{p.name}</text>
-          <text textAnchor="middle" y="14" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace">{Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100)}%</text>
-        </>
-      )}
+      <PlantDiscLabels
+        id={p.id}
+        title={p.name}
+        subtitle={p.subtitle}
+        utilPct={utilPct}
+        scheduleOn={scheduleOn}
+        radius={r}
+      />
       {esgOn && (
         <g transform={`translate(0, ${r + 34})`}>
           <rect x="-36" y="0" width="72" height="16" rx="3" fill="#022c22" stroke="#22c55e" strokeWidth="0.8"/>

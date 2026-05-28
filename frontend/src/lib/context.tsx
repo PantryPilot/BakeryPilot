@@ -122,37 +122,19 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null);
 
-function getInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") return DEFAULT_THEME;
+function readDomTheme(): ThemeMode | null {
   const domTheme = document.documentElement.dataset.theme;
-  if (isThemeMode(domTheme)) return domTheme;
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (isThemeMode(stored)) return stored;
-  } catch {}
-  return DEFAULT_THEME;
+  return isThemeMode(domTheme) ? domTheme : null;
 }
 
-function getInitialLanguage(): Language {
-  if (typeof window === "undefined") return DEFAULT_LANGUAGE;
+function readDomLanguage(): Language | null {
   const domLang = document.documentElement.dataset.lang;
-  if (isLanguage(domLang)) return domLang;
-  try {
-    const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (isLanguage(stored)) return stored;
-  } catch {}
-  return DEFAULT_LANGUAGE;
+  return isLanguage(domLang) ? domLang : null;
 }
 
-function getInitialAccent(): AccentColor {
-  if (typeof window === "undefined") return DEFAULT_ACCENT;
+function readDomAccent(): AccentColor | null {
   const domAccent = document.documentElement.dataset.accent;
-  if (isAccentColor(domAccent)) return domAccent;
-  try {
-    const stored = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-    if (isAccentColor(stored)) return stored;
-  } catch {}
-  return DEFAULT_ACCENT;
+  return isAccentColor(domAccent) ? domAccent : null;
 }
 
 function getInitialUser(): AppUserInfo {
@@ -194,9 +176,12 @@ function userToInfo(u: BackendUser): AppUserInfo {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeMode>(getInitialTheme);
-  const [accent, setAccentState] = useState<AccentColor>(getInitialAccent);
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [theme, setThemeState] = useState<ThemeMode>(DEFAULT_THEME);
+  const [accent, setAccentState] = useState<AccentColor>(DEFAULT_ACCENT);
+  const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
+  const themeBootstrapped = useRef(false);
+  const accentBootstrapped = useRef(false);
+  const languageBootstrapped = useRef(false);
   const [facility, setFacility] = useState<FacilityId>("all");
   const [chatOpen, setChatOpen] = useState(false);
   const [chatContext, setChatContext] = useState<string | null>(null);
@@ -240,6 +225,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (!languageBootstrapped.current) {
+      languageBootstrapped.current = true;
+      const domLang = readDomLanguage();
+      if (domLang && domLang !== language) {
+        setLanguageState(domLang);
+        return;
+      }
+    }
     const root = document.documentElement;
     root.dataset.lang = language;
     root.lang = language;
@@ -249,6 +242,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   useEffect(() => {
+    if (!themeBootstrapped.current) {
+      themeBootstrapped.current = true;
+      const domTheme = readDomTheme();
+      if (domTheme && domTheme !== theme) {
+        setThemeState(domTheme);
+        return;
+      }
+    }
     const root = document.documentElement;
     root.dataset.theme = theme;
     root.style.colorScheme = theme;
@@ -258,6 +259,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
+    if (!accentBootstrapped.current) {
+      accentBootstrapped.current = true;
+      const domAccent = readDomAccent();
+      if (domAccent && domAccent !== accent) {
+        setAccentState(domAccent);
+        return;
+      }
+    }
     const root = document.documentElement;
     root.dataset.accent = accent;
     try {
