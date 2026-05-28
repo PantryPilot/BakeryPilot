@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import {
   createOutboundShipment,
   deleteOutboundShipment,
+  updateOutboundShipment,
   type BackendFacility,
   type BackendProduct,
   type BackendRetailerOrder,
@@ -33,9 +34,11 @@ const GANTT_HEADER =
   "sticky top-0 z-10 shrink-0 bg-[var(--bp-surface-muted)]/70 border-b border-[var(--bp-border)] text-[11px] font-medium leading-none text-[var(--bp-text-secondary)]";
 const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
 const OUTBOUND_RUN_TILE =
-  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] shadow-md ring-1 ring-orange-500/25 flex items-center gap-2 px-2.5 cursor-context-menu touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-orange-500/40";
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] shadow-md ring-1 ring-orange-500/25 flex items-center gap-2 px-2.5 cursor-grab active:cursor-grabbing touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-orange-500/40";
 const OUTBOUND_RUN_TILE_STYLE =
   "border-l-orange-300 bg-orange-600 border-orange-500 hover:bg-orange-500";
+const DRAG_SNAP_HOURS = 0.25;
+const DRAG_THRESHOLD_PX = 4;
 
 function laneRowBg(index: number): string {
   return index % 2 === 0 ? "bg-[var(--bp-surface-soft)]" : "bg-[var(--bp-surface-muted)]/40";
@@ -55,7 +58,22 @@ type OutboundRun = {
   retailerId: string;
   deliveryDate?: string;
   status: string;
+  startAt: string;
+  endAt: string;
 };
+
+type OutboundRunMenuState = { run: OutboundRun; x: number; y: number } | null;
+
+type OutboundMovePreview = {
+  runId: string;
+  laneKey: string;
+  start: number;
+  end: number;
+};
+
+function snapHour(hour: number): number {
+  return Math.round(hour / DRAG_SNAP_HOURS) * DRAG_SNAP_HOURS;
+}
 
 function formatClockFromHour(hour: number): string {
   const h = Math.floor(hour);
@@ -140,14 +158,122 @@ function OutboundHoverCard({
   );
 }
 
+function OutboundContextMenu({
+  menu,
+  onClose,
+  onDelete,
+  deletingId,
+}: {
+  menu: OutboundRunMenuState;
+  onClose: () => void;
+  onDelete: (run: OutboundRun) => void;
+  deletingId: string | null;
+}) {
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => onClose();
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu, onClose]);
+
+  if (!menu) return null;
+  const busy = deletingId === menu.run.id;
+  return createPortal(
+    <div
+      className="fixed z-[10000] min-w-[168px] rounded-lg border border-[var(--bp-border)] bg-[var(--bp-surface)] py-1 shadow-xl ring-1 ring-white/[0.04]"
+      style={{ left: menu.x, top: menu.y }}
+      onClick={e => e.stopPropagation()}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <button
+        type="button"
+        disabled={busy}
+        className="w-full px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+        onClick={() => onDelete(menu.run)}
+      >
+        {busy ? "Cancelling…" : `Cancel → ${menu.run.retailerName}`}
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function OutboundDragGhost({
+  preview,
+  run,
+  lanes,
+  anchorEl,
+}: {
+  preview: OutboundMovePreview;
+  run: OutboundRun | undefined;
+  lanes: OutboundLane[];
+  anchorEl: HTMLElement | null;
+}) {
+  const [pos, setPos] = useState({ left: 0, top: 0, width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    if (!anchorEl || !run) return;
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      const trackWidth = anchorEl.clientWidth || rect.width;
+      const laneIdx = lanes.findIndex(l => l.key === preview.laneKey);
+      if (laneIdx < 0) return;
+      const leftPct = hourLeftPct(preview.start, 0, HOURS.length);
+      const widthPct = hourWidthPct(preview.start, preview.end, HOURS.length);
+      setPos({
+        left: rect.left + (leftPct / 100) * trackWidth + 3,
+        top: rect.top + GANTT_HEADER_H + laneIdx * LANE_H + 6,
+        width: Math.max(24, (widthPct / 100) * trackWidth - 6),
+        height: LANE_H - 12,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorEl, lanes, preview, run]);
+
+  if (!run || !anchorEl || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className={`fixed z-40 pointer-events-none rounded-lg border border-l-[3px] shadow-lg ring-2 ring-orange-400/50 ${OUTBOUND_RUN_TILE_STYLE} flex items-center gap-2 px-2.5 opacity-95`}
+      style={{ left: pos.left, top: pos.top, width: pos.width, height: pos.height }}
+    >
+      <span className="text-[12px] font-semibold text-white truncate capitalize drop-shadow-sm">
+        → {run.retailerName}
+      </span>
+      <span className="text-[11px] font-mono text-orange-50 tabular-nums shrink-0">
+        {(run.qty / 1000).toFixed(1)}k
+      </span>
+    </div>,
+    document.body,
+  );
+}
+
 function OutboundGanttLane({
   lane,
   rowIndex,
-  onDelete,
+  onRunContextMenu,
+  onRunDragStart,
+  draggingRunId,
+  savingRunId,
 }: {
   lane: OutboundLane;
   rowIndex: number;
-  onDelete: (run: OutboundRun) => void;
+  onRunContextMenu: (e: React.MouseEvent, run: OutboundRun) => void;
+  onRunDragStart: (e: React.PointerEvent, run: OutboundRun, laneKey: string) => void;
+  draggingRunId: string | null;
+  savingRunId: string | null;
 }) {
   const [hoveredRun, setHoveredRun] = useState<{ run: OutboundRun; el: HTMLElement } | null>(null);
 
@@ -155,6 +281,7 @@ function OutboundGanttLane({
     <div
       className={`relative w-full min-w-[1152px] border-b border-[var(--bp-border)] ${laneRowBg(rowIndex)}`}
       style={{ height: LANE_H }}
+      data-lane-key={lane.key}
     >
       {Array.from({ length: HOURS.length + 1 }, (_, i) => (
         <div
@@ -163,35 +290,183 @@ function OutboundGanttLane({
           style={{ left: `${(i / HOURS.length) * 100}%`, backgroundColor: "var(--bp-border)" }}
         />
       ))}
-      {lane.runs.map(r => (
-        <div
-          key={r.id}
-          className={`${OUTBOUND_RUN_TILE} ${OUTBOUND_RUN_TILE_STYLE}`}
-          style={{
-            left: `calc(${hourLeftPct(r.start, 0, HOURS.length)}% + 3px)`,
-            width: `calc(${hourWidthPct(r.start, r.end, HOURS.length)}% - 6px)`,
-          }}
-          onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
-          onMouseLeave={() => setHoveredRun(null)}
-          onContextMenu={e => {
-            e.preventDefault();
-            onDelete(r);
-          }}
-        >
-          <span className="text-[12px] font-semibold text-white truncate capitalize drop-shadow-sm">
-            → {r.retailerName}
-          </span>
-          <span className="text-[11px] text-orange-50 truncate hidden sm:inline">{r.skuName}</span>
-          <span className="text-[11px] font-mono text-orange-50 tabular-nums shrink-0">
-            {(r.qty / 1000).toFixed(1)}k
-          </span>
-        </div>
-      ))}
-      {hoveredRun && (
+      {lane.runs.map(r => {
+        const isDragging = draggingRunId === r.id;
+        const isSaving = savingRunId === r.id;
+        return (
+          <div
+            key={r.id}
+            className={`${OUTBOUND_RUN_TILE} ${OUTBOUND_RUN_TILE_STYLE} ${isDragging ? "opacity-35" : ""} ${isSaving ? "opacity-50 pointer-events-none" : ""}`}
+            style={{
+              left: `calc(${hourLeftPct(r.start, 0, HOURS.length)}% + 3px)`,
+              width: `calc(${hourWidthPct(r.start, r.end, HOURS.length)}% - 6px)`,
+            }}
+            onMouseEnter={e => {
+              if (draggingRunId) return;
+              setHoveredRun({ run: r, el: e.currentTarget });
+            }}
+            onMouseLeave={() => setHoveredRun(null)}
+            onContextMenu={e => onRunContextMenu(e, r)}
+            onPointerDown={e => onRunDragStart(e, r, lane.key)}
+          >
+            <span className="text-[12px] font-semibold text-white truncate capitalize drop-shadow-sm">
+              → {r.retailerName}
+            </span>
+            <span className="text-[11px] text-orange-50 truncate hidden sm:inline">{r.skuName}</span>
+            <span className="text-[11px] font-mono text-orange-50 tabular-nums shrink-0">
+              {(r.qty / 1000).toFixed(1)}k
+            </span>
+          </div>
+        );
+      })}
+      {hoveredRun && !draggingRunId && (
         <OutboundHoverCard
           run={hoveredRun.run}
           anchorEl={hoveredRun.el}
           warehouseLabel={lane.label}
+        />
+      )}
+    </div>
+  );
+}
+
+function OutboundGanttTimeline({
+  lanes,
+  onRunContextMenu,
+  onRunMove,
+}: {
+  lanes: OutboundLane[];
+  onRunContextMenu: (e: React.MouseEvent, run: OutboundRun) => void;
+  onRunMove: (run: OutboundRun, startAt: string, endAt: string) => Promise<boolean>;
+}) {
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{
+    run: OutboundRun;
+    laneKey: string;
+    startClientX: number;
+    startClientY: number;
+    originStart: number;
+    durationHours: number;
+  } | null>(null);
+  const [preview, setPreview] = useState<OutboundMovePreview | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const draggingRun = useMemo(
+    () => (drag ? lanes.flatMap(l => l.runs).find(r => r.id === drag.run.id) : undefined),
+    [drag, lanes],
+  );
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const onMove = (e: PointerEvent) => {
+      const el = timelineRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * HOURS.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const end = start + drag.durationHours;
+      setPreview({
+        runId: drag.run.id,
+        laneKey: drag.laneKey,
+        start,
+        end,
+      });
+    };
+
+    const onUp = async (e: PointerEvent) => {
+      const el = timelineRef.current;
+      const rect = el?.getBoundingClientRect();
+      const moved =
+        el != null &&
+        rect != null &&
+        (Math.abs(e.clientX - drag.startClientX) > DRAG_THRESHOLD_PX ||
+          Math.abs(e.clientY - drag.startClientY) > DRAG_THRESHOLD_PX);
+
+      if (!el || !rect || !moved) {
+        setDrag(null);
+        setPreview(null);
+        return;
+      }
+
+      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * HOURS.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const deltaMs = (start - drag.originStart) * 3600 * 1000;
+      const newStartAt = new Date(new Date(drag.run.startAt).getTime() + deltaMs).toISOString();
+      const newEndAt = new Date(new Date(drag.run.endAt).getTime() + deltaMs).toISOString();
+
+      const run = drag.run;
+      setSavingId(run.id);
+      setDrag(null);
+      setPreview(null);
+      await onRunMove(run, newStartAt, newEndAt);
+      setSavingId(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [drag, onRunMove]);
+
+  const beginDrag = useCallback(
+    (e: React.PointerEvent, run: OutboundRun, laneKey: string) => {
+      if (e.button !== 0 || savingId) return;
+      e.preventDefault();
+      setDrag({
+        run,
+        laneKey,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        originStart: run.start,
+        durationHours: run.end - run.start,
+      });
+      setPreview({
+        runId: run.id,
+        laneKey,
+        start: run.start,
+        end: run.end,
+      });
+    },
+    [savingId],
+  );
+
+  return (
+    <div ref={timelineRef} className="flex-1 min-w-0 overflow-x-auto">
+      <div
+        className={`grid w-full min-w-[1152px] ${GANTT_HEADER}`}
+        style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(48px, 1fr))`, height: GANTT_HEADER_H }}
+      >
+        {HOURS.map(h => (
+          <div
+            key={h}
+            className={`flex items-center justify-center border-l border-[var(--bp-border)] first:border-l-0 ${GANTT_HOUR_LABEL}`}
+          >
+            {String(h).padStart(2, "0")}:00
+          </div>
+        ))}
+      </div>
+      {lanes.map((lane, idx) => (
+        <OutboundGanttLane
+          key={lane.key}
+          lane={lane}
+          rowIndex={idx}
+          onRunContextMenu={onRunContextMenu}
+          onRunDragStart={beginDrag}
+          draggingRunId={drag?.run.id ?? null}
+          savingRunId={savingId}
+        />
+      ))}
+      {preview && drag && (
+        <OutboundDragGhost
+          preview={preview}
+          run={draggingRun}
+          lanes={lanes}
+          anchorEl={timelineRef.current}
         />
       )}
     </div>
@@ -253,6 +528,8 @@ function shipmentsToRuns(
         retailerId: s.retailer_id,
         deliveryDate: s.requested_delivery_date ?? undefined,
         status: s.status,
+        startAt: s.start_at,
+        endAt: s.end_at,
       };
     });
 }
@@ -484,6 +761,8 @@ export function OutboundSchedulePanel({
   onRefresh: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [runMenu, setRunMenu] = useState<OutboundRunMenuState>(null);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const { data: shipments, status } = useOutboundShipments(refreshKey);
 
   const productNames = useMemo(
@@ -528,11 +807,30 @@ export function OutboundSchedulePanel({
   const defaultFacilityId =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
 
-  const handleDelete = useCallback(async (run: OutboundRun) => {
+  const handleRunContextMenu = useCallback((e: React.MouseEvent, run: OutboundRun) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRunMenu({ run, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleDeleteRun = useCallback(async (run: OutboundRun) => {
     if (!window.confirm(`Cancel shipment to ${run.retailerName}?`)) return;
+    setDeletingRunId(run.id);
     const ok = await deleteOutboundShipment(run.id);
+    setDeletingRunId(null);
+    setRunMenu(null);
     if (ok) onRefresh();
     else window.alert("Could not cancel shipment.");
+  }, [onRefresh]);
+
+  const handleRunMove = useCallback(async (run: OutboundRun, startAt: string, endAt: string) => {
+    const result = await updateOutboundShipment(run.id, { start_at: startAt, end_at: endAt });
+    if (result) {
+      onRefresh();
+      return true;
+    }
+    window.alert("Could not update shipment.");
+    return false;
   }, [onRefresh]);
 
   return (
@@ -586,36 +884,25 @@ export function OutboundSchedulePanel({
                 </div>
               ))}
             </div>
-            <div className="flex-1 min-w-0 overflow-x-auto">
-              <div
-                className={`grid w-full min-w-[1152px] ${GANTT_HEADER}`}
-                style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(48px, 1fr))`, height: GANTT_HEADER_H }}
-              >
-                {HOURS.map(h => (
-                  <div
-                    key={h}
-                    className={`flex items-center justify-center border-l border-[var(--bp-border)] first:border-l-0 ${GANTT_HOUR_LABEL}`}
-                  >
-                    {String(h).padStart(2, "0")}:00
-                  </div>
-                ))}
-              </div>
-              {lanes.map((lane, idx) => (
-                <OutboundGanttLane
-                  key={lane.key}
-                  lane={lane}
-                  rowIndex={idx}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
+            <OutboundGanttTimeline
+              lanes={lanes}
+              onRunContextMenu={handleRunContextMenu}
+              onRunMove={handleRunMove}
+            />
           </div>
         </div>
       )}
 
       <p className="mt-2 text-[11px] text-slate-500">
-        Outbound lanes show finished goods leaving each plant warehouse. Stock is reserved (FEFO) when you schedule. Right-click a bar to cancel.
+        Outbound lanes show finished goods leaving each plant warehouse. Drag bars to reschedule · right-click for cancel.
       </p>
+
+      <OutboundContextMenu
+        menu={runMenu}
+        onClose={() => setRunMenu(null)}
+        onDelete={handleDeleteRun}
+        deletingId={deletingRunId}
+      />
 
       {addOpen && (
         <AddOutboundModal

@@ -40,9 +40,8 @@ const RETAILER_X = 1080;
 const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
-const PLANT_ROW_START = 180;
-const PLANT_ROW_GAP = 80;
-const SINGLE_PLANT_Y = PLANT_ROW_START + 2 * PLANT_ROW_GAP;
+const PLANT_RADIUS = 44;
+const PLANT_ROW_GAP = 112;
 const SUPPLIER_ROW_START = 130;
 const SUPPLIER_ROW_GAP = 100;
 
@@ -301,6 +300,8 @@ function buildPlantPositions(
   utilByFacility: Map<string, BackendFacilityUtilization>,
 ): PlantData[] {
   const sorted = [...facilities].sort((a, b) => a.facility_id.localeCompare(b.facility_id));
+  const count = sorted.length;
+  const startY = count <= 1 ? CANVAS_H / 2 : (CANVAS_H - (count - 1) * PLANT_ROW_GAP) / 2;
   return sorted.map((f, i) => {
     const util = utilByFacility.get(f.facility_id);
     const zoneMap = new Map(util?.zones.map(z => [z.zone, z]) ?? []);
@@ -314,7 +315,7 @@ function buildPlantPositions(
       name: f.name.replace(/^FGF\s+/i, "").split(" · ")[0] || f.name,
       city: city || f.name,
       x: PLANT_CX,
-      y: PLANT_ROW_START + i * PLANT_ROW_GAP,
+      y: startY + i * PLANT_ROW_GAP,
       status: plantStatusFromUtil(util?.overall_pct),
       util: { frozen, ref, dry },
     };
@@ -404,7 +405,7 @@ function SupplierNode({ s, riskOn, onClick }: { s: Supplier & { x: number; y: nu
 function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   p: PlantData; onClick: () => void; scheduleOn: boolean; esgOn: boolean; yieldOn: boolean; shelfOn: boolean;
 }) {
-  const r = 32;
+  const r = PLANT_RADIUS;
   const border = p.status === "warn" ? "#f59e0b" : p.status === "critical" ? "#ef4444" : "#22c55e";
   const segs = [
     { val: p.util.frozen, color: "#3b82f6" },
@@ -416,24 +417,24 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
   return (
     <g transform={`translate(${p.x}, ${p.y})`} style={{ cursor: "pointer" }} onClick={onClick}>
       {p.status !== "ok" && (
-        <circle r={r + 14} fill={border} fillOpacity="0.08">
-          <animate attributeName="r" values={`${r + 10};${r + 18};${r + 10}`} dur="1.4s" repeatCount="indefinite"/>
+        <circle r={r + 18} fill={border} fillOpacity="0.08">
+          <animate attributeName="r" values={`${r + 14};${r + 24};${r + 14}`} dur="1.4s" repeatCount="indefinite"/>
           <animate attributeName="fill-opacity" values="0.15;0.04;0.15" dur="1.4s" repeatCount="indefinite"/>
         </circle>
       )}
-      {yieldOn && p.id === "p1" && <circle r={r + 8} fill="#ef4444" fillOpacity="0.25"/>}
+      {yieldOn && p.id === "p1" && <circle r={r + 10} fill="#ef4444" fillOpacity="0.25"/>}
       {shelfOn && (p.id === "p3" || p.id === "p1") && (
-        <circle r={r + 18} fill="url(#shelfHeat)" opacity={p.id === "p3" ? 0.9 : 0.5}/>
+        <circle r={r + 22} fill="url(#shelfHeat)" opacity={p.id === "p3" ? 0.9 : 0.5}/>
       )}
       {segs.map((seg, i) => {
         const offset = -segLen * i - segLen * 0.05;
         const dash = `${segLen * 0.9 * seg.val} ${2 * Math.PI * r - segLen * 0.9 * seg.val}`;
         return (
-          <circle key={i} r={r} fill="none" stroke={seg.color} strokeWidth="3.5"
+          <circle key={i} r={r} fill="none" stroke={seg.color} strokeWidth="4.5"
                   strokeDasharray={dash} strokeDashoffset={offset} transform={`rotate(${i * 120 - 90})`}/>
         );
       })}
-      <circle r={r} fill="#0c111c" stroke={border} strokeWidth="2"/>
+      <circle r={r} fill="#0c111c" stroke={border} strokeWidth="2.5"/>
       {p.status !== "ok" && (
         <circle r={r} fill="none" stroke={border} strokeWidth="2">
           <animate attributeName="stroke-opacity" values="1;0.4;1" dur="1.2s" repeatCount="indefinite"/>
@@ -442,20 +443,20 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
       {scheduleOn ? (
         <g>
           {[0, 1, 2].map(i => (
-            <rect key={i} x={-22 + i * 15} y={-3} width="12" height="6" rx="1" fill="#3b82f6" fillOpacity="0.6"/>
+            <rect key={i} x={-30 + i * 20} y={-4} width="16" height="8" rx="1" fill="#3b82f6" fillOpacity="0.6"/>
           ))}
-          <text textAnchor="middle" y="-12" fontSize="9" fill="#cbd5e1" fontFamily="ui-monospace, monospace">{p.name}</text>
+          <text textAnchor="middle" y="-16" fontSize="11" fill="#cbd5e1" fontFamily="ui-monospace, monospace">{p.name}</text>
         </g>
       ) : (
         <>
-          <text textAnchor="middle" y="-2" fontSize="12" fontWeight="600" fill="#e2e8f0">{p.name}</text>
-          <text textAnchor="middle" y="12" fontSize="9" fill="#64748b" fontFamily="ui-monospace, monospace">{Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100)}%</text>
+          <text textAnchor="middle" y="-3" fontSize="14" fontWeight="600" fill="#e2e8f0">{p.name}</text>
+          <text textAnchor="middle" y="14" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace">{Math.round((p.util.frozen + p.util.ref + p.util.dry) / 3 * 100)}%</text>
         </>
       )}
       {esgOn && (
-        <g transform={`translate(0, ${r + 28})`}>
-          <rect x="-32" y="0" width="64" height="14" rx="3" fill="#022c22" stroke="#22c55e" strokeWidth="0.8"/>
-          <text x="0" y="10" textAnchor="middle" fontSize="9" fill="#86efac" fontFamily="ui-monospace, monospace">+${esgValue}</text>
+        <g transform={`translate(0, ${r + 34})`}>
+          <rect x="-36" y="0" width="72" height="16" rx="3" fill="#022c22" stroke="#22c55e" strokeWidth="0.8"/>
+          <text x="0" y="11" textAnchor="middle" fontSize="10" fill="#86efac" fontFamily="ui-monospace, monospace">+${esgValue}</text>
         </g>
       )}
     </g>
@@ -939,12 +940,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     [facilities, utilByFacility],
   );
 
-  const plantPos = useMemo(() => {
-    if (facilityFilter === "all") return allPlantPos;
-    const filtered = allPlantPos.filter(p => p.id === facilityFilter);
-    if (filtered.length === 0) return [];
-    return [{ ...filtered[0], y: SINGLE_PLANT_Y }];
-  }, [allPlantPos, facilityFilter]);
+  const plantPos = allPlantPos;
 
   useEffect(() => {
     if (facilityFilter !== "all" && activePlant && activePlant.id !== facilityFilter) {

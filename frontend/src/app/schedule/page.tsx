@@ -1292,7 +1292,7 @@ export default function SchedulePage() {
           sub={
             scheduleTab === "production"
               ? "Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
-              : "Warehouse → retailer shipments from finished goods in stock at each plant"
+              : "Warehouse → retailer shipments · drag bars to reschedule · right-click to cancel"
           }
           right={
             <div className="flex items-center gap-2">
