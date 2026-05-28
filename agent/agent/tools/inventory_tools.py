@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 
 import httpx
 import opik
@@ -55,3 +55,44 @@ def substitution_candidates(
             f"GET /api/lots/{lot_id}/substitutions returned {subs_resp.status_code}: {subs_resp.text}"
         )
     return subs_resp.json()
+
+
+@tool
+@opik.track(name="draft_lot_transfer")
+def draft_lot_transfer(
+    lot_id: Annotated[str, "Source lot UUID (from query_lots)"],
+    destination_facility_id: Annotated[
+        str, "Destination facility id, e.g. plant-toronto / plant-mississauga / plant-hamilton / plant-montreal"
+    ],
+    quantity_kg: Annotated[
+        float | None,
+        "Kilograms to move. Omit or set to null for a full-lot transfer.",
+    ] = None,
+    rationale: Annotated[
+        str, "One-line explanation the operator will see on the action card"
+    ] = "",
+) -> dict:
+    """Draft a lot-transfer action card for human review.
+
+    The stock move is NOT applied until the operator confirms the card. On
+    confirm the backend's _execute_transfer_card executor runs (FIFO by
+    expiry, partial transfers split the source lot). After success include
+    the returned action_card_id inside an ```action_card JSON fenced block.
+    """
+    body: dict = {
+        "lot_id": lot_id,
+        "destination_facility_id": destination_facility_id,
+        "rationale": rationale,
+    }
+    if quantity_kg is not None:
+        body["quantity_kg"] = quantity_kg
+    resp = httpx.post(
+        f"{BACKEND_URL}/api/lots/transfer/draft",
+        json=body,
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ToolException(
+            f"POST /api/lots/transfer/draft returned {resp.status_code}: {resp.text}"
+        )
+    return resp.json()

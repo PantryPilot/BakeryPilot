@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     google_api_key: str = ""
     groq_api_key: str = ""
+    deepgram_api_key: str = ""
+    deepgram_model: str = "nova-3"
     supplier_use_mock: bool = True
     mes_use_mock: bool = True
     cmms_use_mock: bool = True

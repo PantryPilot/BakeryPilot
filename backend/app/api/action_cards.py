@@ -109,6 +109,10 @@ async def confirm_action_card(
             await _execute_schedule_change_card(card.payload, str(card.card_id), db)
             flag_modified(card, "payload")
 
+        elif card.kind == "new_production_order":
+            await _execute_new_production_order_card(card.payload, str(card.card_id), db)
+            flag_modified(card, "payload")
+
         elif card.kind == "notify":
             for stakeholder in card.payload.get("stakeholders", []):
                 draft = NotificationDraft(
@@ -343,3 +347,66 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
     payload["new_schedule_id"] = str(new_schedule.schedule_id)
     if original:
         payload["cancelled_production_order_id"] = str(original.order_id)
+
+
+async def _execute_new_production_order_card(
+    payload: dict[str, Any], card_id: str, db: AsyncSession
+) -> None:
+    """Create a brand-new ProductionOrder on the specified line.
+
+    Mirrors POST /api/production/orders so validation rules are identical
+    (line must be idle/maintenance, line must belong to the facility, SKU
+    must exist). On success the line is moved into 'setup' state and bound
+    to the new order.
+    """
+    facility_id = payload.get("facility_id")
+    line_id = payload.get("line_id")
+    sku_id = payload.get("sku_id")
+    quantity_units = int(payload.get("quantity_units") or 0)
+    planned_start_at_raw = payload.get("planned_start_at")
+    notes = payload.get("notes")
+
+    if not (facility_id and line_id and sku_id and quantity_units > 0):
+        raise HTTPException(422, "new_production_order card missing required fields")
+
+    line = await db.get(ProductionLine, line_id)
+    if line is None:
+        raise HTTPException(404, f"production line {line_id} not found")
+    if line.facility_id != facility_id:
+        raise HTTPException(400, "line does not belong to the specified facility")
+    if line.status not in ("idle", "maintenance"):
+        raise HTTPException(
+            409,
+            f"line {line_id} is currently {line.status}; cannot add a new order",
+        )
+    sku = await db.get(Sku, sku_id)
+    if sku is None:
+        raise HTTPException(404, f"product {sku_id} not found")
+
+    planned_dt = None
+    if planned_start_at_raw:
+        try:
+            planned_dt = datetime.fromisoformat(str(planned_start_at_raw).replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "invalid planned_start_at in card payload")
+
+    now = datetime.now(timezone.utc)
+    order = ProductionOrder(
+        facility_id=facility_id,
+        line_id=line_id,
+        sku_id=sku_id,
+        quantity_units=quantity_units,
+        status="planned",
+        planned_start_at=planned_dt,
+        notes=(notes or "") + f"\nCreated from action card {card_id}",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(order)
+    await db.flush()
+
+    line.status = "setup"
+    line.current_order_id = order.order_id
+
+    payload["executed_at"] = now.isoformat()
+    payload["new_production_order_id"] = str(order.order_id)

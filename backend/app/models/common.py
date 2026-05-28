@@ -9,6 +9,7 @@ from pydantic import BaseModel
 class ActionCardKind(str, Enum):
     supplier_order = "supplier_order"
     schedule_change = "schedule_change"
+    new_production_order = "new_production_order"
     transfer = "transfer"
     work_order = "work_order"
     notify = "notify"
