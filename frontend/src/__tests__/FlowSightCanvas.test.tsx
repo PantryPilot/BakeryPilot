@@ -13,6 +13,7 @@ jest.mock('../lib/hooks', () => ({
   useRetailers: () => ({ data: [] }),
   useFacilities: () => ({ data: [] }),
   useAllSupplierOrders: () => ({ data: [], status: 'live' }),
+  useOutboundShipments: () => ({ data: [], status: 'live' }),
   useFacilityUtilization: () => ({ data: null }),
   useActiveRuns: () => ({ data: [], status: 'idle' }),
   useYieldTelemetry: () => ({ data: [] }),
@@ -46,6 +47,13 @@ describe('Flow legend overlay', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
     expect(screen.getByText('draft / pending')).toBeInTheDocument()
+  })
+
+  test('renders outbound shipment legend labels', () => {
+    render(<FlowSightCanvas />)
+    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
+    expect(screen.getByText('scheduled')).toBeInTheDocument()
+    expect(screen.getByText('in transit')).toBeInTheDocument()
   })
 
   test('renders Supplier POs section header', () => {
@@ -155,8 +163,8 @@ describe('LayerToggles', () => {
 
   test('shows active layer count', () => {
     render(<FlowSightCanvas />)
-    // Risk + Procurement are defaultOn=true → "2 on"
-    expect(screen.getByText('2 on')).toBeInTheDocument()
+    // Risk + Procurement + Schedule are defaultOn=true → "3 on"
+    expect(screen.getByText('3 on')).toBeInTheDocument()
   })
 
   test('toggling a layer updates the count', () => {
@@ -165,7 +173,7 @@ describe('LayerToggles', () => {
     fireEvent.click(layersBtn)
     const yieldBtn = screen.getByText('Yield').closest('button')!
     fireEvent.click(yieldBtn)
-    expect(screen.getByText('3 on')).toBeInTheDocument()
+    expect(screen.getByText('4 on')).toBeInTheDocument()
   })
 })
 

@@ -4,9 +4,26 @@ import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
 import { FACILITIES } from "../lib/data";
-import type { BackendYieldTelemetryPoint, BackendFacility, BackendFacilityUtilization, BackendOrder } from "../lib/api";
-import { fetchFacilityUtilization, isActiveSupplierOrder } from "../lib/api";
-import { useSuppliers, useDisruptions, useNewsDisruptionFeed, useRetailers, useFacilities, useFacilityUtilization, useActiveRuns, useYieldTelemetry, useEsgCounter, useAllSupplierOrders } from "../lib/hooks";
+import type {
+  BackendYieldTelemetryPoint,
+  BackendFacility,
+  BackendFacilityUtilization,
+  BackendOrder,
+} from "../lib/api";
+import { fetchFacilityUtilization, isActiveSupplierOrder, isActiveOutboundShipment } from "../lib/api";
+import {
+  useSuppliers,
+  useDisruptions,
+  useNewsDisruptionFeed,
+  useRetailers,
+  useFacilities,
+  useFacilityUtilization,
+  useActiveRuns,
+  useYieldTelemetry,
+  useEsgCounter,
+  useAllSupplierOrders,
+  useOutboundShipments,
+} from "../lib/hooks";
 import { useApp } from "../lib/context";
 
 const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
@@ -25,6 +42,7 @@ const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
 const PLANT_ROW_START = 180;
 const PLANT_ROW_GAP = 80;
+const SINGLE_PLANT_Y = PLANT_ROW_START + 2 * PLANT_ROW_GAP;
 const SUPPLIER_ROW_START = 130;
 const SUPPLIER_ROW_GAP = 100;
 
@@ -51,6 +69,19 @@ type InboundFlow = {
   items: BackendOrder["items"];
   totalKg: number;
   cargo: string;
+};
+
+type OutboundFlow = {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  shipmentId: string;
+  plantName: string;
+  retailerName: string;
+  skuName: string;
+  quantityUnits: number;
+  deliveryDate: string;
+  status: string;
 };
 
 function formatIngredientLabel(id: string): string {
@@ -166,6 +197,79 @@ function FlowOrderTooltip({ flow, x, y }: { flow: InboundFlow; x: number; y: num
   );
 }
 
+function OutboundFlowTooltip({ flow, x, y }: { flow: OutboundFlow; x: number; y: number }) {
+  const pad = 14;
+  const maxW = 300;
+  const left = typeof window !== "undefined"
+    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
+    : x + pad;
+  const top = typeof window !== "undefined"
+    ? Math.min(Math.max(y + pad, 8), window.innerHeight - 200 - 8)
+    : y + pad;
+  const inTransit = flow.status === "in_transit";
+
+  return (
+    <div
+      className="fixed z-50 pointer-events-none w-[288px] rounded-xl overflow-hidden"
+      style={{
+        left,
+        top,
+        background: "var(--bp-surface-strong)",
+        border: "1px solid var(--bp-border)",
+        boxShadow: "0 18px 44px rgb(var(--bp-bg-rgb) / 0.2), 0 0 0 1px var(--bp-border-soft)",
+      }}
+      role="tooltip"
+    >
+      <div
+        className="h-1"
+        style={{ background: "linear-gradient(90deg, rgb(249 115 22 / 0.95), rgb(249 115 22 / 0.15))" }}
+      />
+      <div className="px-4 pt-3.5 pb-2.5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--bp-text-subtle)] mb-1">
+            Outbound shipment
+          </p>
+          <p className="text-[15px] font-semibold text-[var(--bp-text-primary)] leading-snug truncate">
+            {flow.plantName}
+          </p>
+          <p className="text-[12px] text-[var(--bp-text-muted)] mt-1 truncate">
+            Warehouse →{" "}
+            <span className="font-medium text-[var(--bp-text-secondary)]">{flow.retailerName}</span>
+          </p>
+        </div>
+        <OrderStatusBadge status={flow.status} />
+      </div>
+      <div
+        className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5"
+        style={{
+          borderTop: "1px solid var(--bp-border-soft)",
+          background: "var(--bp-surface-soft)",
+        }}
+      >
+        {([
+          ["Product", flow.skuName],
+          ["Quantity", `${flow.quantityUnits.toLocaleString()} units`],
+          ["Delivery date", flow.deliveryDate || "—"],
+          ["Shipment", flow.shipmentId.slice(0, 8).toUpperCase()],
+        ] as const).map(([label, value]) => (
+          <div key={label}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--bp-text-subtle)]">{label}</div>
+            <div
+              className="text-[12px] font-mono tabular-nums text-[var(--bp-text-primary)] mt-0.5 truncate"
+              title={label === "Shipment" ? flow.shipmentId : undefined}
+            >
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+      {inTransit && (
+        <div className="px-4 pb-3 text-[11px] text-orange-300/90">In transit to retailer dock</div>
+      )}
+    </div>
+  );
+}
+
 // Retailer lane positions align with plant rows when facilities are loaded.
 const RETAILER_LANES_Y = [260, 340, 420, 500];
 
@@ -224,7 +328,7 @@ const LAYERS_DEF = [
   { id: "forecast", name: "Forecast",    count: 0,  defaultOn: false, desc: "Demand bands retailer→plant" },
   { id: "procure",  name: "Procurement", count: 0,  defaultOn: true,  desc: "Open supplier PO arcs (not yet received)" },
   { id: "esg",      name: "ESG",         count: 0,  defaultOn: false, desc: "Waste-avoided per plant" },
-  { id: "schedule", name: "Schedule",    count: 0,  defaultOn: false, desc: "Active runs inside plants" },
+  { id: "schedule", name: "Schedule",    count: 0,  defaultOn: true,  desc: "Outbound warehouse→retailer shipments + line runs in plants" },
   { id: "network",  name: "Network",     count: 0,  defaultOn: false, desc: "Cross-plant transfer arcs" },
 ];
 
@@ -742,6 +846,16 @@ function FlowLegend() {
               <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
             </div>
           ))}
+          <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono mt-1">Outbound</span>
+          {[
+            { color: "#f97316", label: "scheduled" },
+            { color: "#ea580c", label: "in transit" },
+          ].map((f, i) => (
+            <div key={`out-${i}`} className="flex items-center gap-2">
+              <span className="inline-block w-3 h-[3px] rounded-sm shrink-0" style={{ background: f.color }}/>
+              <span className="text-[10px] text-slate-400 font-mono">{f.label}</span>
+            </div>
+          ))}
           <div className="border-t border-slate-800 mt-0.5 pt-1.5 flex flex-col gap-1">
             <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">ESG</span>
             {[
@@ -775,7 +889,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const [plantClosing, setPlantClosing] = useState(false);
-  const [hoveredFlow, setHoveredFlow] = useState<InboundFlow | null>(null);
+  const [hoveredInbound, setHoveredInbound] = useState<InboundFlow | null>(null);
+  const [hoveredOutbound, setHoveredOutbound] = useState<OutboundFlow | null>(null);
   const [flowTooltipPos, setFlowTooltipPos] = useState({ x: 0, y: 0 });
   const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
@@ -795,6 +910,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const { data: retailers } = useRetailers();
   const { data: facilities } = useFacilities();
   const { data: orders, status: ordersStatus } = useAllSupplierOrders();
+  const { data: outboundShipments, status: outboundStatus } = useOutboundShipments();
   const [utilByFacility, setUtilByFacility] = useState<Map<string, BackendFacilityUtilization>>(new Map());
 
   const facilityIdsKey = useMemo(() => {
@@ -823,7 +939,12 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     [facilities, utilByFacility],
   );
 
-  const plantPos = allPlantPos;
+  const plantPos = useMemo(() => {
+    if (facilityFilter === "all") return allPlantPos;
+    const filtered = allPlantPos.filter(p => p.id === facilityFilter);
+    if (filtered.length === 0) return [];
+    return [{ ...filtered[0], y: SINGLE_PLANT_Y }];
+  }, [allPlantPos, facilityFilter]);
 
   useEffect(() => {
     if (facilityFilter !== "all" && activePlant && activePlant.id !== facilityFilter) {
@@ -872,11 +993,33 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
     return flows;
   }, [activeOrders, plantPos, supplierPos, supplierBackendId]);
 
-  const layerCounts = useMemo(() => ({
-    risk: disruptions.length,
-    procure: inboundFlows.length,
-    forecast: retailers.length,
-  }), [disruptions.length, inboundFlows.length, retailers.length]);
+  const activeOutbound = useMemo(() => {
+    const active = outboundShipments.filter(isActiveOutboundShipment);
+    if (!activeFacilityBackendId) return active;
+    return active.filter(s => s.facility_id === activeFacilityBackendId);
+  }, [outboundShipments, activeFacilityBackendId]);
+
+  const retailerById = useMemo(
+    () => new Map(retailers.map(r => [r.retailer_id, r])),
+    [retailers],
+  );
+
+  const resolveRetailerPos = useCallback(
+    (retailerId: string, plant: PlantData, base: RetailerPos[]): RetailerPos => {
+      const existing = base.find(r => r.id === retailerId);
+      if (existing) return existing;
+      const r = retailerById.get(retailerId);
+      return {
+        id: retailerId,
+        name: r?.name ?? retailerId.replace(/_/g, " "),
+        poRatio: r?.po_ratio ?? 1,
+        shelfRisk: r?.shelf_risk ?? "green",
+        x: RETAILER_X,
+        y: plant.y,
+      };
+    },
+    [retailerById],
+  );
 
   const retailerPos: RetailerPos[] = useMemo(() => {
     if (retailers.length === 0) return [];
@@ -886,7 +1029,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         : plantPos.length > 1
           ? plantPos.map(p => p.y)
           : RETAILER_LANES_Y;
-    return retailers.slice(0, laneYs.length).map((r, i) => ({
+    const base = retailers.slice(0, laneYs.length).map((r, i) => ({
       id: r.retailer_id,
       name: r.name,
       poRatio: r.po_ratio || 1,
@@ -894,7 +1037,46 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
       x: RETAILER_X,
       y: laneYs[i % laneYs.length],
     }));
-  }, [retailers, plantPos]);
+    const seen = new Set(base.map(r => r.id));
+    for (const s of activeOutbound) {
+      if (seen.has(s.retailer_id)) continue;
+      const plant = plantPos.find(p => p.facilityId === s.facility_id);
+      if (!plant) continue;
+      base.push(resolveRetailerPos(s.retailer_id, plant, base));
+      seen.add(s.retailer_id);
+    }
+    return base;
+  }, [retailers, plantPos, activeOutbound, resolveRetailerPos]);
+
+  const outboundFlows = useMemo((): OutboundFlow[] => {
+    const plantByFacility = new Map(plantPos.map(p => [p.facilityId, p]));
+    const flows: OutboundFlow[] = [];
+    for (const s of activeOutbound) {
+      const plant = plantByFacility.get(s.facility_id);
+      if (!plant) continue;
+      const retailer = resolveRetailerPos(s.retailer_id, plant, retailerPos);
+      flows.push({
+        id: s.shipment_id,
+        from: { x: plant.x, y: plant.y },
+        to: { x: retailer.x, y: retailer.y },
+        shipmentId: s.shipment_id,
+        plantName: s.facility_name ?? plant.name,
+        retailerName: s.retailer_name ?? retailer.name,
+        skuName: s.sku_name ?? s.sku_id.replace(/^sku-/, "").replace(/-/g, " "),
+        quantityUnits: s.quantity_units,
+        deliveryDate: s.requested_delivery_date ?? "",
+        status: s.status,
+      });
+    }
+    return flows;
+  }, [activeOutbound, plantPos, retailerPos, resolveRetailerPos]);
+
+  const layerCounts = useMemo(() => ({
+    risk: disruptions.length,
+    procure: inboundFlows.length,
+    forecast: retailers.length,
+    schedule: outboundFlows.length,
+  }), [disruptions.length, inboundFlows.length, retailers.length, outboundFlows.length]);
 
   return (
     <div className="bp-flow-canvas relative w-full h-full bg-[var(--bp-surface-soft)] overflow-hidden">
@@ -907,6 +1089,9 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           )}
           {ordersStatus === "live" && activeOrders.length > 0 && (
             <> · {activeOrders.length} active PO{activeOrders.length === 1 ? "" : "s"}</>
+          )}
+          {outboundStatus === "live" && activeOutbound.length > 0 && (
+            <> · {activeOutbound.length} outbound</>
           )}
         </span>
       </div>
@@ -940,7 +1125,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
 
         {layers.procure && inboundFlows.map((f, idx) => {
           const pending = f.status === "draft" || f.status === "pending_confirm";
-          const hovered = hoveredFlow?.id === f.id;
+          const hovered = hoveredInbound?.id === f.id;
           const pathD = arcPath(f.from, f.to, 0.12);
           const stroke = pending ? "#d97706" : "#2563eb";
           const truckDur = pending ? 18 + (idx % 3) * 2 : 12 + (idx % 4) * 2;
@@ -953,11 +1138,12 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
                 fill="none"
                 style={{ cursor: "pointer" }}
                 onMouseEnter={e => {
-                  setHoveredFlow(f);
+                  setHoveredInbound(f);
+                  setHoveredOutbound(null);
                   setFlowTooltipPos({ x: e.clientX, y: e.clientY });
                 }}
                 onMouseMove={e => setFlowTooltipPos({ x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => setHoveredFlow(prev => (prev?.id === f.id ? null : prev))}
+                onMouseLeave={() => setHoveredInbound(prev => (prev?.id === f.id ? null : prev))}
               />
               <path
                 d={pathD}
@@ -966,6 +1152,42 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
                 strokeWidth={hovered ? 2.75 : 2}
                 fill="none"
                 strokeDasharray={pending ? "6 4" : undefined}
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+              <TruckSprite pathD={pathD} color={stroke} dur={truckDur} />
+            </g>
+          );
+        })}
+        {layers.schedule && outboundFlows.map((f, idx) => {
+          const inTransit = f.status === "in_transit";
+          const hovered = hoveredOutbound?.id === f.id;
+          const pathD = arcPath(f.from, f.to, 0.12);
+          const stroke = inTransit ? "#ea580c" : "#f97316";
+          const truckDur = 10 + (idx % 4) * 2;
+          return (
+            <g key={`out-${f.id}`}>
+              <path
+                d={pathD}
+                stroke="transparent"
+                strokeWidth="16"
+                fill="none"
+                style={{ cursor: "pointer" }}
+                onMouseEnter={e => {
+                  setHoveredOutbound(f);
+                  setHoveredInbound(null);
+                  setFlowTooltipPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseMove={e => setFlowTooltipPos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredOutbound(prev => (prev?.id === f.id ? null : prev))}
+              />
+              <path
+                d={pathD}
+                stroke={stroke}
+                strokeOpacity={hovered ? 0.85 : 0.55}
+                strokeWidth={hovered ? 2.75 : 2}
+                fill="none"
+                strokeDasharray={inTransit ? undefined : "5 4"}
                 strokeLinecap="round"
                 pointerEvents="none"
               />
@@ -991,7 +1213,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
       </svg>
-      {hoveredFlow && <FlowOrderTooltip flow={hoveredFlow} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
+      {hoveredInbound && <FlowOrderTooltip flow={hoveredInbound} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
+      {hoveredOutbound && <OutboundFlowTooltip flow={hoveredOutbound} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
       {/* Legend panel — top-left, theme-aware */}
       <div className="absolute top-4 right-2 sm:right-4 z-10 flex flex-col gap-3">
         <LayerToggles layers={layers} setLayer={setLayer} layerCounts={layerCounts}/>

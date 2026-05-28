@@ -469,6 +469,11 @@ export function isActiveSupplierOrder(order: BackendOrder): boolean {
   return order.status !== "sent";
 }
 
+/** Outbound dock schedules still in flight (not cancelled or delivered). */
+export function isActiveOutboundShipment(shipment: BackendOutboundShipment): boolean {
+  return shipment.status !== "cancelled" && shipment.status !== "delivered";
+}
+
 // ---------- Action cards ----------
 
 export function formatScheduleWindow(startIso: unknown, endIso: unknown): string {

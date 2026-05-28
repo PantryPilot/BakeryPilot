@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import {
   createOutboundShipment,
@@ -27,7 +28,18 @@ const PLANT_TO_FACILITY: Record<string, string> = {
 
 const LANE_H = 44;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const GANTT_HEADER_H = 36;
+const GANTT_HEADER_H = 32;
+const GANTT_HEADER =
+  "sticky top-0 z-10 shrink-0 bg-[var(--bp-surface-muted)]/70 border-b border-[var(--bp-border)] text-[11px] font-medium leading-none text-[var(--bp-text-secondary)]";
+const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
+const OUTBOUND_RUN_TILE =
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] shadow-md ring-1 ring-orange-500/25 flex items-center gap-2 px-2.5 cursor-context-menu touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-orange-500/40";
+const OUTBOUND_RUN_TILE_STYLE =
+  "border-l-orange-300 bg-orange-600 border-orange-500 hover:bg-orange-500";
+
+function laneRowBg(index: number): string {
+  return index % 2 === 0 ? "bg-[var(--bp-surface-soft)]" : "bg-[var(--bp-surface-muted)]/40";
+}
 
 type OutboundRun = {
   id: string;
@@ -42,7 +54,149 @@ type OutboundRun = {
   retailerName: string;
   retailerId: string;
   deliveryDate?: string;
+  status: string;
 };
+
+function formatClockFromHour(hour: number): string {
+  const h = Math.floor(hour);
+  const m = Math.round((hour - h) * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function formatShipWindow(start: number, end: number): string {
+  return `${formatClockFromHour(start)} – ${formatClockFromHour(end)}`;
+}
+
+function OutboundHoverCard({
+  run,
+  anchorEl,
+  warehouseLabel,
+}: {
+  run: OutboundRun;
+  anchorEl: HTMLElement | null;
+  warehouseLabel: string;
+}) {
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    if (!anchorEl) return;
+    const update = () => {
+      const rect = anchorEl.getBoundingClientRect();
+      setPos({
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - 272),
+        top: rect.top - 8,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorEl]);
+
+  if (!anchorEl || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed z-[9999] w-[268px] -translate-y-full rounded-xl border border-[var(--bp-border)] bg-[var(--bp-surface)] p-3 shadow-2xl text-[12px] pointer-events-none ring-1 ring-white/[0.04]"
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <div className="font-mono text-[10px] text-[var(--bp-text-subtle)] mb-1 truncate" title={run.id}>
+        {run.id.slice(0, 8)}…
+      </div>
+      <div className="text-[13px] font-medium text-[var(--bp-text-primary)] mb-1 capitalize">
+        → {run.retailerName}
+      </div>
+      <div className="text-[var(--bp-text-muted)]">Product</div>
+      <div className="font-mono text-[11px] text-[var(--bp-text-secondary)] truncate">{run.skuName}</div>
+      <div className="mt-1.5 space-y-1">
+        <div className="flex justify-between gap-2">
+          <span className="text-[var(--bp-text-muted)]">Warehouse</span>
+          <span className="text-[var(--bp-text-secondary)] text-right truncate">{warehouseLabel}</span>
+        </div>
+        <div className="flex justify-between gap-2">
+          <span className="text-[var(--bp-text-muted)]">Ship window</span>
+          <span className="text-[var(--bp-text-secondary)] font-mono tabular-nums">{formatShipWindow(run.start, run.end)}</span>
+        </div>
+        <div className="flex justify-between gap-2">
+          <span className="text-[var(--bp-text-muted)]">Quantity</span>
+          <span className="text-[var(--bp-text-secondary)] font-mono tabular-nums">{run.qty.toLocaleString()} u</span>
+        </div>
+        {run.deliveryDate && (
+          <div className="flex justify-between gap-2">
+            <span className="text-[var(--bp-text-muted)]">Delivery</span>
+            <span className="text-[var(--bp-text-secondary)] font-mono tabular-nums">{run.deliveryDate}</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-1.5 pt-1.5 border-t border-[var(--bp-border-soft)] flex justify-between">
+        <span className="text-[var(--bp-text-muted)]">Status</span>
+        <span className="text-[var(--bp-text-secondary)] capitalize">{run.status.replace(/_/g, " ")}</span>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function OutboundGanttLane({
+  lane,
+  rowIndex,
+  onDelete,
+}: {
+  lane: OutboundLane;
+  rowIndex: number;
+  onDelete: (run: OutboundRun) => void;
+}) {
+  const [hoveredRun, setHoveredRun] = useState<{ run: OutboundRun; el: HTMLElement } | null>(null);
+
+  return (
+    <div
+      className={`relative w-full min-w-[1152px] border-b border-[var(--bp-border)] ${laneRowBg(rowIndex)}`}
+      style={{ height: LANE_H }}
+    >
+      {Array.from({ length: HOURS.length + 1 }, (_, i) => (
+        <div
+          key={i}
+          className="absolute top-0 bottom-0 w-px pointer-events-none"
+          style={{ left: `${(i / HOURS.length) * 100}%`, backgroundColor: "var(--bp-border)" }}
+        />
+      ))}
+      {lane.runs.map(r => (
+        <div
+          key={r.id}
+          className={`${OUTBOUND_RUN_TILE} ${OUTBOUND_RUN_TILE_STYLE}`}
+          style={{
+            left: `calc(${hourLeftPct(r.start, 0, HOURS.length)}% + 3px)`,
+            width: `calc(${hourWidthPct(r.start, r.end, HOURS.length)}% - 6px)`,
+          }}
+          onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
+          onMouseLeave={() => setHoveredRun(null)}
+          onContextMenu={e => {
+            e.preventDefault();
+            onDelete(r);
+          }}
+        >
+          <span className="text-[12px] font-semibold text-white truncate capitalize drop-shadow-sm">
+            → {r.retailerName}
+          </span>
+          <span className="text-[11px] text-orange-50 truncate hidden sm:inline">{r.skuName}</span>
+          <span className="text-[11px] font-mono text-orange-50 tabular-nums shrink-0">
+            {(r.qty / 1000).toFixed(1)}k
+          </span>
+        </div>
+      ))}
+      {hoveredRun && (
+        <OutboundHoverCard
+          run={hoveredRun.run}
+          anchorEl={hoveredRun.el}
+          warehouseLabel={lane.label}
+        />
+      )}
+    </div>
+  );
+}
 
 type OutboundLane = {
   key: string;
@@ -98,6 +252,7 @@ function shipmentsToRuns(
         retailerName: s.retailer_name ?? s.retailer_id.replace(/_/g, " "),
         retailerId: s.retailer_id,
         deliveryDate: s.requested_delivery_date ?? undefined,
+        status: s.status,
       };
     });
 }
@@ -433,41 +588,25 @@ export function OutboundSchedulePanel({
             </div>
             <div className="flex-1 min-w-0 overflow-x-auto">
               <div
-                className="grid border-b border-[var(--bp-border-soft)] text-[10px] font-mono text-[var(--bp-text-subtle)] tabular-nums"
+                className={`grid w-full min-w-[1152px] ${GANTT_HEADER}`}
                 style={{ gridTemplateColumns: `repeat(${HOURS.length}, minmax(48px, 1fr))`, height: GANTT_HEADER_H }}
               >
                 {HOURS.map(h => (
-                  <div key={h} className="flex items-center justify-center border-l border-[var(--bp-border-soft)] first:border-l-0">
+                  <div
+                    key={h}
+                    className={`flex items-center justify-center border-l border-[var(--bp-border)] first:border-l-0 ${GANTT_HOUR_LABEL}`}
+                  >
                     {String(h).padStart(2, "0")}:00
                   </div>
                 ))}
               </div>
               {lanes.map((lane, idx) => (
-                <div
+                <OutboundGanttLane
                   key={lane.key}
-                  className={`relative border-b border-[var(--bp-border-soft)] ${idx % 2 === 0 ? "bg-[var(--bp-surface-soft)]" : "bg-[var(--bp-surface)]/40"}`}
-                  style={{ height: LANE_H }}
-                >
-                  {lane.runs.map(r => (
-                    <div
-                      key={r.id}
-                      className="absolute top-1 bottom-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2 flex items-center gap-2 overflow-hidden cursor-context-menu"
-                      style={{
-                        left: `calc(${hourLeftPct(r.start, 0, HOURS.length)}% + 3px)`,
-                        width: `calc(${hourWidthPct(r.start, r.end, HOURS.length)}% - 6px)`,
-                      }}
-                      onContextMenu={e => {
-                        e.preventDefault();
-                        handleDelete(r);
-                      }}
-                      title={`${r.retailerName} · ${r.skuName} · ${r.qty.toLocaleString()} u · right-click to cancel`}
-                    >
-                      <span className="text-[11px] font-medium text-emerald-100 truncate capitalize">→ {r.retailerName}</span>
-                      <span className="text-[10px] text-emerald-200/80 truncate hidden sm:inline">{r.skuName}</span>
-                      <span className="text-[10px] font-mono text-emerald-200/70 shrink-0">{(r.qty / 1000).toFixed(1)}k</span>
-                    </div>
-                  ))}
-                </div>
+                  lane={lane}
+                  rowIndex={idx}
+                  onDelete={handleDelete}
+                />
               ))}
             </div>
           </div>
