@@ -17,7 +17,7 @@ import {
   useIngredients,
   useNegotiationsBySupplier,
 } from "../../lib/hooks";
-import type { BackendWasteEvent, BackendYieldTelemetryPoint, OrderDraftResponse, BackendSupplierMessage } from "../../lib/api";
+import type { BackendWasteEvent, BackendYieldTelemetryPoint, OrderDraftResponse, BackendSupplierMessage, BackendNegotiationDraft } from "../../lib/api";
 import {
   BACKEND_URL,
   createOrderDraft,
@@ -470,7 +470,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   const { data: liveOrders, status: ordersStatus, refetch: refetchOrders } = useSupplierOrders(supplier.id);
   useEffect(() => { if (orderRefreshTick) refetchOrders(); }, [orderRefreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: perf } = useSupplierPerformance(supplier.id);
-  const { data: drafts, status: negotiationStatus, refetch: refetchDrafts } = useNegotiationsBySupplier(supplier.id);
+  const { data: drafts, refetch: refetchDrafts } = useNegotiationsBySupplier(supplier.id);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupplierTab>("overview");
@@ -484,7 +484,6 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   const [composeSubject, setComposeSubject] = useState("");
   const [composeSending, setComposeSending] = useState(false);
   const [sendAs, setSendAs] = useState<"you" | "supplier">("you");
-  const [showAIDraft, setShowAIDraft] = useState(false);
 
   // Negotiation state
   const [negGoal, setNegGoal] = useState("");
@@ -597,14 +596,29 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   const priceIdx = weeks.map((_, i) => 1 + Math.sin(i * 0.4) * 0.06);
   const priceSup = weeks.map((_, i) => priceIdx[i] + supplier.priceVsBench + Math.sin(i * 0.6 + 2) * 0.02);
 
-  async function handleSend(draftId: string) {
-    setSendingId(draftId);
-    const res = await markNegotiationSent(draftId);
+  async function handleSend(draft: BackendNegotiationDraft) {
+    setSendingId(draft.draft_id);
+    // Post draft body as an outbound message so it appears in the thread
+    await sendSupplierMessage(supplier.id, draft.body_md, {
+      subject: draft.trigger_kind.replace(/_/g, " "),
+      channel: "email",
+      direction: "outbound",
+      author: "demo_user",
+    });
+    const res = await markNegotiationSent(draft.draft_id);
     setSendingId(null);
     if (res) {
       refetchDrafts();
-      onDraftAction?.("Negotiation draft sent");
+      void reloadMessages();
+      onDraftAction?.("Negotiation sent");
     }
+  }
+
+  function handleEditDraft(draft: BackendNegotiationDraft) {
+    setComposeBody(draft.body_md);
+    setComposeSubject(draft.trigger_kind.replace(/_/g, " "));
+    setSendAs("you");
+    setActiveTab("messages");
   }
 
   async function handleDiscard(draftId: string) {
@@ -617,7 +631,6 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
     }
   }
 
-  const showNegotiationSection = drafts.length > 0 || (negotiationStatus === "loading" && supplier.moqTaxQtd > 3000);
 
   return (
     <div
@@ -641,7 +654,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
         {([
           { id: "overview", label: "Overview" },
           { id: "contact", label: "Contact" },
-          { id: "messages", label: `Messages${messages.length ? ` · ${messages.length}` : ""}` },
+          { id: "messages", label: `Messages & Negotiate${drafts.length > 0 ? ` · ${drafts.length} draft${drafts.length > 1 ? "s" : ""}` : messages.length > 0 ? ` · ${messages.length}` : ""}` },
         ] as { id: SupplierTab; label: string }[]).map(t => (
           <button
             key={t.id}
@@ -788,44 +801,15 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
                 </div>
               )}
             </div>
-            {showNegotiationSection && (
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300 font-semibold mb-2 flex items-center gap-2">
-                  <Icon name="warn" size={12}/>Pending negotiation {drafts.length > 1 ? "drafts" : "draft"}
-                </div>
-                {negotiationStatus === "loading" && drafts.length === 0 ? (
-                  <div className="text-[12px] text-slate-500 py-2">Loading drafts…</div>
-                ) : (
-                  drafts.map(draft => (
-                    <div key={draft.draft_id} className="rounded-md border border-amber-700/40 bg-amber-900/20 p-4 mb-2">
-                      <div className="text-[13px] text-slate-100 font-medium mb-2 capitalize">
-                        {draft.trigger_kind.replace(/_/g, " ")}
-                      </div>
-                      <div className="text-[12px] text-slate-400 leading-relaxed mb-3 whitespace-pre-line">
-                        {draft.body_md.length > 400 ? draft.body_md.slice(0, 400) + "…" : draft.body_md}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          disabled={!!sendingId || !!discardingId}
-                          onClick={() => handleSend(draft.draft_id)}
-                          className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[12px] flex items-center gap-1.5"
-                        >
-                          {sendingId === draft.draft_id && <span className="w-3 h-3 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
-                          Mark sent
-                        </button>
-                        <button
-                          disabled={!!sendingId || !!discardingId}
-                          onClick={() => handleDiscard(draft.draft_id)}
-                          className="px-3 py-1.5 rounded-md text-[12px] text-red-400 disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                          {discardingId === draft.draft_id && <span className="w-3 h-3 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin"/>}
-                          Discard
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+            {drafts.length > 0 && (
+              <button
+                onClick={() => setActiveTab("messages")}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-amber-700/40 bg-amber-900/15 text-amber-300 text-[12px] font-medium hover:bg-amber-900/25 transition"
+              >
+                <Icon name="warn" size={13}/>
+                {drafts.length} pending negotiation {drafts.length > 1 ? "drafts" : "draft"} — view in Messages &amp; Negotiate
+                <span className="ml-auto text-amber-400 text-[11px]">→</span>
+              </button>
             )}
           </>
         )}
@@ -852,130 +836,164 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
         )}
         {activeTab === "messages" && (
           <>
+            {/* Pending negotiation drafts — pinned above thread */}
+            {drafts.length > 0 && (
+              <div className="shrink-0 border-b border-amber-800/40 bg-amber-950/20 px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-300 uppercase tracking-wider">
+                  <Icon name="warn" size={12}/>
+                  Pending {drafts.length > 1 ? `${drafts.length} negotiation drafts` : "negotiation draft"}
+                </div>
+                {drafts.map(draft => (
+                  <div key={draft.draft_id} className="rounded-lg border border-amber-700/30 bg-[#0c111c] p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[11.5px] font-semibold text-amber-200/80 capitalize">
+                        {draft.trigger_kind.replace(/_/g, " ")}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          disabled={!!sendingId || !!discardingId}
+                          onClick={() => handleEditDraft(draft)}
+                          className="h-6 px-2.5 rounded-md border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-slate-100 text-[11px] font-medium transition disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          disabled={!!sendingId || !!discardingId}
+                          onClick={() => handleSend(draft)}
+                          className="h-6 px-2.5 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[11px] font-semibold flex items-center gap-1 transition"
+                        >
+                          {sendingId === draft.draft_id && <span className="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>}
+                          Send
+                        </button>
+                        <button
+                          disabled={!!sendingId || !!discardingId}
+                          onClick={() => handleDiscard(draft.draft_id)}
+                          className="h-6 px-2 rounded-md text-[11px] text-slate-600 hover:text-red-400 disabled:opacity-50 transition"
+                        >
+                          {discardingId === draft.draft_id ? <span className="w-2.5 h-2.5 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin inline-block"/> : "✕"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[11.5px] text-slate-400 leading-relaxed line-clamp-3 whitespace-pre-line">
+                      {draft.body_md.length > 260 ? draft.body_md.slice(0, 260) + "…" : draft.body_md}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Scrollable message thread */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {messagesLoading ? (
                 <div className="text-[12px] text-slate-500 py-2">Loading conversation…</div>
               ) : messages.length === 0 ? (
-                <div className="text-[12px] text-slate-500 py-4 text-center">No messages yet — start a thread below.</div>
+                <div className="text-[12px] text-slate-500 py-4 text-center">No messages yet.</div>
               ) : (
                 messages.map(m => <MessageBubble key={m.message_id} m={m}/>)
               )}
             </div>
 
-            {/* Sticky compose + AI draft area */}
-            <div className="shrink-0 border-t border-slate-800 p-4 space-y-3 bg-[#0c111c]">
-              {/* AI draft toggle button */}
-              <button
-                onClick={() => setShowAIDraft(v => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition ${
-                  showAIDraft
-                    ? "border-blue-500/50 bg-blue-500/10 text-blue-300"
-                    : "border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <Icon name="agent" size={12}/>
-                AI draft
-                <span className="text-[10px] opacity-60">{showAIDraft ? "▲" : "▼"}</span>
-              </button>
+            {/* Sticky compose + negotiate area */}
+            <div className="shrink-0 border-t border-slate-800 bg-[#0c111c] space-y-0">
 
-              {/* AI draft panel (expandable) */}
-              {showAIDraft && (
-                <div className="rounded-md border border-slate-700 bg-slate-900/60 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <Icon name="agent" size={13} className="text-emerald-400"/>
-                    <span className="text-[11px] font-semibold text-slate-300">ProcurementAgent</span>
-                    <span className="text-[10.5px] text-slate-500 hidden sm:inline">— describe your goal, generate a draft, then use it below</span>
-                  </div>
-                  <textarea
-                    rows={2}
+              {/* ── Negotiate with AI ── */}
+              <div className="border-b border-slate-800/60 px-4 py-3 space-y-2">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icon name="agent" size={13} className="text-emerald-400"/>
+                  <span className="text-[11px] font-semibold text-slate-300">Negotiate with AI</span>
+                  <span className="text-[10.5px] text-slate-600 hidden sm:inline ml-1">— describe your goal, generate a draft, then send below</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
                     value={negGoal}
                     onChange={e => setNegGoal(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && negGoal.trim()) { e.preventDefault(); void handleAgentDraft(); } }}
                     placeholder={`e.g. Lower MOQ from 20t to 12t with ${supplier.name}`}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none resize-none"
+                    className="flex-1 h-8 bg-[var(--bp-surface-muted)] border border-[var(--bp-border)] rounded-md px-2.5 text-[12px] text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
                   />
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <select
-                      value={negTone}
-                      onChange={e => setNegTone(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-200 focus:outline-none"
-                    >
-                      <option value="firm-but-friendly">Firm but friendly</option>
-                      <option value="formal">Formal</option>
-                      <option value="urgent">Urgent</option>
-                      <option value="collaborative">Collaborative</option>
-                    </select>
-                    <button
-                      disabled={!negGoal.trim() || negSending}
-                      onClick={handleAgentDraft}
-                      className="px-2.5 py-1 rounded-md bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-blue-950 font-semibold text-[11px] flex items-center gap-1"
-                    >
-                      {negSending && !negDraft && <span className="w-2.5 h-2.5 border-2 border-blue-900/40 border-t-blue-950 rounded-full animate-spin"/>}
-                      Generate
-                    </button>
-                    {negDraft !== null && (
-                      <button
-                        onClick={() => { setNegDraft(null); setNegSubject(null); }}
-                        className="text-[11px] text-slate-500 hover:text-slate-300"
-                      >Clear</button>
-                    )}
-                  </div>
-                  {negDraft !== null && (
-                    <div className="space-y-1.5">
-                      {negSending && (
-                        <div className="flex items-center gap-1.5 text-[10.5px] text-amber-300">
-                          <span className="relative flex w-1.5 h-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"/>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"/>
-                          </span>
-                          ProcurementAgent drafting…
-                        </div>
-                      )}
-                      {negSubject && <div className="text-[11px] text-slate-400 font-mono">Subject: {negSubject}</div>}
-                      <textarea
-                        rows={6}
-                        value={negDraft}
-                        onChange={e => setNegDraft(e.target.value)}
-                        readOnly={negSending}
-                        className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-[12px] text-slate-200 focus:border-amber-500 focus:outline-none resize-y"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          disabled={negSending || !negDraft.trim()}
-                          onClick={() => {
-                            if (negDraft) {
-                              setComposeBody(negDraft);
-                              if (negSubject) setComposeSubject(negSubject);
-                              setSendAs("you");
-                              setShowAIDraft(false);
-                            }
-                          }}
-                          className="px-3 py-1 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                          Use draft →
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <select
+                    value={negTone}
+                    onChange={e => setNegTone(e.target.value)}
+                    className="h-8 bg-[var(--bp-surface-muted)] border border-[var(--bp-border)] rounded-md px-2 text-[11px] text-slate-300 focus:outline-none"
+                  >
+                    <option value="firm-but-friendly">Firm</option>
+                    <option value="formal">Formal</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="collaborative">Collab</option>
+                  </select>
+                  <button
+                    disabled={!negGoal.trim() || negSending}
+                    onClick={handleAgentDraft}
+                    className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-[12px] font-semibold flex items-center gap-1.5 transition shrink-0"
+                  >
+                    {negSending && !negDraft
+                      ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                      : <Icon name="agent" size={12}/>}
+                    {negSending && !negDraft ? "Drafting…" : "Generate"}
+                  </button>
                 </div>
-              )}
 
-              {/* Compose */}
-              <div className="rounded-md border border-slate-800 bg-slate-900/40 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10.5px] uppercase tracking-wider text-slate-500">Compose</div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10.5px] text-slate-500">Send as</span>
+                {negDraft !== null && (
+                  <div className="space-y-1.5">
+                    {negSending && (
+                      <div className="flex items-center gap-1.5 text-[10.5px] text-amber-300">
+                        <span className="relative flex w-1.5 h-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"/>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"/>
+                        </span>
+                        ProcurementAgent drafting…
+                      </div>
+                    )}
+                    {negSubject && <div className="text-[10.5px] text-slate-500 font-mono">Subject: {negSubject}</div>}
+                    <textarea
+                      rows={5}
+                      value={negDraft}
+                      onChange={e => setNegDraft(e.target.value)}
+                      readOnly={negSending}
+                      className="w-full bg-[var(--bp-surface-muted)] border border-slate-700 rounded-md px-2.5 py-1.5 text-[12px] text-slate-200 focus:border-amber-500/60 focus:outline-none resize-y"
+                    />
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => { setNegDraft(null); setNegSubject(null); }} className="text-[11px] text-slate-600 hover:text-slate-400 transition">Clear</button>
+                      <button
+                        disabled={negSending || !negDraft.trim()}
+                        onClick={() => {
+                          if (negDraft) {
+                            setComposeBody(negDraft);
+                            if (negSubject) setComposeSubject(negSubject);
+                            setSendAs("you");
+                            setNegDraft(null);
+                            setNegSubject(null);
+                          }
+                        }}
+                        className="h-7 px-3 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 text-[11px] font-semibold disabled:opacity-50 flex items-center gap-1 transition"
+                      >
+                        Use draft ↓
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Compose ── */}
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={composeSubject}
+                    onChange={e => setComposeSubject(e.target.value)}
+                    placeholder="Subject (optional)"
+                    className="flex-1 h-7 bg-[var(--bp-surface-muted)] border border-[var(--bp-border)] rounded-md px-2.5 text-[12px] text-slate-200 placeholder:text-slate-600 focus:border-slate-600 focus:outline-none"
+                  />
+                  <div className="flex items-center gap-1 shrink-0">
                     {(["you", "supplier"] as const).map(role => (
                       <button
                         key={role}
                         onClick={() => setSendAs(role)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition ${
+                        className={`h-7 px-2.5 rounded-md text-[11px] font-medium border transition ${
                           sendAs === role
                             ? role === "you"
                               ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
                               : "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
-                            : "border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600"
+                            : "border-[var(--bp-border)] text-[var(--bp-text-secondary)] hover:text-[var(--bp-text-primary)]"
                         }`}
                       >
                         {role === "you" ? "You" : supplier.name.split(" ")[0]}
@@ -983,40 +1001,39 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
                     ))}
                   </div>
                 </div>
-                <input
-                  value={composeSubject}
-                  onChange={e => setComposeSubject(e.target.value)}
-                  placeholder="Subject (optional)"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                />
-                <textarea
-                  rows={3}
-                  value={composeBody}
-                  onChange={e => setComposeBody(e.target.value)}
-                  placeholder={sendAs === "supplier" ? `Type ${supplier.name.split(" ")[0]}'s reply…` : "Type your message…"}
-                  className={`w-full bg-slate-900 border rounded-md px-3 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-500 focus:outline-none resize-none transition ${
-                    sendAs === "supplier"
-                      ? "border-emerald-700/50 focus:border-emerald-500"
-                      : "border-slate-700 focus:border-blue-500"
-                  }`}
-                />
-                <div className="flex items-center justify-between">
-                  <span className="text-[10.5px] text-slate-500 italic">
-                    {sendAs === "supplier" ? `Simulating inbound from ${supplier.name}` : "Sending as you (outbound)"}
-                  </span>
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    rows={3}
+                    value={composeBody}
+                    onChange={e => setComposeBody(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSendCompose(); } }}
+                    placeholder={sendAs === "supplier" ? `Type ${supplier.name.split(" ")[0]}'s reply…` : "Type your message… (Shift+Enter for new line)"}
+                    className={`flex-1 bg-[var(--bp-surface-muted)] border rounded-lg px-3 py-2 text-[12.5px] text-slate-200 placeholder:text-slate-600 focus:outline-none resize-none transition ${
+                      sendAs === "supplier"
+                        ? "border-emerald-800/50 focus:border-emerald-600/60"
+                        : "border-[var(--bp-border)] focus:border-blue-600/60"
+                    }`}
+                  />
                   <button
                     disabled={!composeBody.trim() || composeSending}
                     onClick={handleSendCompose}
-                    className={`px-3 py-1.5 rounded-md font-semibold text-[12px] flex items-center gap-1.5 disabled:opacity-50 transition ${
+                    className={`shrink-0 h-9 px-3.5 rounded-lg font-semibold text-[12px] flex items-center gap-1.5 disabled:opacity-40 transition ${
                       sendAs === "supplier"
-                        ? "bg-emerald-500 hover:bg-emerald-400 text-emerald-950"
-                        : "bg-blue-500 hover:bg-blue-400 text-blue-950"
+                        ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                        : "bg-blue-600 hover:bg-blue-500 text-white"
                     }`}
                   >
-                    {composeSending && <span className="w-3 h-3 border-2 border-current/40 border-t-current rounded-full animate-spin"/>}
-                    {sendAs === "supplier" ? "Reply as supplier" : "Send"}
+                    {composeSending
+                      ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                      : <Icon name="send" size={13}/>}
+                    Send
                   </button>
                 </div>
+                {composeBody.trim() && (
+                  <div className="text-[10.5px] text-[var(--bp-text-secondary)]">
+                    {sendAs === "supplier" ? `Simulating inbound from ${supplier.name}` : "Outbound · Enter to send · Shift+Enter for new line"}
+                  </div>
+                )}
               </div>
             </div>
           </>
