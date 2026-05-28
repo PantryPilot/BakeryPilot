@@ -13,10 +13,11 @@ from app.db.models import (
     IngredientLot,
     ProductionFormula,
     ProductionSchedule,
+    Sku,
     WasteEvent,
 )
 from app.db.session import get_db
-from app.models.inventory import IngredientLot as IngredientLotModel, SubstitutionCandidate
+from app.models.inventory import FormulaUsage, IngredientLot as IngredientLotModel, SubstitutionCandidate
 from app.services.spoilage import compute_spoilage_risk
 from app.services.substitution import substitution_candidates
 
@@ -112,6 +113,33 @@ async def substitutions(
         raise HTTPException(404, f"lot {lot_id} not found")
     candidates = await substitution_candidates(lot.ingredient_id, lot.facility_id, db)
     return [SubstitutionCandidate(**c) for c in candidates]
+
+
+@router.get("/{lot_id}/used_in", response_model=list[FormulaUsage])
+async def used_in(
+    lot_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[FormulaUsage]:
+    lot = await db.get(IngredientLot, lot_id)
+    if not lot:
+        raise HTTPException(404, f"lot {lot_id} not found")
+    rows = (
+        await db.execute(
+            select(ProductionFormula)
+            .options(selectinload(ProductionFormula.sku))
+            .where(ProductionFormula.ingredient_id == lot.ingredient_id)
+        )
+    ).scalars().all()
+    return [
+        FormulaUsage(
+            sku_id=row.sku_id,
+            sku_name=row.sku.name if row.sku else row.sku_id,
+            category=row.sku.category if row.sku else None,
+            kg_per_unit=float(row.kg_per_unit),
+            allergen_tags=row.sku.allergen_tags if row.sku else [],
+        )
+        for row in rows
+    ]
 
 
 class WriteOffRequest(BaseModel):

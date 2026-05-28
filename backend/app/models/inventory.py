@@ -25,3 +25,11 @@ class SubstitutionCandidate(BaseModel):
     facility_id: str | None = None
     facility_name: str | None = None
     allergens: list[str] = []
+
+
+class FormulaUsage(BaseModel):
+    sku_id: str
+    sku_name: str
+    category: str | None = None
+    kg_per_unit: float
+    allergen_tags: list[str] = []
