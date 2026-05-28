@@ -36,7 +36,7 @@ const SHORT_CODE_TO_FACILITY_ID: Record<string, string> = {
 const CANVAS_W = 1280, CANVAS_H = 720;
 const SUPPLIER_X = 200;
 const PLANT_CX = 640;
-const RETAILER_X = 1100;
+const RETAILER_X = 980;
 const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
 const COL_LABEL_Y = 92;
@@ -235,15 +235,13 @@ function OrderStatusBadge({ status }: { status: string }) {
 }
 
 function FlowOrderTooltip({ flow, x, y }: { flow: InboundFlow; x: number; y: number }) {
-  const pad = 14;
+  const pad = 12;
   const maxW = 308;
   const maxH = 240;
-  const left = typeof window !== "undefined"
-    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
-    : x + pad;
-  const top = typeof window !== "undefined"
-    ? Math.min(Math.max(y + pad, 8), window.innerHeight - maxH - 8)
-    : y + pad;
+  const flipH = typeof window !== "undefined" && x + pad + maxW > window.innerWidth - 8;
+  const flipV = typeof window !== "undefined" && y + pad + maxH > window.innerHeight - 8;
+  const left = flipH ? Math.max(8, x - maxW - pad) : x + pad;
+  const top  = flipV ? Math.max(8, y - maxH - pad) : y + pad;
   const lineTotal = flow.items.reduce((s, it) => s + it.quantity_kg * it.unit_price, 0);
   const pending = flow.status === "draft" || flow.status === "pending_confirm";
   const accentRgb = pending ? "245 158 11" : "59 130 246";
@@ -328,14 +326,13 @@ function FlowOrderTooltip({ flow, x, y }: { flow: InboundFlow; x: number; y: num
 }
 
 function OutboundFlowTooltip({ flow, x, y }: { flow: OutboundFlow; x: number; y: number }) {
-  const pad = 14;
+  const pad = 12;
   const maxW = 300;
-  const left = typeof window !== "undefined"
-    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
-    : x + pad;
-  const top = typeof window !== "undefined"
-    ? Math.min(Math.max(y + pad, 8), window.innerHeight - 200 - 8)
-    : y + pad;
+  const maxH = 200;
+  const flipH = typeof window !== "undefined" && x + pad + maxW > window.innerWidth - 8;
+  const flipV = typeof window !== "undefined" && y + pad + maxH > window.innerHeight - 8;
+  const left = flipH ? Math.max(8, x - maxW - pad) : x + pad;
+  const top  = flipV ? Math.max(8, y - maxH - pad) : y + pad;
   const inTransit = flow.status === "in_transit";
 
   return (
@@ -639,7 +636,14 @@ function LayerToggles({ layers, setLayer, layerCounts }: {
       <div
         data-testid="layers-content"
         aria-hidden={collapsed}
-        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? "max-h-0 opacity-0" : "max-h-[420px] opacity-100"}`}
+        style={{
+          overflow: "hidden",
+          maxHeight: collapsed ? 0 : 420,
+          opacity: collapsed ? 0 : 1,
+          transform: collapsed ? "scaleY(0.92)" : "scaleY(1)",
+          transformOrigin: "top",
+          transition: "max-height 0.28s ease, opacity 0.2s ease, transform 0.28s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
       >
         <div className="py-1">
           {LAYERS_DEF.map(l => {
@@ -963,7 +967,14 @@ function FlowLegend() {
       <div
         data-testid="flow-legend-content"
         aria-hidden={collapsed}
-        className={`overflow-hidden transition-all duration-300 ease-out ${collapsed ? "max-h-0 opacity-0" : "max-h-[320px] opacity-100"}`}
+        style={{
+          overflow: "hidden",
+          maxHeight: collapsed ? 0 : 320,
+          opacity: collapsed ? 0 : 1,
+          transform: collapsed ? "scaleY(0.92)" : "scaleY(1)",
+          transformOrigin: "top",
+          transition: "max-height 0.28s ease, opacity 0.2s ease, transform 0.28s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
       >
         <div className="px-3 py-2.5 flex flex-col gap-1.5">
           <span className="text-[9px] uppercase tracking-[0.14em] text-slate-500 font-mono">Supplier POs</span>

@@ -274,6 +274,7 @@ export default function AdminPage() {
                   expandedCell={expandedCell}
                   onExpandCell={setExpandedCell}
                   rowSearch={rowSearch}
+                  activeFilters={activeFilters}
                 />
               ) : null}
             </div>
@@ -514,6 +515,7 @@ function DataGrid({
   expandedCell,
   onExpandCell,
   rowSearch,
+  activeFilters,
 }: {
   columns: AdminColumnInfo[];
   rows: Record<string, unknown>[];
@@ -522,6 +524,7 @@ function DataGrid({
   expandedCell: string | null;
   onExpandCell: (key: string | null) => void;
   rowSearch?: string;
+  activeFilters?: Record<string, string>;
 }) {
   const visibleRows = rowSearch
     ? rows.filter((row) =>
@@ -544,19 +547,20 @@ function DataGrid({
       <thead className="sticky top-0 z-10">
         <tr className="bg-[#0a0d14] border-b border-slate-700/80 shadow-[0_1px_0_0_rgba(15,23,42,0.6)]">
           {columns.map((col) => {
-            const active = sort?.column === col.name;
+            const sortActive = sort?.column === col.name;
+            const filterActive = !!(activeFilters?.[col.name]);
             return (
               <th
                 key={col.name}
                 onClick={() => onSort(col.name)}
-                className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-200 cursor-pointer hover:text-white hover:bg-slate-800/40 select-none whitespace-nowrap border-r border-slate-700/50 last:border-r-0"
+                className={`text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer hover:text-white hover:bg-slate-800/40 select-none whitespace-nowrap border-r border-slate-700/50 last:border-r-0 ${filterActive ? "bg-amber-500/10 text-amber-300" : "text-slate-200"}`}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {col.name}
-                  <span className="text-[9px] text-slate-500 font-medium lowercase">
+                  <span className={`text-[9px] font-medium lowercase ${filterActive ? "text-amber-500/70" : "text-slate-500"}`}>
                     {col.type}
                   </span>
-                  {active && (
+                  {sortActive && (
                     <span className="text-blue-400 font-bold">
                       {sort!.order === "asc" ? "↑" : "↓"}
                     </span>
