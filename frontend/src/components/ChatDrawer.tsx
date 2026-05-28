@@ -36,6 +36,7 @@ interface Message {
   card?: ActionCardData | null;
   thinking?: boolean;
   status?: string;
+  steps?: string[];
   streaming?: boolean;
 }
 
@@ -274,7 +275,12 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "assistant" && last.thinking) {
-            next[next.length - 1] = { ...last, status: statusText };
+            const prevSteps = last.steps ?? [];
+            next[next.length - 1] = {
+              ...last,
+              status: statusText,
+              steps: [...prevSteps, statusText],
+            };
           }
           return next;
         });
@@ -396,7 +402,9 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     >
       <div
         onPointerDown={expanded ? undefined : draggable.onPointerDown}
+        onDoubleClick={() => setExpanded(e => !e)}
         className={`h-12 flex items-center justify-between px-4 border-b border-slate-800 shrink-0 ${expanded ? "" : "cursor-move"}`}
+        title={expanded ? "Double-click to collapse" : "Double-click to expand"}
       >
         <div className="flex items-center gap-2">
           <button
@@ -460,25 +468,70 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
         </div>
       </div>
 
-      <div className="flex-1 flex min-h-0">
-        {sessionListOpen && (
-          <ChatSessionList
-            activeSessionId={sessionId}
-            onSelect={handleSelectSession}
-            onNew={handleNewSession}
-            refreshKey={sessionListVersion}
-          />
-        )}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <div
+          className={`shrink-0 overflow-hidden transition-all duration-200 ease-in-out border-r border-slate-800 ${sessionListOpen ? "w-48 opacity-100" : "w-0 opacity-0"}`}
+        >
+          {sessionListOpen && (
+            <ChatSessionList
+              activeSessionId={sessionId}
+              onSelect={id => { handleSelectSession(id); }}
+              onNew={handleNewSession}
+              refreshKey={sessionListVersion}
+            />
+          )}
+        </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
           <div className={expanded ? "max-w-[820px] mx-auto space-y-5" : "space-y-4"}>
             {messages.map((m, i) => (
               <PopupMessage key={i} m={m} onConfirmCard={handleConfirmCard} onRejectCard={handleRejectCard} />
             ))}
           </div>
+          {!isThinking && messages[messages.length - 1]?.role === "assistant" && messages.length > 1 && (
+            <div className={`mt-4 ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
+              <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-2">Suggested actions</div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Check inventory risks",
+                  "Review critical lots",
+                  "Supplier status",
+                  "Optimize schedule",
+                  "ESG report",
+                ].map(chip => (
+                  <button
+                    key={chip}
+                    onClick={() => { setInput(""); sendMessage(chip); }}
+                    className="px-2.5 py-1 rounded-full border border-slate-700 hover:border-amber-500/60 hover:bg-amber-500/10 text-[11px] text-slate-400 hover:text-amber-300 transition"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="border-t border-slate-800 p-3 shrink-0">
+      <div className="border-t border-slate-800 p-3 shrink-0 space-y-2">
+        {!isThinking && messages.length <= 1 && (
+          <div className={`flex flex-wrap gap-1.5 ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
+            {[
+              "Check inventory risks",
+              "Optimize schedule",
+              "Supplier status",
+              "Yield summary",
+              "ESG report",
+            ].map(chip => (
+              <button
+                key={chip}
+                onClick={() => { setInput(""); sendMessage(chip); }}
+                className="px-2.5 py-1 rounded-full border border-slate-700 hover:border-amber-500/60 hover:bg-amber-500/10 text-[11px] text-slate-400 hover:text-amber-300 transition"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
         <div className={`flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 focus-within:border-blue-500/60 transition ${expanded ? "max-w-[820px] mx-auto" : ""}`}>
           <textarea
             value={input}
@@ -649,7 +702,17 @@ function PopupMessage({
       {m.tools && m.tools.length > 0 && <div className="pl-6"><ToolBreadcrumbs tools={m.tools} /></div>}
       <div className="pl-6">
         {m.thinking ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
+            {m.steps && m.steps.length > 1 && (
+              <div className="space-y-0.5 mb-1">
+                {m.steps.slice(0, -1).map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span className="text-[11px] font-mono text-slate-500 line-through">{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {m.status && (
               <div className="flex items-center gap-2">
                 <span className="relative flex w-1.5 h-1.5 shrink-0">

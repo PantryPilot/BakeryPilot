@@ -35,7 +35,7 @@ export function ChatSessionList({
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/50 border-r border-slate-800/60 w-[200px] shrink-0 backdrop-blur-sm">
+    <div className="flex flex-col h-full w-full">
       <div className="px-3 pt-3 pb-2 shrink-0">
         <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 font-semibold mb-2 px-0.5">
           Chats

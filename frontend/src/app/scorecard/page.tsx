@@ -252,7 +252,7 @@ function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
 }) {
   const w = 560, h = height, pad = 24;
   return (
-    <svg viewBox={`0 0 ${w} ${h + 24}`} className="w-full">
+    <svg viewBox={`0 0 ${w} ${h + 44}`} className="w-full">
       {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
         const y = pad + (h - pad * 2) * (1 - g);
         return <line key={i} x1={pad} x2={w - pad} y1={y} y2={y} stroke="#1e293b" strokeWidth="1"/>;
@@ -266,14 +266,16 @@ function LineChart({ series, yMin = 0, yMax = 1, height = 140 }: {
         }).join(" ");
         return <polyline key={si} points={pts} fill="none" stroke={s.color} strokeWidth="1.8" strokeDasharray={s.dashed ? "3 3" : ""} strokeLinejoin="round" strokeLinecap="round"/>;
       })}
+      {/* x-axis week tick labels */}
       {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
         <text key={i} x={pad + p * (w - pad * 2)} y={h + 16} fontSize="10" fill="#475569" fontFamily="ui-monospace" textAnchor="middle">w{Math.round(p * (series[0].values.length - 1)) + 1}</text>
       ))}
-      <g transform={`translate(${pad}, ${h + 14})`}>
+      {/* legend row — kept 20px below tick labels so they don't collide */}
+      <g transform={`translate(${pad}, ${h + 34})`}>
         {series.map((s, i) => (
-          <g key={i} transform={`translate(${i * 90}, 0)`}>
+          <g key={i} transform={`translate(${i * 100}, 0)`}>
             <line x1="0" y1="0" x2="14" y2="0" stroke={s.color} strokeWidth="2" strokeDasharray={s.dashed ? "3 3" : ""}/>
-            <text x="20" y="3" fontSize="10" fill="#94a3b8">{s.label}</text>
+            <text x="18" y="3" fontSize="10" fill="#94a3b8">{s.label}</text>
           </g>
         ))}
       </g>
@@ -295,14 +297,14 @@ function ForecastChart({ forecast, upper, lower, actual, height = 220 }: {
   const fLine = forecast.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const aLine = actual.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h + 24}`} className="w-full">
+    <svg viewBox={`0 0 ${w} ${h + 44}`} className="w-full">
       <polygon points={band} fill="#3b82f6" fillOpacity="0.08"/>
       <polyline points={fLine} fill="none" stroke="#3b82f6" strokeOpacity="0.7" strokeWidth="1.8" strokeDasharray="4 3"/>
       <polyline points={aLine} fill="none" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round"/>
       {Array.from({ length: 8 }, (_, i) => i * 2).map(i => (
         <text key={i} x={x(i)} y={h + 16} fontSize="10" fill="#475569" fontFamily="ui-monospace" textAnchor="middle">d{i + 1}</text>
       ))}
-      <g transform={`translate(${pad}, ${h + 14})`}>
+      <g transform={`translate(${pad}, ${h + 34})`}>
         <line x1="0" y1="0" x2="14" y2="0" stroke="#3b82f6" strokeWidth="2" strokeDasharray="4 3"/>
         <text x="20" y="3" fontSize="10" fill="#94a3b8">forecast</text>
         <line x1="80" y1="0" x2="94" y2="0" stroke="#22c55e" strokeWidth="2.2"/>
@@ -1169,6 +1171,8 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
   const [deletedSupplierIds, setDeletedSupplierIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ msg: string; tone: "green" | "red" } | null>(null);
   const [orderRefreshTick, setOrderRefreshTick] = useState(0);
+  const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
+  const supplierSearchRef = useRef<HTMLDivElement>(null);
   const poAutoOpenedRef = useRef(false);
   const openSupplierAutoOpenedRef = useRef(false);
   const { data: backendSuppliers } = useSuppliers();
@@ -1196,6 +1200,22 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
     }
     return s;
   }, [suppliers, supplierQuery, supplierStatusFilter, supplierTierFilter]);
+
+  const supplierSuggestions = useMemo(() => {
+    if (!supplierQuery.trim()) return [];
+    const q = supplierQuery.toLowerCase();
+    return suppliers.filter(s => s.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [suppliers, supplierQuery]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (supplierSearchRef.current && !supplierSearchRef.current.contains(e.target as Node)) {
+        setShowSupplierSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const quickPoContext = useMemo<QuickPOContext | null>(() => {
     if (searchParams.get("source") !== "production_shortfall") return null;
@@ -1334,14 +1354,38 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
       <div className="hidden sm:block rounded-lg border border-slate-800 bg-slate-900/30 mb-6 overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-800">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 mr-1">Supplier roster</div>
-          <div className="flex items-center gap-1.5 rounded-md border border-slate-800 px-2 h-8 flex-1 min-w-[160px] max-w-[240px]">
-            <Icon name="search" size={12} className="text-slate-500"/>
-            <input
-              value={supplierQuery}
-              onChange={e => setSupplierQuery(e.target.value)}
-              placeholder="Search supplier…"
-              className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
-            />
+          <div ref={supplierSearchRef} className="relative flex-1 min-w-[160px] max-w-[240px]">
+            <div className="flex items-center gap-1.5 rounded-md border border-slate-800 px-2 h-8">
+              <Icon name="search" size={12} className="text-slate-500"/>
+              <input
+                value={supplierQuery}
+                onChange={e => { setSupplierQuery(e.target.value); setShowSupplierSuggestions(true); }}
+                onFocus={() => setShowSupplierSuggestions(true)}
+                placeholder="Search supplier…"
+                className="bg-transparent outline-none text-[12px] text-slate-100 placeholder:text-slate-500 w-full"
+              />
+              {supplierQuery && (
+                <button onClick={() => { setSupplierQuery(""); setShowSupplierSuggestions(false); }} className="text-slate-500 hover:text-slate-300">
+                  <Icon name="x" size={10}/>
+                </button>
+              )}
+            </div>
+            {showSupplierSuggestions && supplierSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 z-50 rounded-md border border-slate-700 bg-[#0c111c] shadow-xl overflow-hidden">
+                {supplierSuggestions.map(s => (
+                  <button
+                    key={s.id}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setSupplierQuery(s.name); setShowSupplierSuggestions(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-slate-800 transition"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.status === "disrupt" ? "bg-red-400" : s.status === "warn" ? "bg-amber-400" : "bg-emerald-400"}`}/>
+                    <span className="text-slate-100 flex-1 truncate">{s.name}</span>
+                    <span className="text-slate-500 text-[10px] font-mono">T{s.tier}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <select
             value={supplierStatusFilter}
@@ -1373,9 +1417,19 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
         <table className="bp-data-table w-full min-w-[860px] text-[13px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              {["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"].map((h, i) => (
-                <th key={i} className={`px-3 py-2 text-left font-semibold ${[2,3,4,5,6].includes(i) ? "text-right" : ""}`}>{h}</th>
-              ))}
+              {(["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"] as const).map((h, i) => {
+                const tierFiltered = h === "Tier" && supplierTierFilter !== "All";
+                const statusFiltered = h === "Status" && supplierStatusFilter !== "All";
+                const filtered = tierFiltered || statusFiltered;
+                return (
+                  <th
+                    key={i}
+                    className={`px-3 py-2 text-left font-semibold ${[2,3,4,5,6].includes(i) ? "text-right" : ""} ${filtered ? "bg-amber-500/10" : ""}`}
+                  >
+                    {h}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
