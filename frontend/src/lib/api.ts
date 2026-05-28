@@ -349,6 +349,7 @@ export interface BackendEsgPattern {
 export interface BackendOrder {
   order_id: string;
   supplier_id: string;
+  facility_id: string;
   items: { ingredient_id: string; quantity_kg: number; unit_price: number }[];
   delivery_date: string;
   status: string;

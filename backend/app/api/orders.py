@@ -127,6 +127,7 @@ async def list_orders(db: AsyncSession = Depends(get_db)) -> list[SupplierOrderM
         SupplierOrderModel(
             order_id=str(o.order_id),
             supplier_id=o.supplier_id,
+            facility_id=o.facility_id,
             items=[
                 OrderLineItem(
                     ingredient_id=i.ingredient_id,
@@ -203,6 +204,7 @@ async def receive_supplier_order(
     return SupplierOrderModel(
         order_id=str(order.order_id),
         supplier_id=order.supplier_id,
+        facility_id=order.facility_id,
         items=[
             OrderLineItem(
                 ingredient_id=i.ingredient_id,

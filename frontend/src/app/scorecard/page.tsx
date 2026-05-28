@@ -468,6 +468,7 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupplierTab>("overview");
   const [receivingOrderId, setReceivingOrderId] = useState<string | null>(null);
+  const [ordersTab, setOrdersTab] = useState<"active" | "sent">("active");
 
   // Messages state
   const [messages, setMessages] = useState<BackendSupplierMessage[]>([]);
@@ -689,43 +690,104 @@ function SupplierSlideIn({ supplier, onClose, isClosing, onDraftAction, orderRef
               </div>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2 flex items-center gap-2">
-                Active orders {ordersStatus === "live" && <span className="text-emerald-400 normal-case font-normal">· live</span>}
-              </div>
-              <div className="rounded-md border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60">
-                {ordersStatus === "loading" && (
-                  <div className="px-3 py-3 text-[12px] text-slate-500">Loading orders…</div>
-                )}
-                {ordersStatus !== "loading" && liveOrders.length === 0 && (
-                  <div className="px-3 py-3 text-[12px] text-slate-500">No active orders found.</div>
-                )}
-                {liveOrders.map((p, i) => {
-                  const totalKg = p.items.reduce((s, it) => s + it.quantity_kg, 0);
-                  const canReceive = p.status === "confirmed" || p.status === "draft" || p.status === "pending_confirm";
-                  return (
-                    <div key={i} className="px-3 py-2 flex items-center gap-3 text-[12px]">
-                      <span className="font-mono text-slate-400 w-24 truncate" title={p.order_id}>{p.order_id.slice(0, 8).toUpperCase()}</span>
-                      <span className="text-slate-200 flex-1 truncate">{p.items[0]?.ingredient_id.replace(/_/g, " ") || "—"}{p.items.length > 1 ? ` +${p.items.length - 1}` : ""}</span>
-                      <span className="font-mono tabular-nums text-slate-300 w-20 text-right">{totalKg.toLocaleString()} kg</span>
-                      <span className="font-mono text-slate-500 w-28 hidden sm:inline">{p.delivery_date}</span>
-                      <Pill tone={p.status === "sent" ? "green" : p.status === "confirmed" ? "blue" : p.status === "draft" ? "amber" : "ghost"}>{p.status}</Pill>
-                      {canReceive && (
-                        <button
-                          disabled={receivingOrderId === p.order_id}
-                          onClick={() => handleReceive(p.order_id)}
-                          className="px-2 py-1 rounded-md bg-emerald-900/20 border border-emerald-700/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-900/30 disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {receivingOrderId === p.order_id && <span className="w-2.5 h-2.5 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
-                          Receive
-                        </button>
+              {(() => {
+                const FACILITY_LABEL: Record<string, string> = {
+                  "plant-toronto": "Toronto", "plant-mississauga": "Mississauga",
+                  "plant-hamilton": "Hamilton", "plant-montreal": "Montreal",
+                };
+                const activeOrders = liveOrders.filter(o => o.status !== "sent");
+                const sentOrders   = liveOrders.filter(o => o.status === "sent");
+                const [ordTab, setOrdTab] = [ordersTab, setOrdersTab];
+                const rows = ordTab === "active" ? activeOrders : sentOrders;
+
+                return (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold flex items-center gap-2">
+                        Orders {ordersStatus === "live" && <span className="text-emerald-400 normal-case font-normal">· live</span>}
+                      </div>
+                      <div className="flex items-center gap-0.5 rounded-md border border-slate-800 bg-slate-950/60 p-0.5">
+                        {(["active", "sent"] as const).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setOrdTab(t)}
+                            className={`px-2.5 py-1 text-[11px] rounded font-medium transition ${ordTab === t ? "bg-slate-700 text-slate-100" : "text-slate-500 hover:text-slate-300"}`}
+                          >
+                            {t === "active" ? `Active${activeOrders.length ? ` (${activeOrders.length})` : ""}` : `Sent${sentOrders.length ? ` (${sentOrders.length})` : ""}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-slate-800 bg-slate-900/40 overflow-hidden">
+                      {ordersStatus === "loading" && (
+                        <div className="px-4 py-3 text-[12px] text-slate-500">Loading orders…</div>
+                      )}
+                      {ordersStatus !== "loading" && rows.length === 0 && (
+                        <div className="px-4 py-3 text-[12px] text-slate-500">No {ordTab} orders.</div>
+                      )}
+                      {rows.length > 0 && (
+                        <table className="w-full text-[12px]">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-500">
+                              <th className="px-3 py-2 text-left font-semibold">Order ID</th>
+                              <th className="px-3 py-2 text-left font-semibold">Ingredients</th>
+                              <th className="px-3 py-2 text-left font-semibold">Facility</th>
+                              <th className="px-3 py-2 text-right font-semibold">Qty (kg)</th>
+                              <th className="px-3 py-2 text-left font-semibold">Delivery</th>
+                              <th className="px-3 py-2 text-left font-semibold">Status</th>
+                              {ordTab === "active" && <th className="px-3 py-2"/>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((p, i) => {
+                              const totalKg = p.items.reduce((s, it) => s + it.quantity_kg, 0);
+                              const canReceive = ordTab === "active";
+                              const facilityName = FACILITY_LABEL[p.facility_id] ?? p.facility_id.replace("plant-", "");
+                              return (
+                                <tr key={i} className="border-t border-slate-800/60 hover:bg-slate-800/30 transition">
+                                  <td className="px-3 py-2.5 font-mono text-slate-400" title={p.order_id}>{p.order_id.slice(0, 8).toUpperCase()}</td>
+                                  <td className="px-3 py-2.5 text-slate-200 max-w-[160px]">
+                                    <span className="truncate block" title={p.items.map(it => it.ingredient_id).join(", ")}>
+                                      {p.items[0]?.ingredient_id.replace(/^ing-/, "").replace(/-/g, " ") || "—"}
+                                      {p.items.length > 1 && <span className="text-slate-500 ml-1">+{p.items.length - 1}</span>}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{facilityName}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{totalKg.toLocaleString()}</td>
+                                  <td className="px-3 py-2.5 font-mono text-slate-400 whitespace-nowrap">{p.delivery_date}</td>
+                                  <td className="px-3 py-2.5">
+                                    <Pill tone={p.status === "sent" ? "green" : p.status === "confirmed" ? "blue" : p.status === "draft" ? "amber" : "ghost"}>{p.status.replace(/_/g, " ")}</Pill>
+                                  </td>
+                                  {ordTab === "active" && (
+                                    <td className="px-3 py-2.5">
+                                      {canReceive && (
+                                        <button
+                                          disabled={receivingOrderId === p.order_id}
+                                          onClick={() => handleReceive(p.order_id)}
+                                          className="px-2 py-1 rounded-md bg-emerald-900/20 border border-emerald-700/40 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-900/30 disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
+                                        >
+                                          {receivingOrderId === p.order_id && <span className="w-2.5 h-2.5 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
+                                          Receive
+                                        </button>
+                                      )}
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-              <div className="text-[10.5px] text-slate-500 mt-1.5 pl-1">
-                Receive marks the order delivered, creates ingredient lots at the destination facility, and records an inventory receipt event.
-              </div>
+                    {ordTab === "active" && (
+                      <div className="text-[10.5px] text-slate-500 mt-1.5 pl-1">
+                        Receive marks the order delivered, creates ingredient lots at the destination facility, and records an inventory receipt event.
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             {showNegotiationSection && (
               <div>
