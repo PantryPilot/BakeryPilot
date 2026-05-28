@@ -63,12 +63,12 @@ function laneRowBg(index: number): string {
 
 function runTileStyle(risk: ProductionRun["risk"]): string {
   if (risk === "red") {
-    return "border-l-red-400/80 bg-red-500/[0.08] border-red-500/20 hover:bg-red-500/[0.12]";
+    return "border-l-red-400 bg-red-950/55 border-red-500/45 hover:bg-red-950/70";
   }
   if (risk === "amber") {
-    return "border-l-amber-400/80 bg-amber-500/[0.08] border-amber-500/20 hover:bg-amber-500/[0.12]";
+    return "border-l-amber-400 bg-amber-950/45 border-amber-500/40 hover:bg-amber-950/60";
   }
-  return "border-l-blue-400/55 bg-[var(--bp-surface-muted)]/70 border-[var(--bp-border-soft)] hover:border-[var(--bp-border)] hover:bg-[var(--bp-surface-muted)]";
+  return "border-l-blue-400/90 bg-[var(--bp-surface-muted)] border-[var(--bp-border)] hover:bg-[var(--bp-surface)] hover:border-[var(--bp-border)]";
 }
 
 const GANTT_HEADER_H = 32;
@@ -77,7 +77,7 @@ const GANTT_HEADER =
 const GANTT_ROW_LABEL = "text-[11px] font-medium leading-snug text-[var(--bp-text-secondary)] truncate";
 const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
 const GANTT_RUN_TILE =
-  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] shadow-sm ring-1 ring-white/[0.04] flex items-center gap-2 px-2.5 cursor-pointer transition-colors duration-150 hover:z-20 hover:shadow-md hover:ring-white/[0.08]";
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-pointer transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
 
 function formatDateLabel(dateKey: string): string {
   const d = new Date(`${dateKey}T12:00:00Z`);
@@ -207,11 +207,11 @@ function GanttLane({
       ))}
       {showNow && (
         <div
-          className="absolute top-0 bottom-0 w-px bg-blue-400/80 z-10 shadow-[0_0_8px_rgba(96,165,250,0.45)]"
+          className="absolute top-0 bottom-0 w-px bg-blue-400 z-10 shadow-[0_0_8px_rgba(96,165,250,0.55)]"
           style={{ left: `${hourLeftPct(nowHour, hours[0], hours.length)}%` }}
         >
           {isFirst && (
-            <div className="absolute -top-2.5 -translate-x-1/2 rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-mono text-blue-200 whitespace-nowrap ring-1 ring-blue-400/30">
+            <div className="absolute -top-2.5 -translate-x-1/2 rounded-full bg-blue-500/35 px-1.5 py-0.5 text-[9px] font-mono text-blue-100 whitespace-nowrap ring-1 ring-blue-400/50">
               now · {nowLabel}
             </div>
           )}
