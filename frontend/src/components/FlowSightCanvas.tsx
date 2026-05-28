@@ -32,9 +32,128 @@ type InboundFlow = {
   id: string;
   from: { x: number; y: number };
   to: { x: number; y: number };
-  cargo: string;
+  orderId: string;
+  supplierName: string;
+  plantName: string;
+  deliveryDate: string;
   status: string;
+  items: BackendOrder["items"];
+  totalKg: number;
+  cargo: string;
 };
+
+function formatIngredientLabel(id: string): string {
+  return id.replace(/^ing_/, "").replace(/_/g, " ");
+}
+
+function OrderStatusBadge({ status }: { status: string }) {
+  const pending = status === "draft" || status === "pending_confirm";
+  const confirmed = status === "confirmed";
+  const bg = pending ? "rgb(245 158 11 / 0.14)" : confirmed ? "rgb(59 130 246 / 0.14)" : "var(--bp-surface-muted)";
+  const color = pending ? "#b45309" : confirmed ? "#2563eb" : "var(--bp-text-muted)";
+  const border = pending ? "rgb(245 158 11 / 0.35)" : confirmed ? "rgb(59 130 246 / 0.35)" : "var(--bp-border-soft)";
+  return (
+    <span
+      className="shrink-0 inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize"
+      style={{ background: bg, color, border: `1px solid ${border}` }}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function FlowOrderTooltip({ flow, x, y }: { flow: InboundFlow; x: number; y: number }) {
+  const pad = 14;
+  const maxW = 308;
+  const maxH = 240;
+  const left = typeof window !== "undefined"
+    ? Math.min(Math.max(x + pad, 8), window.innerWidth - maxW - 8)
+    : x + pad;
+  const top = typeof window !== "undefined"
+    ? Math.min(Math.max(y + pad, 8), window.innerHeight - maxH - 8)
+    : y + pad;
+  const lineTotal = flow.items.reduce((s, it) => s + it.quantity_kg * it.unit_price, 0);
+  const pending = flow.status === "draft" || flow.status === "pending_confirm";
+  const accentRgb = pending ? "245 158 11" : "59 130 246";
+
+  return (
+    <div
+      className="fixed z-50 pointer-events-none w-[300px] rounded-xl overflow-hidden"
+      style={{
+        left,
+        top,
+        background: "var(--bp-surface-strong)",
+        border: "1px solid var(--bp-border)",
+        boxShadow: "0 18px 44px rgb(var(--bp-bg-rgb) / 0.2), 0 0 0 1px var(--bp-border-soft)",
+      }}
+      role="tooltip"
+    >
+      <div
+        className="h-1"
+        style={{ background: `linear-gradient(90deg, rgb(${accentRgb} / 0.95), rgb(${accentRgb} / 0.15))` }}
+      />
+      <div className="px-4 pt-3.5 pb-2.5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--bp-text-subtle)] mb-1">
+            Supplier order
+          </p>
+          <p className="text-[15px] font-semibold text-[var(--bp-text-primary)] leading-snug truncate">
+            {flow.supplierName}
+          </p>
+          <p className="text-[12px] text-[var(--bp-text-muted)] mt-1 truncate">
+            Delivering to{" "}
+            <span className="font-medium text-[var(--bp-text-secondary)]">{flow.plantName}</span>
+          </p>
+        </div>
+        <OrderStatusBadge status={flow.status} />
+      </div>
+
+      <div
+        className="mx-3 mb-3 rounded-lg px-3 py-2.5 space-y-2"
+        style={{
+          background: "var(--bp-surface-muted)",
+          border: "1px solid var(--bp-border-soft)",
+        }}
+      >
+        {flow.items.map(it => (
+          <div key={it.ingredient_id} className="flex items-center justify-between gap-3">
+            <span className="text-[12.5px] text-[var(--bp-text-secondary)] capitalize truncate">
+              {formatIngredientLabel(it.ingredient_id)}
+            </span>
+            <span className="text-[12px] font-mono tabular-nums font-medium text-[var(--bp-text-primary)] shrink-0">
+              {it.quantity_kg.toLocaleString()} kg
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2.5"
+        style={{
+          borderTop: "1px solid var(--bp-border-soft)",
+          background: "var(--bp-surface-soft)",
+        }}
+      >
+        {([
+          ["Total quantity", `${flow.totalKg.toLocaleString()} kg`],
+          ["Line value", `$${lineTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`],
+          ["Delivery date", flow.deliveryDate || "—"],
+          ["PO reference", flow.orderId.slice(0, 8).toUpperCase()],
+        ] as const).map(([label, value]) => (
+          <div key={label}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--bp-text-subtle)]">{label}</div>
+            <div
+              className="text-[12px] font-mono tabular-nums text-[var(--bp-text-primary)] mt-0.5 truncate"
+              title={label === "PO reference" ? flow.orderId : undefined}
+            >
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Retailer lane positions align with plant rows when facilities are loaded.
 const RETAILER_LANES_Y = [260, 340, 420, 500];
@@ -103,6 +222,20 @@ function arcPath(from: { x: number; y: number }, to: { x: number; y: number }, b
   const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
   const px = -dy * bend, py = dx * bend;
   return `M ${from.x} ${from.y} Q ${mx + px} ${my + py} ${to.x} ${to.y}`;
+}
+
+function TruckSprite({ pathD, color, dur = 14 }: { pathD: string; color: string; dur?: number }) {
+  return (
+    <g pointerEvents="none">
+      <g>
+        <rect width="14" height="9" x="-7" y="-4.5" rx="1.5" fill={color} stroke="#f8fafc" strokeWidth="0.75"/>
+        <rect width="4" height="5" x="-7" y="-2.5" rx="0.5" fill="#1e293b"/>
+        <circle cx="4.5" cy="3.5" r="1.1" fill="#1e293b"/>
+        <circle cx="-2.5" cy="3.5" r="1.1" fill="#1e293b"/>
+        <animateMotion dur={`${dur}s`} repeatCount="indefinite" rotate="auto" path={pathD}/>
+      </g>
+    </g>
+  );
 }
 
 function haloColor(s: Supplier) {
@@ -630,6 +763,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const [plantClosing, setPlantClosing] = useState(false);
+  const [hoveredFlow, setHoveredFlow] = useState<InboundFlow | null>(null);
+  const [flowTooltipPos, setFlowTooltipPos] = useState({ x: 0, y: 0 });
   const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
   const closePlant = useCallback(() => {
@@ -697,8 +832,14 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         id: order.order_id,
         from: { x: sup.x, y: sup.y },
         to: { x: plant.x, y: plant.y },
-        cargo: formatOrderCargo(order),
+        orderId: order.order_id,
+        supplierName: sup.name,
+        plantName: plant.name,
+        deliveryDate: order.delivery_date,
         status: order.status,
+        items: order.items,
+        totalKg: order.items.reduce((s, it) => s + it.quantity_kg, 0),
+        cargo: formatOrderCargo(order),
       });
     }
     return flows;
@@ -762,19 +903,38 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           </text>
         ))}
 
-        {layers.procure && inboundFlows.map(f => {
+        {layers.procure && inboundFlows.map((f, idx) => {
           const pending = f.status === "draft" || f.status === "pending_confirm";
+          const hovered = hoveredFlow?.id === f.id;
+          const pathD = arcPath(f.from, f.to, 0.12);
+          const stroke = pending ? "#d97706" : "#2563eb";
+          const truckDur = pending ? 18 + (idx % 3) * 2 : 12 + (idx % 4) * 2;
           return (
             <g key={f.id}>
               <path
-                d={arcPath(f.from, f.to, 0.12)}
-                stroke={pending ? "#f59e0b" : "#3b82f6"}
-                strokeOpacity={pending ? 0.35 : 0.28}
-                strokeWidth="1.5"
+                d={pathD}
+                stroke="transparent"
+                strokeWidth="16"
                 fill="none"
-                strokeDasharray={pending ? "5 4" : undefined}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={e => {
+                  setHoveredFlow(f);
+                  setFlowTooltipPos({ x: e.clientX, y: e.clientY });
+                }}
+                onMouseMove={e => setFlowTooltipPos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredFlow(prev => (prev?.id === f.id ? null : prev))}
               />
-              <title>{f.cargo} · {f.status.replace(/_/g, " ")}</title>
+              <path
+                d={pathD}
+                stroke={stroke}
+                strokeOpacity={hovered ? (pending ? 0.85 : 0.75) : pending ? 0.55 : 0.45}
+                strokeWidth={hovered ? 2.75 : 2}
+                fill="none"
+                strokeDasharray={pending ? "6 4" : undefined}
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+              <TruckSprite pathD={pathD} color={stroke} dur={truckDur} />
             </g>
           );
         })}
@@ -797,6 +957,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
           <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
         ))}
       </svg>
+      {hoveredFlow && <FlowOrderTooltip flow={hoveredFlow} x={flowTooltipPos.x} y={flowTooltipPos.y} />}
       {/* Legend panel — top-left, theme-aware */}
       <div className="absolute top-4 right-2 sm:right-4 z-10 flex flex-col gap-3">
         <LayerToggles layers={layers} setLayer={setLayer} layerCounts={layerCounts}/>
