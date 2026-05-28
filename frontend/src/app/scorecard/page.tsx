@@ -1421,8 +1421,8 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
                       )}
                       <button
                         onClick={e => { e.stopPropagation(); setPoContext(null); setPlacePOTarget(s); }}
-                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300"
-                      >Place PO</button>
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition shrink-0"
+                      ><Icon name="truck" size={11}/>Place PO</button>
                       <button
                         onClick={e => { e.stopPropagation(); setEditTarget(s); }}
                         className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-slate-500 text-slate-300"
