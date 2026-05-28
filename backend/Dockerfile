@@ -26,5 +26,4 @@ EXPOSE 8000
 # --proxy-headers + --forwarded-allow-ips lets uvicorn trust the X-Forwarded-* set by nginx.
 CMD ["uv", "run", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips=*", \
-     "--workers", "2"]
+     "--proxy-headers", "--forwarded-allow-ips=*"]

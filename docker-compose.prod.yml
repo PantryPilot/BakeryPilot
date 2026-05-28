@@ -50,6 +50,12 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
     ports: !reset []
     restart: unless-stopped
 

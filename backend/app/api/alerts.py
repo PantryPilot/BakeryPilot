@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from app.db.models import DisruptionSignal, IngredientLot, ProductionRun
-from app.db.session import get_db
+from app.db.session import get_db, session_scope
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
@@ -87,9 +87,10 @@ async def _build_alerts(db: AsyncSession) -> list[dict]:
 
 
 @router.get("")
-async def alert_stream(db: AsyncSession = Depends(get_db)):
+async def alert_stream():
     async def stream():
-        alerts = await _build_alerts(db)
+        async with session_scope() as db:
+            alerts = await _build_alerts(db)
         for alert in alerts:
             yield {"event": "alert", "data": json.dumps(alert)}
             await asyncio.sleep(0.05)

@@ -211,19 +211,19 @@ jobs:
         if: steps.changes.outputs.rebuild_all == 'true'
         run: |
           cd "$DEPLOY_DIR"
-          docker compose $COMPOSE up -d --build
+          docker compose $COMPOSE up -d --build --wait
 
       - name: Rebuild backend
         if: steps.changes.outputs.backend == 'true' && steps.changes.outputs.rebuild_all != 'true'
         run: |
           cd "$DEPLOY_DIR"
-          docker compose $COMPOSE up -d --build backend
+          docker compose $COMPOSE up -d --build --wait backend
 
       - name: Rebuild frontend
         if: steps.changes.outputs.frontend == 'true' && steps.changes.outputs.rebuild_all != 'true'
         run: |
           cd "$DEPLOY_DIR"
-          docker compose $COMPOSE up -d --build frontend
+          docker compose $COMPOSE up -d --build --wait frontend
 
       - name: Reload nginx
         if: steps.changes.outputs.nginx == 'true' && steps.changes.outputs.rebuild_all != 'true'
@@ -274,16 +274,17 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          for i in 1 2 3 4 5; do
+          cd "$DEPLOY_DIR"
+          for i in $(seq 1 30); do
             if curl -fsS -o /dev/null -w "healthz HTTP %{http_code}\n" http://localhost/healthz; then
               exit 0
             fi
             echo "attempt $i failed, retrying in 3s…"
             sleep 3
           done
-          echo "::error::/healthz did not return 200 after 5 attempts"
+          echo "::error::/healthz did not return 200 after 30 attempts (~90s)"
           docker compose $COMPOSE ps
-          docker compose $COMPOSE logs --tail=100 backend nginx
+          docker compose $COMPOSE logs --tail=150 backend nginx
           exit 1
 
       - name: Report
