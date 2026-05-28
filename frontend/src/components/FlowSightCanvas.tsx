@@ -40,6 +40,8 @@ const COL_DIVIDER_L = 320;
 const COL_DIVIDER_R = 860;
 /** Left edge of retailer cards — inside the retailer column (right of divider). */
 const RETAILER_ANCHOR_X = COL_DIVIDER_R + 28;
+/** Uniform card width — fits longest retailer names (e.g. Whole Foods Market Canada). */
+const RETAILER_CARD_WIDTH = 200;
 /** Column header centered in the retailer zone. */
 const RETAILER_COL_CENTER = (COL_DIVIDER_R + CANVAS_W) / 2;
 const COL_LABEL_Y = 92;
@@ -593,10 +595,8 @@ function PlantNode({ p, onClick, scheduleOn, esgOn, yieldOn, shelfOn }: {
 }
 
 function RetailerNode({ r: rr, forecastOn }: { r: RetailerPos; forecastOn: boolean }) {
-  const truncateName = (name: string, maxChars = 20) =>
-    name.length > maxChars ? `${name.slice(0, maxChars - 1)}…` : name;
-  const label = truncateName(rr.name);
-  const cardWidth = 128;
+  const label = rr.name;
+  const cardWidth = RETAILER_CARD_WIDTH;
   const barLeft = 6;
   const barWidthMax = cardWidth - 12;
   const color = rr.shelfRisk === "red" ? "#ef4444" : rr.shelfRisk === "amber" ? "#f59e0b" : "#22c55e";

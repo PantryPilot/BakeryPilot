@@ -8,8 +8,13 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.db.models import ProductionSchedule
+from app.db.models import ProductionSchedule, RetailerOrder
+
+
+def _schedule_retailer_load():
+    return selectinload(ProductionSchedule.retailer_order).selectinload(RetailerOrder.retailer)
 
 
 def utc_iso(dt: datetime) -> str:
@@ -20,10 +25,12 @@ def utc_iso(dt: datetime) -> str:
 
 async def resolve_schedule(db: AsyncSession, schedule_id: str) -> ProductionSchedule | None:
     """Resolve a schedule path param, including ``current`` / ``latest`` aliases."""
+    load = _schedule_retailer_load()
     if schedule_id in ("current", "latest"):
         suggested = (
             await db.execute(
                 select(ProductionSchedule)
+                .options(load)
                 .where(ProductionSchedule.status == "suggested")
                 .order_by(ProductionSchedule.created_at.desc())
                 .limit(1)
@@ -34,6 +41,7 @@ async def resolve_schedule(db: AsyncSession, schedule_id: str) -> ProductionSche
         return (
             await db.execute(
                 select(ProductionSchedule)
+                .options(load)
                 .where(ProductionSchedule.status == "approved")
                 .order_by(ProductionSchedule.start_at.desc())
                 .limit(1)
@@ -44,7 +52,13 @@ async def resolve_schedule(db: AsyncSession, schedule_id: str) -> ProductionSche
         sid = uuid.UUID(schedule_id)
     except ValueError:
         return None
-    return await db.get(ProductionSchedule, sid)
+    return (
+        await db.execute(
+            select(ProductionSchedule)
+            .options(load)
+            .where(ProductionSchedule.schedule_id == sid)
+        )
+    ).scalar_one_or_none()
 
 
 def parse_iso_dt(value: str) -> datetime:

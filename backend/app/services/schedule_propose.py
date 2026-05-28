@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,7 +68,10 @@ def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
     """Build the optimizer diff for a schedule row (mock swap until OR-Tools lands)."""
     retailer_fields: dict[str, str | None] = {}
     retailer_note = ""
-    ro = getattr(s, "retailer_order", None)
+    insp = sa_inspect(s)
+    ro = s.retailer_order if "retailer_order" not in insp.unloaded else None
+    if s.retailer_order_id:
+        retailer_fields["retailer_order_id"] = str(s.retailer_order_id)
     if s.retailer_order_id and ro is not None:
         retailer_name = ro.retailer.name if getattr(ro, "retailer", None) else ro.retailer_id
         retailer_fields = {
