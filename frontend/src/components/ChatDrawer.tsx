@@ -336,29 +336,93 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       mediaRecorderRef.current?.stop();
       return;
     }
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      window.alert("Voice input is unavailable: this browser does not expose a microphone API.");
+      return;
+    }
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const form = new FormData();
-        form.append("file", blob, "voice.webm");
-        try {
-          const res = await fetch(`${BACKEND_URL}/api/voice/upload`, { method: "POST", body: form });
-          const data = await res.json() as { transcription?: string };
-          if (data.transcription) {
-            setInput(data.transcription);
-          }
-        } catch {}
-        setIsRecording(false);
-      };
-      mediaRecorderRef.current = mr;
-      mr.start();
-      setIsRecording(true);
-    } catch {}
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      console.error("Microphone permission denied or unavailable:", err);
+      window.alert("Microphone access was denied. Allow it in your browser site settings and try again.");
+      return;
+    }
+
+    // Pick the best mime type the browser actually supports.
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4;codecs=mp4a.40.2",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+    const mimeType =
+      candidates.find((t) =>
+        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t),
+      ) ?? "";
+
+    let mr: MediaRecorder;
+    try {
+      mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch (err) {
+      console.error("MediaRecorder construction failed:", err);
+      window.alert("Voice recording is not supported in this browser.");
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    const recordedMime = mr.mimeType || mimeType || "audio/webm";
+    const ext = recordedMime.includes("mp4") ? "mp4" : recordedMime.includes("ogg") ? "ogg" : "webm";
+
+    audioChunksRef.current = [];
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    mr.onerror = (e) => {
+      console.error("MediaRecorder error:", e);
+    };
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      setIsRecording(false);
+
+      const blob = new Blob(audioChunksRef.current, { type: recordedMime });
+      if (blob.size < 500) {
+        console.warn("Voice clip too short to transcribe", blob.size);
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", blob, `voice.${ext}`);
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/voice/upload`, {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          console.error("Voice transcription HTTP error:", res.status, detail);
+          window.alert(
+            `Transcription failed (HTTP ${res.status}). ${detail.slice(0, 200)}`,
+          );
+          return;
+        }
+        const data = (await res.json()) as { transcription?: string };
+        const transcript = (data.transcription || "").trim();
+        if (!transcript) {
+          window.alert("No speech detected — try again, closer to the mic.");
+          return;
+        }
+        // Append to whatever the user already typed instead of clobbering it.
+        setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      } catch (err) {
+        console.error("Voice upload failed:", err);
+        window.alert("Could not reach the transcription service. Is the backend running?");
+      }
+    };
+
+    mediaRecorderRef.current = mr;
+    mr.start();
+    setIsRecording(true);
   }, [isRecording]);
 
   const testPing = () => {
