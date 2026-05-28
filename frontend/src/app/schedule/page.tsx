@@ -41,8 +41,27 @@ const PLANT_TO_FACILITY: Record<string, string> = {
 
 const LANE_H = 44;
 const TIMELINE_HOURS = 24;
+<<<<<<< Updated upstream
 const HOURS = Array.from({ length: TIMELINE_HOURS }, (_, i) => i);
 const GANTT_GRID_COLS = `repeat(${HOURS.length}, minmax(0, 1fr))`;
+=======
+const TIMELINE_ZOOM_STEPS = [24, 12, 8, 6, 4, 2] as const;
+
+function clampViewportStart(startHour: number, zoomHours: number): number {
+  return Math.max(0, Math.min(TIMELINE_HOURS - zoomHours, startHour));
+}
+
+function buildViewportHours(startHour: number, zoomHours: number): number[] {
+  return Array.from({ length: zoomHours }, (_, i) => startHour + i);
+}
+
+function formatViewportRange(startHour: number, zoomHours: number): string {
+  const fmt = (h: number) => `${String(Math.floor(h) % 24).padStart(2, "0")}:00`;
+  const endHour = startHour + zoomHours;
+  if (endHour >= TIMELINE_HOURS) return `${fmt(startHour)} – 24:00`;
+  return `${fmt(startHour)} – ${fmt(endHour)}`;
+}
+>>>>>>> Stashed changes
 
 function hourLeftPct(hour: number, timelineStart: number, slotCount: number): number {
   return ((hour - timelineStart) / slotCount) * 100;

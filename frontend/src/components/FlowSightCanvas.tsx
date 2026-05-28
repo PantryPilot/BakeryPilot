@@ -261,7 +261,7 @@ function NewsTicker({ disruptions }: { disruptions: Disruption[] }) {
       </div>
       <div className="ticker-wrap flex-1">
         <div className="ticker font-mono text-[12px] text-red-200">
-          {disruptions.concat(disruptions).map((d, i) => (
+          {disruptions.slice(0, 8).concat(disruptions.slice(0, 8)).map((d, i) => (
             <span key={i} className="mx-8">
               <span className="text-red-400">[{d.ts.slice(11)}]</span>{" "}
               <span className="text-red-300">{d.src}</span> · {d.text}
