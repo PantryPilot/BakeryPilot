@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Icon } from "../../components/Icon";
 import { SectionHeader } from "../../components/atoms";
+import { useApp } from "../../lib/context";
 import { ModelSelector } from "../../components/ModelSelector";
 import { providerBadge, type ChatModelOption } from "../../lib/chatModels";
 import {
@@ -26,6 +27,7 @@ type SortState = { column: string; order: "asc" | "desc" } | null;
 type AdminView = "copilot" | "data-sources" | "tables";
 
 export default function AdminPage() {
+  const { t } = useApp();
   const [view, setView] = useState<AdminView>("data-sources");
   const [tables, setTables] = useState<AdminTableInfo[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
@@ -141,7 +143,7 @@ export default function AdminPage() {
       {/* Table list sidebar */}
       <div className="w-[240px] shrink-0 border-r border-slate-800/80 flex flex-col bg-[#0b0e16]">
         <div className="p-3 border-b border-slate-800/80">
-          <SectionHeader title="Admin" sub="System & database"/>
+          <SectionHeader title={t("admin.title")} sub={t("admin.subtitle")}/>
         </div>
 
         <div className="py-1 border-b border-slate-800/80">
