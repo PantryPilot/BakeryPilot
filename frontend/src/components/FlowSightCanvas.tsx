@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Icon } from "./Icon";
 import { Dot, Pill, YieldCounter } from "./atoms";
 import type { Supplier, Disruption } from "../lib/data";
@@ -294,7 +294,10 @@ function TimeScrubber({ live, setLive, disruptions }: { live: boolean; setLive: 
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
 
-  const liveEvents = disruptions.map(disruptionToEvent).filter((e): e is { at: number; t: string } => e !== null);
+  const liveEvents = useMemo(
+    () => disruptions.map(disruptionToEvent).filter((e): e is { at: number; t: string } => e !== null),
+    [disruptions],
+  );
   const events = liveEvents.length > 0 ? liveEvents : DEMO_EVENTS;
 
   const colorOf = (c: string) => ({ red: "#ef4444", orange: "#f97316", blue: "#3b82f6", green: "#22c55e" }[c] ?? "#94a3b8");
@@ -510,7 +513,7 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
 
 function FlowLegend() {
   const { data: esg, status: esgStatus } = useEsgCounter();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const liveEsg = esgStatus === "live";
   const wasteVal   = liveEsg && esg.wasteAvoided   !== undefined ? esg.wasteAvoided.toLocaleString()         : "--";
   const co2Val     = liveEsg && esg.co2eSaved       !== undefined ? `${esg.co2eSaved.toFixed(1)} t`           : "--";
@@ -577,7 +580,7 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const [plantClosing, setPlantClosing] = useState(false);
-  const setLayer = (id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on }));
+  const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
   const closePlant = useCallback(() => {
     setPlantClosing(true);
@@ -587,19 +590,25 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const { data: suppliers } = useSuppliers();
   const { data: disruptions } = useDisruptions();
   const { data: retailers } = useRetailers();
-  const supplierPos = suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 }));
 
-  // Map backend retailers to canvas lanes, falling back to demo positions.
-  const retailerPos: RetailerPos[] = retailers.length > 0
-    ? retailers.slice(0, RETAILER_LANES_Y.length).map((r, i) => ({
-        id: r.retailer_id,
-        name: r.name,
-        poRatio: r.po_ratio || 1,
-        shelfRisk: r.shelf_risk,
-        x: RETAILER_X,
-        y: RETAILER_LANES_Y[i],
-      }))
-    : RETAILER_POS_FALLBACK;
+  const supplierPos = useMemo(
+    () => suppliers.map((s, i) => ({ ...s, x: SUPPLIER_X, y: 130 + i * 100 })),
+    [suppliers],
+  );
+
+  const retailerPos: RetailerPos[] = useMemo(
+    () => retailers.length > 0
+      ? retailers.slice(0, RETAILER_LANES_Y.length).map((r, i) => ({
+          id: r.retailer_id,
+          name: r.name,
+          poRatio: r.po_ratio || 1,
+          shelfRisk: r.shelf_risk,
+          x: RETAILER_X,
+          y: RETAILER_LANES_Y[i],
+        }))
+      : RETAILER_POS_FALLBACK,
+    [retailers],
+  );
 
   return (
     <div className="bp-flow-canvas relative w-full h-full bg-[#070a11] overflow-hidden">

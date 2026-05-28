@@ -624,6 +624,10 @@ main {
     transform: translateY(0);
   }
 }
+/* Light theme: soften teal pill (Refrigerated) — teal-300 is too bright on white */
+:root[data-theme="light"] .text-teal-300 { color: #0f766e; }
+:root[data-theme="light"] .border-teal-500\/30 { border-color: rgba(20,184,166,0.4); }
+
 .page-transition {
   animation: page-fade-in 150ms ease-out both;
 }
