@@ -301,32 +301,41 @@ function AssignModal({
             />
           </div>
 
-          {/* Recipe preview */}
-          {selectedProduct && selectedProduct.recipe.length > 0 && (
+          {/* Ingredient availability — always show once a product is selected */}
+          {selectedProduct && (
             <div className="rounded-lg border border-slate-800 bg-slate-900/40">
               <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">Recipe ({quantity} units)</span>
-                {validating && <span className="text-[10px] text-slate-500">checking…</span>}
+                <span className="text-[10px] uppercase tracking-wider text-slate-500">Ingredients ({quantity} units)</span>
+                {validating && <span className="text-[10px] text-slate-500 flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 border border-slate-500 border-t-slate-300 rounded-full animate-spin"/>checking…</span>}
               </div>
               <div className="p-3 space-y-1.5">
-                {selectedProduct.recipe.map(r => {
-                  const totalKg = r.kg_per_unit * quantity;
-                  const detail = validation?.ingredients.find(i => i.ingredient_id === r.ingredient_id);
-                  const ok = !detail || detail.shortfall_kg === 0;
-                  return (
-                    <div key={r.ingredient_id} className="flex items-center justify-between text-[12px]">
-                      <span className={ok ? "text-slate-200" : "text-red-300"}>{r.ingredient_name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-400 font-mono">{totalKg.toFixed(1)} kg</span>
-                        {detail && (
-                          <span className={`text-[10px] font-mono ${ok ? "text-emerald-400" : "text-red-400"}`}>
-                            {ok ? `${detail.available_kg.toFixed(1)} avail` : `short ${detail.shortfall_kg.toFixed(1)}`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* Prefer validation.ingredients (has live availability); fall back to recipe during loading */}
+                {validation?.ingredients && validation.ingredients.length > 0
+                  ? validation.ingredients.map(i => {
+                      const ok = i.shortfall_kg === 0;
+                      return (
+                        <div key={i.ingredient_id} className="flex items-center justify-between text-[12px]">
+                          <span className={ok ? "text-slate-200" : "text-red-300"}>{i.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-400 font-mono">{i.needed_kg.toFixed(1)} kg</span>
+                            <span className={`text-[10px] font-mono w-20 text-right ${ok ? "text-emerald-400" : "text-red-400"}`}>
+                              {ok ? `✓ ${i.available_kg.toFixed(1)} avail` : `✗ short ${i.shortfall_kg.toFixed(1)}`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  : selectedProduct.recipe.length > 0
+                    ? selectedProduct.recipe.map(r => (
+                        <div key={r.ingredient_id} className="flex items-center justify-between text-[12px] text-slate-400">
+                          <span>{r.ingredient_name}</span>
+                          <span className="font-mono">{(r.kg_per_unit * quantity).toFixed(1)} kg</span>
+                        </div>
+                      ))
+                    : !validating && (
+                        <div className="text-[12px] text-slate-500 italic">No recipe configured for this product.</div>
+                      )
+                }
               </div>
             </div>
           )}
