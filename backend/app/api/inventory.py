@@ -259,6 +259,62 @@ async def transfer_lot(
     )
 
 
+class TransferDraftRequest(BaseModel):
+    lot_id: str
+    destination_facility_id: str
+    quantity_kg: float | None = None
+    rationale: str | None = None
+
+
+@router.post("/transfer/draft", response_model=dict)
+async def draft_lot_transfer(
+    req: TransferDraftRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a pending action_card for a lot transfer. The actual stock
+    move runs inside _execute_transfer_card when the operator confirms the
+    card — mirrors the procurement / scheduler human-in-the-loop pattern."""
+    lot = await db.get(IngredientLot, req.lot_id)
+    if not lot:
+        raise HTTPException(404, f"lot {req.lot_id} not found")
+    if float(lot.quantity_kg) <= 0:
+        raise HTTPException(400, "lot is already empty")
+    if lot.expiry_date < date.today():
+        raise HTTPException(400, "expired lots cannot be transferred; write off the lot instead")
+
+    dest = await db.get(Facility, req.destination_facility_id)
+    if not dest:
+        raise HTTPException(404, f"facility {req.destination_facility_id} not found")
+    if req.destination_facility_id == lot.facility_id:
+        raise HTTPException(400, "destination is the same as current facility")
+
+    transfer_kg = float(req.quantity_kg if req.quantity_kg is not None else lot.quantity_kg)
+    if transfer_kg <= 0 or transfer_kg > float(lot.quantity_kg):
+        raise HTTPException(400, "quantity_kg must be > 0 and <= lot quantity")
+
+    await db.refresh(lot, ["ingredient"])
+    ingredient_name = lot.ingredient.name if lot.ingredient else lot.ingredient_id
+    payload = {
+        "ingredient_id": lot.ingredient_id,
+        "from_facility_id": lot.facility_id,
+        "facility_id": req.destination_facility_id,  # executor reads this as destination
+        "quantity_kg": transfer_kg,
+        "rationale": req.rationale or "",
+        "title": f"Transfer {transfer_kg:g} kg {ingredient_name}: {lot.facility_id} → {req.destination_facility_id}",
+        "lot_id": str(lot.lot_id),
+        "agent": "InventoryAgent",
+    }
+    card = ActionCardORM(kind="transfer", payload=payload)
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {
+        "action_card_id": str(card.card_id),
+        "kind": "transfer",
+        "title": payload["title"],
+    }
+
+
 class SubstituteApplyRequest(BaseModel):
     substitute_sku_id: str
     quantity_kg: float
