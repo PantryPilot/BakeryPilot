@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { fetchFacilities, fetchProductionLines, fetchProducts, fetchOrders, createProductionOrder, updateOrderStatus, cancelProductionOrder, markOrderProduced, validateProduction, type BackendProductionLine, type BackendProductionOrder, type BackendProduct, type BackendFacility, type BackendValidationResult, type BackendOrder } from "../../lib/api";
-import { requestShortfallTransferPlan, requestShortfallSubstitution, confirmActionCard } from "../../lib/api";
+import { requestShortfallTransferPlan, confirmActionCard } from "../../lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,36 +207,6 @@ function AssignModal({
     }
   };
 
-  const handleRequestSubstitution = async (substituteSkuId: string) => {
-    if (!selectedSkuId) return;
-    const key = `sub-${substituteSkuId}`;
-    setRequestingKey(key);
-    const blockedIds = (validation?.ingredients ?? [])
-      .filter(i => i.shortfall_kg > 0)
-      .map(i => i.ingredient_id);
-    const res = await requestShortfallSubstitution({
-      facility_id: facilityId,
-      substitute_sku_id: substituteSkuId,
-      requested_by_sku_id: selectedSkuId,
-      requested_units: quantity,
-      blocked_ingredient_ids: blockedIds,
-    });
-    if (!res?.action_card_id) {
-      setRequestingKey(null);
-      setError("Failed to request substitution.");
-      onToast?.("Substitution request failed", "error");
-      return;
-    }
-    const confirmed = await confirmActionCard(res.action_card_id);
-    setRequestingKey(null);
-    setError(null);
-    if (!confirmed) {
-      onToast?.("Substitution recorded but execution failed — check action cards", "error");
-    } else {
-      onToast?.("Switched to substitute — new production order created", "success");
-      onSuccess();
-    }
-  };
 
   const shortfallIngredients = validation?.ingredients.filter(i => i.shortfall_kg > 0) ?? [];
   const transferPlan = validation?.transfer_plan ?? null;
@@ -473,8 +443,6 @@ function AssignModal({
                   </div>
                   <div className="px-3 py-2 space-y-1.5">
                     {substituteSkus.slice(0, 4).map(s => {
-                      const key = `sub-${s.sku_id}`;
-                      const busy = requestingKey === key;
                       return (
                         <div key={s.sku_id} className="flex items-center justify-between gap-2 text-[12px]">
                           <div className="min-w-0 flex-1">
@@ -486,12 +454,15 @@ function AssignModal({
                             </div>
                           </div>
                           <button
-                            onClick={() => handleRequestSubstitution(s.sku_id)}
-                            disabled={busy}
-                            className="shrink-0 h-7 px-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 text-[11px] font-medium transition flex items-center gap-1.5"
+                            onClick={() => {
+                              handleSkuChange(s.sku_id);
+                              if (!s.covers_requested_units && s.achievable_quantity > 0) {
+                                handleQtyChange(s.achievable_quantity);
+                              }
+                            }}
+                            className="shrink-0 h-7 px-2.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-[11px] font-medium transition"
                           >
-                            {busy && <span className="w-3 h-3 border-2 border-emerald-300/30 border-t-emerald-300 rounded-full animate-spin"/>}
-                            {busy ? "Requesting" : "Switch"}
+                            Select
                           </button>
                         </div>
                       );
