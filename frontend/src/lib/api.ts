@@ -389,6 +389,13 @@ export interface CreateScheduleInput {
   waste_avoided_kg?: number;
 }
 
+export interface UpdateScheduleInput {
+  start_at?: string;
+  end_at?: string;
+  line_id?: string;
+  facility_id?: string;
+}
+
 export async function createSchedule(
   input: CreateScheduleInput,
 ): Promise<BackendSchedule | null> {
@@ -407,6 +414,16 @@ export async function deleteSchedule(scheduleId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function updateSchedule(
+  scheduleId: string,
+  input: UpdateScheduleInput,
+): Promise<BackendSchedule | null> {
+  return safeFetch<BackendSchedule>(`/api/schedules/${encodeURIComponent(scheduleId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function fetchMoqTax(

@@ -46,3 +46,18 @@ def test_create_schedule_validation(client):
 def test_delete_schedule_not_found(client):
     r = client.delete("/api/schedules/nonexistent_sched")
     assert r.status_code == 404
+
+
+def test_patch_schedule_not_found(client):
+    r = client.patch(
+        "/api/schedules/nonexistent_sched",
+        json={"start_at": "2026-05-27T10:00:00Z", "end_at": "2026-05-27T12:00:00Z"},
+    )
+    assert r.status_code == 404
+
+
+def test_patch_schedule_requires_fields(client):
+    import uuid
+
+    r = client.patch(f"/api/schedules/{uuid.uuid4()}", json={})
+    assert r.status_code == 422

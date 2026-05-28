@@ -16,6 +16,7 @@ from app.models.schedules import (
     ProductionSchedule,
     ScheduleDiff,
     ScheduleRun,
+    UpdateScheduleRequest,
     WhatIfRequest,
 )
 from app.services.schedule_apply import parse_iso_dt, resolve_schedule, utc_iso
@@ -106,6 +107,55 @@ async def create_schedule(
         version=1,
     )
     db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _to_model(row)
+
+
+@router.patch("/{schedule_id}", response_model=ProductionSchedule)
+async def update_schedule(
+    schedule_id: str,
+    req: UpdateScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ProductionSchedule:
+    """Update schedule timing or line placement (manual planner drag-and-drop)."""
+    if not any(
+        v is not None
+        for v in (req.start_at, req.end_at, req.line_id, req.facility_id)
+    ):
+        raise HTTPException(422, "at least one field must be provided")
+
+    try:
+        sid = uuid.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    row = await db.get(ScheduleORM, sid)
+    if not row:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+
+    start_at = row.start_at
+    end_at = row.end_at
+    if req.start_at is not None:
+        try:
+            start_at = parse_iso_dt(req.start_at)
+        except ValueError as exc:
+            raise HTTPException(422, f"invalid start_at: {exc}") from exc
+    if req.end_at is not None:
+        try:
+            end_at = parse_iso_dt(req.end_at)
+        except ValueError as exc:
+            raise HTTPException(422, f"invalid end_at: {exc}") from exc
+    if end_at <= start_at:
+        raise HTTPException(422, "end_at must be after start_at")
+
+    if req.facility_id is not None:
+        row.facility_id = req.facility_id
+    if req.line_id is not None:
+        row.line_id = req.line_id
+    row.start_at = start_at
+    row.end_at = end_at
+    row.version += 1
+
     await db.commit()
     await db.refresh(row)
     return _to_model(row)

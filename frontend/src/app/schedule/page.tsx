@@ -10,6 +10,7 @@ import {
   confirmActionCard,
   createSchedule,
   deleteSchedule,
+  updateSchedule,
   fetchActionCard,
   fetchFacilities,
   fetchPendingScheduleChangeCard,
@@ -18,6 +19,7 @@ import {
   fetchScheduleDiff,
   formatScheduleWindow,
   rejectActionCard,
+  type UpdateScheduleInput,
   type BackendFacility,
   type BackendProduct,
   type BackendProductionLine,
@@ -38,8 +40,24 @@ const PLANT_TO_FACILITY: Record<string, string> = {
 };
 
 const LANE_H = 44;
-const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
-const GANTT_GRID_COLS = `repeat(${HOURS.length}, minmax(0, 1fr))`;
+const TIMELINE_HOURS = 24;
+const TIMELINE_MIN_ZOOM_HOURS = 2;
+const TIMELINE_ZOOM_STEPS = [24, 12, 8, 6, 4, 2] as const;
+
+function clampViewportStart(startHour: number, zoomHours: number): number {
+  return Math.max(0, Math.min(TIMELINE_HOURS - zoomHours, startHour));
+}
+
+function buildViewportHours(startHour: number, zoomHours: number): number[] {
+  return Array.from({ length: zoomHours }, (_, i) => startHour + i);
+}
+
+function formatViewportRange(startHour: number, zoomHours: number): string {
+  const fmt = (h: number) => `${String(Math.floor(h) % 24).padStart(2, "0")}:00`;
+  const endHour = startHour + zoomHours;
+  if (endHour >= TIMELINE_HOURS) return `${fmt(startHour)} – 24:00`;
+  return `${fmt(startHour)} – ${fmt(endHour)}`;
+}
 
 function hourLeftPct(hour: number, timelineStart: number, slotCount: number): number {
   return ((hour - timelineStart) / slotCount) * 100;
@@ -49,7 +67,18 @@ function hourWidthPct(start: number, end: number, slotCount: number): number {
   return ((end - start) / slotCount) * 100;
 }
 
-type ScheduledRun = ProductionRun & { dateKey: string };
+type ScheduledRun = ProductionRun & {
+  dateKey: string;
+  startAt: string;
+  endAt: string;
+  facilityId: string;
+  lineId: string;
+};
+
+type GanttLaneModel = { key: string; plant: string; line: number; runs: ScheduledRun[] };
+
+const DRAG_SNAP_HOURS = 0.25;
+const DRAG_THRESHOLD_PX = 4;
 
 function toDateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -85,7 +114,7 @@ const GANTT_HEADER =
 const GANTT_ROW_LABEL = "text-[11px] font-medium leading-snug text-[var(--bp-text-secondary)] truncate";
 const GANTT_HOUR_LABEL = "text-[11px] font-mono leading-none text-[var(--bp-text-muted)] tabular-nums";
 const GANTT_RUN_TILE =
-  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-pointer transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
+  "absolute top-1.5 bottom-1.5 rounded-lg border border-l-[3px] bg-[var(--bp-surface)] shadow-md ring-1 ring-black/10 flex items-center gap-2 px-2.5 cursor-grab active:cursor-grabbing touch-none transition-colors duration-150 hover:z-20 hover:shadow-lg hover:ring-black/15";
 
 function formatDateLabel(dateKey: string): string {
   const d = new Date(`${dateKey}T12:00:00Z`);
@@ -118,6 +147,10 @@ function backendSchedulesToRuns(schedules: BackendSchedule[]): ScheduledRun[] {
         risk: "ok",
         lots: r.lot_assignments,
         dateKey: toDateKey(start),
+        startAt: r.start_at,
+        endAt: r.end_at,
+        facilityId: s.facility_id,
+        lineId: s.line_id,
       });
     }
   }
@@ -185,7 +218,54 @@ function RunHoverCard({
   );
 }
 
-type RunMenuState = { run: ProductionRun; x: number; y: number } | null;
+type RunMenuState = { run: ScheduledRun; x: number; y: number } | null;
+
+type MovePreview = {
+  runId: string;
+  sourceLaneKey: string;
+  targetLaneKey: string;
+  start: number;
+  end: number;
+};
+
+function snapHour(hour: number): number {
+  return Math.round(hour / DRAG_SNAP_HOURS) * DRAG_SNAP_HOURS;
+}
+
+function lineIdForLane(
+  lane: Pick<GanttLaneModel, "plant" | "line">,
+  productionLines: BackendProductionLine[],
+): string | null {
+  const facilityId = PLANT_TO_FACILITY[lane.plant];
+  const match = productionLines.find(
+    ln =>
+      lineNumberFromId(ln.line_id) === lane.line &&
+      ((FACILITY_MAP[ln.facility_id] ?? ln.facility_id) === lane.plant ||
+        ln.facility_id === facilityId),
+  );
+  return match?.line_id ?? null;
+}
+
+function facilityIdForLane(lane: Pick<GanttLaneModel, "plant">): string {
+  return PLANT_TO_FACILITY[lane.plant] ?? lane.plant;
+}
+
+function applyMovePreview(lanes: GanttLaneModel[], preview: MovePreview | null): GanttLaneModel[] {
+  if (!preview) return lanes;
+  const run = lanes.flatMap(l => l.runs).find(r => r.id === preview.runId);
+  if (!run) return lanes;
+  const movedRun: ScheduledRun = { ...run, start: preview.start, end: preview.end };
+  return lanes.map(ln => {
+    if (ln.key === preview.sourceLaneKey && ln.key !== preview.targetLaneKey) {
+      return { ...ln, runs: ln.runs.filter(r => r.id !== preview.runId) };
+    }
+    if (ln.key === preview.targetLaneKey) {
+      const others = ln.runs.filter(r => r.id !== preview.runId);
+      return { ...ln, runs: [...others, movedRun].sort((a, b) => a.start - b.start) };
+    }
+    return ln;
+  });
+}
 
 function RunContextMenu({
   menu,
@@ -195,7 +275,7 @@ function RunContextMenu({
 }: {
   menu: RunMenuState;
   onClose: () => void;
-  onDelete: (run: ProductionRun) => void;
+  onDelete: (run: ScheduledRun) => void;
   deletingId: string | null;
 }) {
   useEffect(() => {
@@ -242,23 +322,30 @@ function GanttLane({
   showNowLine,
   rowIndex,
   onRunContextMenu,
+  onRunDragStart,
+  draggingRunId,
+  savingRunId,
 }: {
-  lane: { key: string; plant: string; line: number; runs: ProductionRun[] };
+  lane: GanttLaneModel;
   hours: number[];
   nowHour: number;
   isFirst: boolean;
   showNowLine: boolean;
   rowIndex: number;
-  onRunContextMenu: (e: React.MouseEvent, run: ProductionRun) => void;
+  onRunContextMenu: (e: React.MouseEvent, run: ScheduledRun) => void;
+  onRunDragStart: (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => void;
+  draggingRunId: string | null;
+  savingRunId: string | null;
 }) {
   const sku = (id: string) => SKUS.find(s => s.id === id);
-  const [hoveredRun, setHoveredRun] = useState<{ run: ProductionRun; el: HTMLElement } | null>(null);
-  const showNow = showNowLine && nowHour >= hours[0] && nowHour <= hours[hours.length - 1];
+  const [hoveredRun, setHoveredRun] = useState<{ run: ScheduledRun; el: HTMLElement } | null>(null);
+  const showNow = showNowLine && nowHour >= hours[0] && nowHour < hours[0] + hours.length;
   const nowLabel = `${String(Math.floor(nowHour)).padStart(2, "0")}:${String(Math.round((nowHour % 1) * 60)).padStart(2, "0")}`;
   return (
     <div
       className={`relative w-full border-b border-[var(--bp-border-soft)] ${laneRowBg(rowIndex)}`}
       style={{ height: LANE_H }}
+      data-lane-key={lane.key}
     >
       {Array.from({ length: hours.length + 1 }, (_, i) => (
         <div
@@ -280,17 +367,27 @@ function GanttLane({
         </div>
       )}
       {lane.runs.map(r => {
-        const leftPct = hourLeftPct(r.start, hours[0], hours.length);
-        const widthPct = hourWidthPct(r.start, r.end, hours.length);
+        const viewportEnd = hours[0] + hours.length;
+        if (r.end <= hours[0] || r.start >= viewportEnd) return null;
+        const displayStart = Math.max(r.start, hours[0]);
+        const displayEnd = Math.min(r.end, viewportEnd);
+        const leftPct = hourLeftPct(displayStart, hours[0], hours.length);
+        const widthPct = hourWidthPct(displayStart, displayEnd, hours.length);
         const allergenTone = r.allergen === "nuts" ? "red" : r.allergen === "milk" ? "amber" : "slate";
+        const isDragging = draggingRunId === r.id;
+        const isSaving = savingRunId === r.id;
         return (
           <div
             key={r.id}
-            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)}`}
+            className={`${GANTT_RUN_TILE} ${runTileStyle(r.risk)} ${isDragging ? "z-30 opacity-90 ring-2 ring-blue-400/60" : ""} ${isSaving ? "opacity-50 pointer-events-none" : ""}`}
             style={{ left: `calc(${leftPct}% + 3px)`, width: `calc(${widthPct}% - 6px)` }}
-            onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
+            onMouseEnter={e => {
+              if (draggingRunId) return;
+              setHoveredRun({ run: r, el: e.currentTarget });
+            }}
             onMouseLeave={() => setHoveredRun(null)}
             onContextMenu={e => onRunContextMenu(e, r)}
+            onPointerDown={e => onRunDragStart(e, r, lane.key)}
           >
             <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{sku(r.sku)?.name || r.sku}</span>
             <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
@@ -300,7 +397,7 @@ function GanttLane({
           </div>
         );
       })}
-      {hoveredRun && <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} />}
+      {hoveredRun && !draggingRunId && <RunHoverCard run={hoveredRun.run} anchorEl={hoveredRun.el} />}
       {lane.runs.length > 1 && lane.runs.slice(0, -1).map((r, i) => {
         const next = lane.runs[i + 1];
         const xPct = hourLeftPct(next.start, hours[0], hours.length);
@@ -317,12 +414,190 @@ function GanttLane({
   );
 }
 
+function GanttTimeline({
+  lanes,
+  viewportStart,
+  viewportHours,
+  nowHour,
+  showNowLine,
+  productionLines,
+  onRunContextMenu,
+  onRunMove,
+}: {
+  lanes: GanttLaneModel[];
+  viewportStart: number;
+  viewportHours: number;
+  nowHour: number;
+  showNowLine: boolean;
+  productionLines: BackendProductionLine[];
+  onRunContextMenu: (e: React.MouseEvent, run: ScheduledRun) => void;
+  onRunMove: (run: ScheduledRun, update: UpdateScheduleInput) => Promise<boolean>;
+}) {
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const hours = useMemo(
+    () => buildViewportHours(viewportStart, viewportHours),
+    [viewportStart, viewportHours],
+  );
+  const gridCols = `repeat(${hours.length}, minmax(0, 1fr))`;
+  const [drag, setDrag] = useState<{
+    run: ScheduledRun;
+    sourceLaneKey: string;
+    startClientX: number;
+    startClientY: number;
+    originStart: number;
+    durationHours: number;
+  } | null>(null);
+  const [preview, setPreview] = useState<MovePreview | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const displayLanes = useMemo(() => applyMovePreview(lanes, preview), [lanes, preview]);
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const onMove = (e: PointerEvent) => {
+      const rect = timelineRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * hours.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const end = start + drag.durationHours;
+      const laneIdx = Math.max(
+        0,
+        Math.min(
+          lanes.length - 1,
+          Math.floor((e.clientY - rect.top - GANTT_HEADER_H) / LANE_H),
+        ),
+      );
+      const targetLaneKey = lanes[laneIdx]?.key ?? drag.sourceLaneKey;
+      setPreview({
+        runId: drag.run.id,
+        sourceLaneKey: drag.sourceLaneKey,
+        targetLaneKey,
+        start,
+        end,
+      });
+    };
+
+    const onUp = async (e: PointerEvent) => {
+      const rect = timelineRef.current?.getBoundingClientRect();
+      const moved =
+        rect != null &&
+        (Math.abs(e.clientX - drag.startClientX) > DRAG_THRESHOLD_PX ||
+          Math.abs(e.clientY - drag.startClientY) > DRAG_THRESHOLD_PX);
+
+      if (!rect || !moved) {
+        setDrag(null);
+        setPreview(null);
+        return;
+      }
+
+      const deltaHours = ((e.clientX - drag.startClientX) / rect.width) * hours.length;
+      const start = snapHour(drag.originStart + deltaHours);
+      const laneIdx = Math.max(
+        0,
+        Math.min(
+          lanes.length - 1,
+          Math.floor((e.clientY - rect.top - GANTT_HEADER_H) / LANE_H),
+        ),
+      );
+      const targetLane = lanes[laneIdx] ?? lanes.find(l => l.key === drag.sourceLaneKey)!;
+      const deltaMs = (start - drag.originStart) * 3600 * 1000;
+      const newStartAt = new Date(new Date(drag.run.startAt).getTime() + deltaMs).toISOString();
+      const newEndAt = new Date(new Date(drag.run.endAt).getTime() + deltaMs).toISOString();
+
+      const update: UpdateScheduleInput = {
+        start_at: newStartAt,
+        end_at: newEndAt,
+      };
+      if (targetLane.key !== drag.sourceLaneKey) {
+        const lineId = lineIdForLane(targetLane, productionLines);
+        if (lineId) {
+          update.line_id = lineId;
+          update.facility_id = facilityIdForLane(targetLane);
+        }
+      }
+
+      const run = drag.run;
+      setSavingId(run.id);
+      setDrag(null);
+      setPreview(null);
+      await onRunMove(run, update);
+      setSavingId(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [drag, hours.length, lanes, onRunMove, productionLines, viewportStart, viewportHours]);
+
+  const beginDrag = useCallback(
+    (e: React.PointerEvent, run: ScheduledRun, laneKey: string) => {
+      if (e.button !== 0 || savingId) return;
+      e.preventDefault();
+      setDrag({
+        run,
+        sourceLaneKey: laneKey,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        originStart: run.start,
+        durationHours: run.end - run.start,
+      });
+      setPreview({
+        runId: run.id,
+        sourceLaneKey: laneKey,
+        targetLaneKey: laneKey,
+        start: run.start,
+        end: run.end,
+      });
+    },
+    [savingId],
+  );
+
+  return (
+    <div ref={timelineRef} className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
+      <div
+        className={`grid w-full ${GANTT_HEADER}`}
+        style={{ gridTemplateColumns: gridCols, height: GANTT_HEADER_H }}
+      >
+        {hours.map(h => (
+          <div
+            key={h}
+            className={`min-w-0 border-r border-[var(--bp-border-soft)] flex items-center justify-center text-center ${GANTT_HOUR_LABEL}`}
+          >
+            {String(h).padStart(2, "0")}:00
+          </div>
+        ))}
+      </div>
+      {displayLanes.map((ln, i) => (
+        <GanttLane
+          key={ln.key}
+          lane={ln}
+          hours={hours}
+          nowHour={nowHour}
+          isFirst={i === 0}
+          showNowLine={showNowLine}
+          rowIndex={i}
+          onRunContextMenu={onRunContextMenu}
+          onRunDragStart={beginDrag}
+          draggingRunId={drag?.run.id ?? null}
+          savingRunId={savingId}
+        />
+      ))}
+    </div>
+  );
+}
+
 function DiffMini({ runs }: { runs: { lane: string; start: number; end: number; sku: string; state: string; window?: string; note?: string; risk?: boolean }[] }) {
   return (
     <div className="space-y-2">
       {runs.map((r, i) => {
-        const left = (r.start - 6) / 18 * 100;
-        const w = (r.end - r.start) / 18 * 100;
+        const left = (r.start / TIMELINE_HOURS) * 100;
+        const w = ((r.end - r.start) / TIMELINE_HOURS) * 100;
         const bg = r.state === "new" ? "border-dashed border-emerald-400 bg-emerald-500/10" : r.state === "moved" ? "border-blue-400 bg-blue-500/10" : "border-slate-700 bg-slate-800/40";
         return (
           <div key={i} className="space-y-1">
@@ -769,6 +1044,8 @@ export default function SchedulePage() {
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [timelineZoomHours, setTimelineZoomHours] = useState<number>(TIMELINE_HOURS);
+  const [timelineStartHour, setTimelineStartHour] = useState(0);
   const [runMenu, setRunMenu] = useState<RunMenuState>(null);
   const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<BackendFacility[]>([]);
@@ -835,7 +1112,7 @@ export default function SchedulePage() {
         ? [...new Set(productionLines.map(l => FACILITY_MAP[l.facility_id] ?? l.facility_id)), ...runs.map(r => r.plant)]
         : [plant],
     );
-    const byKey: Record<string, { key: string; plant: string; line: number; runs: ProductionRun[] }> = {};
+    const byKey: Record<string, GanttLaneModel> = {};
 
     productionLines.forEach(ln => {
       const plantId = FACILITY_MAP[ln.facility_id] ?? ln.facility_id;
@@ -857,13 +1134,13 @@ export default function SchedulePage() {
   const defaultFacilityForAdd =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
 
-  const handleRunContextMenu = useCallback((e: React.MouseEvent, run: ProductionRun) => {
+  const handleRunContextMenu = useCallback((e: React.MouseEvent, run: ScheduledRun) => {
     e.preventDefault();
     e.stopPropagation();
     setRunMenu({ run, x: e.clientX, y: e.clientY });
   }, []);
 
-  const handleDeleteRun = useCallback(async (run: ProductionRun) => {
+  const handleDeleteRun = useCallback(async (run: ScheduledRun) => {
     const skuName = SKUS.find(s => s.id === run.sku)?.name ?? run.sku;
     if (!window.confirm(`Delete schedule run for ${skuName}?`)) return;
     setDeletingRunId(run.id);
@@ -874,12 +1151,52 @@ export default function SchedulePage() {
     else window.alert("Could not delete schedule run.");
   }, [bumpScheduleRefresh]);
 
+  const handleRunMove = useCallback(async (run: ScheduledRun, update: UpdateScheduleInput) => {
+    const result = await updateSchedule(run.id, update);
+    if (result) {
+      bumpScheduleRefresh();
+      return true;
+    }
+    window.alert("Could not update schedule run.");
+    return false;
+  }, [bumpScheduleRefresh]);
+
+  const timelineZoomIndex = TIMELINE_ZOOM_STEPS.indexOf(
+    timelineZoomHours as (typeof TIMELINE_ZOOM_STEPS)[number],
+  );
+  const canZoomIn = timelineZoomIndex >= 0 && timelineZoomIndex < TIMELINE_ZOOM_STEPS.length - 1;
+  const canZoomOut = timelineZoomIndex > 0;
+  const canPanTimeline = timelineZoomHours < TIMELINE_HOURS;
+  const timelinePanStep = Math.max(1, Math.floor(timelineZoomHours / 4));
+
+  const zoomTimeline = useCallback((direction: "in" | "out") => {
+    const idx = TIMELINE_ZOOM_STEPS.indexOf(
+      timelineZoomHours as (typeof TIMELINE_ZOOM_STEPS)[number],
+    );
+    const safeIdx = idx >= 0 ? idx : 0;
+    const nextIdx = direction === "in" ? safeIdx + 1 : safeIdx - 1;
+    if (nextIdx < 0 || nextIdx >= TIMELINE_ZOOM_STEPS.length) return;
+    const nextZoom = TIMELINE_ZOOM_STEPS[nextIdx];
+    const center = timelineStartHour + timelineZoomHours / 2;
+    setTimelineZoomHours(nextZoom);
+    setTimelineStartHour(clampViewportStart(center - nextZoom / 2, nextZoom));
+  }, [timelineStartHour, timelineZoomHours]);
+
+  const panTimeline = useCallback((deltaHours: number) => {
+    setTimelineStartHour(prev => clampViewportStart(prev + deltaHours, timelineZoomHours));
+  }, [timelineZoomHours]);
+
+  const resetTimelineZoom = useCallback(() => {
+    setTimelineZoomHours(TIMELINE_HOURS);
+    setTimelineStartHour(0);
+  }, []);
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6 max-w-[1600px] mx-auto">
         <SectionHeader
           title="Schedule"
-          sub="Production runs across all plants · changeovers minimized by OR-Tools"
+          sub="Production runs across all plants · drag runs to reschedule · changeovers minimized by OR-Tools"
           right={
             <div className="flex items-center gap-2">
               <button
@@ -976,6 +1293,64 @@ export default function SchedulePage() {
             {plant !== "all" ? ` · ${FACILITIES.find(f => f.id === plant)?.name ?? plant}` : ""}
           </div>
           <div className="flex-1"/>
+          <div className="flex items-center gap-1 p-0.5 rounded-md border border-slate-800 bg-slate-900/40">
+            <button
+              type="button"
+              aria-label="Zoom out timeline"
+              disabled={!canZoomOut}
+              onClick={() => zoomTimeline("out")}
+              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
+            >
+              −
+            </button>
+            <span
+              className="px-1.5 text-[11px] font-mono text-slate-400 tabular-nums min-w-[6.5rem] text-center"
+              title={`Showing ${timelineZoomHours} hour window`}
+            >
+              {formatViewportRange(timelineStartHour, timelineZoomHours)}
+            </span>
+            <button
+              type="button"
+              aria-label="Zoom in timeline"
+              disabled={!canZoomIn}
+              onClick={() => zoomTimeline("in")}
+              className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
+            >
+              +
+            </button>
+            {canPanTimeline && (
+              <>
+                <span className="w-px h-4 bg-slate-700" aria-hidden />
+                <button
+                  type="button"
+                  aria-label="Pan timeline earlier"
+                  disabled={timelineStartHour <= 0}
+                  onClick={() => panTimeline(-timelinePanStep)}
+                  className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  aria-label="Pan timeline later"
+                  disabled={timelineStartHour + timelineZoomHours >= TIMELINE_HOURS}
+                  onClick={() => panTimeline(timelinePanStep)}
+                  className="px-2 py-1 rounded-md text-[14px] leading-none text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:hover:text-slate-400"
+                >
+                  ›
+                </button>
+              </>
+            )}
+            {timelineZoomHours < TIMELINE_HOURS && (
+              <button
+                type="button"
+                onClick={resetTimelineZoom}
+                className="ml-0.5 px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-slate-200 whitespace-nowrap"
+              >
+                Full day
+              </button>
+            )}
+          </div>
           <button onClick={() => setShowDiff(d => !d)} className={`px-2.5 py-1 rounded-md text-[12px] flex items-center gap-1.5 whitespace-nowrap ${showDiff ? "bg-blue-500/15 text-blue-200 border border-blue-500/40" : "border border-slate-700 text-slate-300 hover:border-blue-500"}`}>
             <Icon name="diff" size={12}/> {showDiff ? "Hide" : "Show"} agent proposal
           </button>
@@ -1039,33 +1414,16 @@ export default function SchedulePage() {
                 </div>
               ))}
             </div>
-            <div className="min-w-0 flex-1 w-full bg-[var(--bp-surface-soft)]">
-              <div
-                className={`grid w-full ${GANTT_HEADER}`}
-                style={{ gridTemplateColumns: GANTT_GRID_COLS, height: GANTT_HEADER_H }}
-              >
-                {HOURS.map(h => (
-                  <div
-                    key={h}
-                    className={`min-w-0 border-r border-[var(--bp-border-soft)] flex items-center justify-center text-center ${GANTT_HOUR_LABEL}`}
-                  >
-                    {String(h).padStart(2, "0")}:00
-                  </div>
-                ))}
-              </div>
-              {lanes.map((ln, i) => (
-                  <GanttLane
-                    key={ln.key}
-                    lane={ln}
-                    hours={HOURS}
-                    nowHour={nowHour}
-                    isFirst={i === 0}
-                    showNowLine={activeDate === todayKey}
-                    rowIndex={i}
-                    onRunContextMenu={handleRunContextMenu}
-                  />
-              ))}
-            </div>
+            <GanttTimeline
+              lanes={lanes}
+              viewportStart={timelineStartHour}
+              viewportHours={timelineZoomHours}
+              nowHour={nowHour}
+              showNowLine={activeDate === todayKey}
+              productionLines={productionLines}
+              onRunContextMenu={handleRunContextMenu}
+              onRunMove={handleRunMove}
+            />
           </div>
         </div>
         )}

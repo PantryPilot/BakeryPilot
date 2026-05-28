@@ -48,3 +48,10 @@ class CreateScheduleRequest(BaseModel):
     quantity_units: int
     status: str = "approved"
     waste_avoided_kg: float = 0
+
+
+class UpdateScheduleRequest(BaseModel):
+    start_at: str | None = None
+    end_at: str | None = None
+    line_id: str | None = None
+    facility_id: str | None = None
