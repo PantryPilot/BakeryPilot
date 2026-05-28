@@ -219,6 +219,17 @@ const en = {
   "home.lots_critical": "Critical lots",
   "home.active_runs": "Active runs",
   "home.todays_summary": "Today's summary",
+  "home.first_run": "First run",
+  "home.tagline":
+    "Agentic ops copilot for four plants, hundreds of SKUs, thousands of tonnes weekly. Choose a loop to start, or open FlowSight to see the whole network live.",
+  "home.loop_inbound": "Inbound",
+  "home.loop_production": "Production",
+  "home.loop_outbound": "Outbound",
+  "home.loop_network": "Network",
+  "home.loop_desc_inbound": "Supplier reliability, PO landed cost, MOQ-tax",
+  "home.loop_desc_production": "Live yield, line schedule, changeover cost",
+  "home.loop_desc_outbound": "Retailer fulfilment, forecast vs PO, shelf-life",
+  "home.loop_desc_network": "Cross-plant balancing, transfer arcs, FlowSight",
 
   // Action cards
   "card.pending": "Pending approval",
@@ -420,6 +431,17 @@ const fr: Dictionary = {
   "home.lots_critical": "Lots critiques",
   "home.active_runs": "Lancements actifs",
   "home.todays_summary": "Résumé du jour",
+  "home.first_run": "Première utilisation",
+  "home.tagline":
+    "Copilote agentique pour quatre usines, des centaines de produits, des milliers de tonnes par semaine. Choisissez une boucle ou ouvrez FlowSight pour voir tout le réseau en direct.",
+  "home.loop_inbound": "Entrants",
+  "home.loop_production": "Production",
+  "home.loop_outbound": "Expéditions",
+  "home.loop_network": "Réseau",
+  "home.loop_desc_inbound": "Fiabilité fournisseur, coût rendu, taxe MOQ",
+  "home.loop_desc_production": "Rendement en direct, calendrier, coût de changement",
+  "home.loop_desc_outbound": "Livraison détaillants, prévision vs commande, durée de vie",
+  "home.loop_desc_network": "Équilibrage inter-usines, transferts, FlowSight",
 
   // Action cards
   "card.pending": "En attente d'approbation",
