@@ -105,8 +105,11 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionListVersion, setSessionListVersion] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const voiceWsRef = useRef<WebSocket | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceFinalRef = useRef<string>("");
+  const voiceBaseRef = useRef<string>("");
   const inflightRef = useRef(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
@@ -331,15 +334,53 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     await sendMessage(u);
   };
 
+  const stopVoiceCapture = useCallback(() => {
+    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    try { voiceStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    try {
+      if (voiceWsRef.current?.readyState === WebSocket.OPEN) {
+        voiceWsRef.current.send(JSON.stringify({ type: "CloseStream" }));
+      }
+    } catch { /* ignore */ }
+    try { voiceWsRef.current?.close(); } catch { /* ignore */ }
+    mediaRecorderRef.current = null;
+    voiceStreamRef.current = null;
+    voiceWsRef.current = null;
+    setIsRecording(false);
+  }, []);
+
   const toggleRecording = useCallback(async () => {
     if (isRecording) {
-      mediaRecorderRef.current?.stop();
+      stopVoiceCapture();
       return;
     }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       window.alert("Voice input is unavailable: this browser does not expose a microphone API.");
       return;
     }
+
+    // 1) Fetch a Deepgram access token from the backend.
+    let token = "";
+    let model = "nova-3";
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/voice/realtime_token`, { method: "POST" });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error("voice token http", res.status, detail);
+        window.alert(`Couldn't start voice (HTTP ${res.status}). Is the backend running and DEEPGRAM_API_KEY set?`);
+        return;
+      }
+      const data = (await res.json()) as { access_token?: string; model?: string };
+      token = data.access_token || "";
+      if (data.model) model = data.model;
+      if (!token) throw new Error("empty token");
+    } catch (err) {
+      console.error("voice token fetch failed:", err);
+      window.alert("Couldn't start voice. Is the backend reachable?");
+      return;
+    }
+
+    // 2) Get mic stream.
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -348,82 +389,90 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
       window.alert("Microphone access was denied. Allow it in your browser site settings and try again.");
       return;
     }
+    voiceStreamRef.current = stream;
 
-    // Pick the best mime type the browser actually supports.
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4;codecs=mp4a.40.2",
-      "audio/mp4",
-      "audio/ogg;codecs=opus",
-    ];
-    const mimeType =
-      candidates.find((t) =>
-        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t),
+    // 3) Open the Deepgram streaming WebSocket. Auth via subprotocol so
+    //    the access token never leaks into the URL.
+    const params = new URLSearchParams({
+      model,
+      smart_format: "true",
+      interim_results: "true",
+      punctuate: "true",
+      language: "en",
+      encoding: "opus",
+    });
+    const ws = new WebSocket(
+      `wss://api.deepgram.com/v1/listen?${params.toString()}`,
+      ["token", token],
+    );
+    voiceWsRef.current = ws;
+
+    voiceBaseRef.current = (input ? input + " " : "");
+    voiceFinalRef.current = "";
+
+    ws.onopen = () => {
+      // Pick the best opus-bearing container MediaRecorder supports.
+      const candidates = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"];
+      const mimeType = candidates.find(
+        (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t),
       ) ?? "";
-
-    let mr: MediaRecorder;
-    try {
-      mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-    } catch (err) {
-      console.error("MediaRecorder construction failed:", err);
-      window.alert("Voice recording is not supported in this browser.");
-      stream.getTracks().forEach((t) => t.stop());
-      return;
-    }
-    const recordedMime = mr.mimeType || mimeType || "audio/webm";
-    const ext = recordedMime.includes("mp4") ? "mp4" : recordedMime.includes("ogg") ? "ogg" : "webm";
-
-    audioChunksRef.current = [];
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunksRef.current.push(e.data);
-    };
-    mr.onerror = (e) => {
-      console.error("MediaRecorder error:", e);
-    };
-    mr.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      setIsRecording(false);
-
-      const blob = new Blob(audioChunksRef.current, { type: recordedMime });
-      if (blob.size < 500) {
-        console.warn("Voice clip too short to transcribe", blob.size);
+      let mr: MediaRecorder;
+      try {
+        mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch (err) {
+        console.error("MediaRecorder construction failed:", err);
+        window.alert("Voice recording is not supported in this browser.");
+        stopVoiceCapture();
         return;
       }
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+          ws.send(e.data);
+        }
+      };
+      mr.onerror = (e) => console.error("MediaRecorder error:", e);
+      // 250 ms chunks → low-latency live transcription.
+      mr.start(250);
+      mediaRecorderRef.current = mr;
+      setIsRecording(true);
+    };
 
-      const form = new FormData();
-      form.append("file", blob, `voice.${ext}`);
+    ws.onmessage = (event) => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/voice/upload`, {
-          method: "POST",
-          body: form,
-        });
-        if (!res.ok) {
-          const detail = await res.text().catch(() => "");
-          console.error("Voice transcription HTTP error:", res.status, detail);
-          window.alert(
-            `Transcription failed (HTTP ${res.status}). ${detail.slice(0, 200)}`,
-          );
-          return;
+        const msg = JSON.parse(event.data as string) as {
+          channel?: { alternatives?: Array<{ transcript?: string }> };
+          is_final?: boolean;
+          speech_final?: boolean;
+        };
+        const transcript = msg.channel?.alternatives?.[0]?.transcript ?? "";
+        if (!transcript) return;
+        if (msg.is_final || msg.speech_final) {
+          voiceFinalRef.current = (voiceFinalRef.current + " " + transcript).trim();
+          setInput(voiceBaseRef.current + voiceFinalRef.current);
+        } else {
+          // Show interim hypothesis live without committing it to final state.
+          const live = (voiceFinalRef.current + " " + transcript).trim();
+          setInput(voiceBaseRef.current + live);
         }
-        const data = (await res.json()) as { transcription?: string };
-        const transcript = (data.transcription || "").trim();
-        if (!transcript) {
-          window.alert("No speech detected — try again, closer to the mic.");
-          return;
-        }
-        // Append to whatever the user already typed instead of clobbering it.
-        setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
       } catch (err) {
-        console.error("Voice upload failed:", err);
-        window.alert("Could not reach the transcription service. Is the backend running?");
+        console.warn("Deepgram WS message parse error:", err);
       }
     };
 
-    mediaRecorderRef.current = mr;
-    mr.start();
-    setIsRecording(true);
-  }, [isRecording]);
+    ws.onerror = (e) => {
+      console.error("Deepgram WS error:", e);
+    };
+
+    ws.onclose = () => {
+      // Ensure we tear down on remote close.
+      try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+      try { voiceStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      mediaRecorderRef.current = null;
+      voiceStreamRef.current = null;
+      voiceWsRef.current = null;
+      setIsRecording(false);
+    };
+  }, [isRecording, input, stopVoiceCapture]);
 
   const testPing = () => {
     setMessages(m => [...m, { role: "assistant", agent: "ping", text: "", time: nowTime(), thinking: true }]);
