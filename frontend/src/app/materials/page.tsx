@@ -4,7 +4,7 @@ import { useApp } from "../../lib/context";
 import { Icon } from "../../components/Icon";
 import { Pill, RiskBar, StatusBadge, SectionHeader } from "../../components/atoms";
 import { FACILITIES, Lot } from "../../lib/data";
-import { useLots, useLotSubstitutions, useIngredients } from "../../lib/hooks";
+import { useLots, useLotUsedIn, useIngredients } from "../../lib/hooks";
 import {
   writeOffLot,
   transferLot,
@@ -15,7 +15,7 @@ import {
   deleteIngredient,
   fetchIngredients,
   fetchFinishedGoods,
-  type BackendSubstitutionCandidate,
+  type BackendFormulaUsage,
   type BackendIngredient,
   type BackendFinishedPallet,
 } from "../../lib/api";
@@ -480,17 +480,7 @@ function LotSlideIn({
   onLotUpdate?: (updated: Lot) => void;
 }) {
   const backendLotId = lot.id.toLowerCase();
-  const { data: rawSubs, status: subsStatus } = useLotSubstitutions(backendLotId);
-
-  const substitutes = rawSubs.map((s: BackendSubstitutionCandidate, i: number) => ({
-    name: s.sku_name,
-    facility: s.facility_name ?? s.facility_id ?? "—",
-    qty: s.achievable_quantity,
-    compat: s.margin_score,
-    allergen: s.allergens && s.allergens.length > 0 ? s.allergens.join(", ") : "none",
-    rank: i + 1,
-    sku_id: s.sku_id,
-  }));
+  const { data: usedIn, status: usedInStatus } = useLotUsedIn(backendLotId);
 
   return (
     <div
@@ -521,29 +511,29 @@ function LotSlideIn({
 
         <div>
           <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold mb-2">
-            Substitution candidates
-            {subsStatus === "live" && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
+            Used in products
+            {usedInStatus === "live" && <span className="ml-2 text-emerald-400 normal-case font-normal">· live</span>}
           </div>
-          {subsStatus === "loading" && (
+          {usedInStatus === "loading" && (
             <div className="text-[12px] text-slate-500 py-3">Loading…</div>
           )}
-          {subsStatus !== "loading" && substitutes.length === 0 && (
-            <div className="text-[12px] text-slate-500 py-3">No substitution candidates found for this lot.</div>
+          {usedInStatus !== "loading" && usedIn.length === 0 && (
+            <div className="text-[12px] text-slate-500 py-3">No recipes found for this ingredient.</div>
           )}
           <div className="space-y-1.5">
-            {substitutes.map((s, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
-                <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[11px] font-mono text-slate-300">{s.rank}</div>
+            {usedIn.map((p: BackendFormulaUsage) => (
+              <div key={p.sku_id} className="flex items-center gap-3 rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] text-slate-100">{s.name}</div>
-                  <div className="text-[11px] font-mono text-slate-500">{s.facility} · {s.qty} kg avail · allergen {s.allergen}</div>
+                  <div className="text-[13px] text-slate-100">{p.sku_name}</div>
+                  <div className="text-[11px] font-mono text-slate-500">
+                    {p.sku_id}
+                    {p.category ? ` · ${p.category}` : ""}
+                    {p.allergen_tags.length > 0 ? ` · ${p.allergen_tags.join(", ")}` : ""}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[14px] font-mono tabular-nums text-emerald-300">{Math.round(s.compat * 100)}%</div>
-                  <div className="text-[10px] text-slate-500">compat</div>
-                </div>
-                <div className="px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 text-[11px]">
-                  Use in Production
+                <div className="text-right shrink-0">
+                  <div className="text-[14px] font-mono tabular-nums text-blue-300">{p.kg_per_unit} kg</div>
+                  <div className="text-[10px] text-slate-500">per unit</div>
                 </div>
               </div>
             ))}
@@ -1012,7 +1002,7 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
                 <button
                   onClick={() => setTransferLotTarget(l)}
                   disabled={l.status === "expired"}
@@ -1061,7 +1051,7 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Sub options</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
                       <button
                         onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
                         disabled={l.status === "expired"}

@@ -303,6 +303,14 @@ export interface BackendSubstitutionCandidate {
   allergens?: string[];
 }
 
+export interface BackendFormulaUsage {
+  sku_id: string;
+  sku_name: string;
+  category: string | null;
+  kg_per_unit: number;
+  allergen_tags: string[];
+}
+
 export interface BackendScheduleRun {
   run_id: string;
   sku_id: string;
@@ -355,6 +363,14 @@ export async function fetchLotSubstitutions(
 ): Promise<BackendSubstitutionCandidate[] | null> {
   return safeFetch<BackendSubstitutionCandidate[]>(
     `/api/lots/${encodeURIComponent(lotId)}/substitutions`,
+  );
+}
+
+export async function fetchLotUsedIn(
+  lotId: string,
+): Promise<BackendFormulaUsage[] | null> {
+  return safeFetch<BackendFormulaUsage[]>(
+    `/api/lots/${encodeURIComponent(lotId)}/used_in`,
   );
 }
 
