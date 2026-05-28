@@ -410,6 +410,57 @@ async def create_order(
     return await _order_to_row(order, sku.name)
 
 
+@router.post("/orders/draft_new", response_model=dict)
+async def draft_new_production_order(
+    req: CreateOrderRequest, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Create a pending action card to add a NEW production order on a chosen
+    line. The order is NOT applied until the operator confirms the card —
+    on confirm, _execute_new_production_order_card hits the same create
+    path as POST /orders so validation rules are identical."""
+    # Up-front validation so the agent sees an immediate 400 rather than a
+    # surprise 409 at confirm time.
+    facility = await db.get(Facility, req.facility_id)
+    if not facility:
+        raise HTTPException(404, f"facility {req.facility_id} not found")
+    line = await db.get(ProductionLine, req.line_id)
+    if not line:
+        raise HTTPException(404, f"production line {req.line_id} not found")
+    if line.facility_id != req.facility_id:
+        raise HTTPException(400, "line does not belong to the specified facility")
+    sku = await db.get(Sku, req.sku_id)
+    if not sku:
+        raise HTTPException(404, f"product {req.sku_id} not found")
+    if line.status not in ("idle", "maintenance"):
+        raise HTTPException(
+            409,
+            f"line {req.line_id} is currently {line.status}; clear it before drafting a new order",
+        )
+
+    card = ActionCardORM(
+        kind="new_production_order",
+        payload={
+            "facility_id": req.facility_id,
+            "line_id": req.line_id,
+            "sku_id": req.sku_id,
+            "sku_name": sku.name,
+            "quantity_units": req.quantity_units,
+            "planned_start_at": req.planned_start_at,
+            "notes": req.notes,
+            "title": f"New run: {req.quantity_units} units of {sku.name} on {req.line_id}",
+            "agent": "SchedulerAgent",
+        },
+    )
+    db.add(card)
+    await db.commit()
+    await db.refresh(card)
+    return {
+        "action_card_id": str(card.card_id),
+        "kind": "new_production_order",
+        "title": card.payload["title"],
+    }
+
+
 class UpdateStatusRequest(BaseModel):
     status: str
 
