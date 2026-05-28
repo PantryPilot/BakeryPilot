@@ -47,20 +47,21 @@ const FILTER_RISK = ["All", "OK", "At Risk", "Critical", "Expired"];
 
 // ── Sortable column header ─────────────────────────────────────────────────────
 function SortTh({
-  label, col, activeCol, dir, onSort, right,
+  label, col, activeCol, dir, onSort, right, filterActive,
 }: {
   label: string; col: string; activeCol: string;
   dir: "asc" | "desc"; onSort: (col: string) => void; right?: boolean;
+  filterActive?: boolean;
 }) {
   const active = col === activeCol;
   return (
     <th
       onClick={() => onSort(col)}
-      className={`px-3 py-2 font-semibold cursor-pointer select-none group transition-colors hover:text-slate-300 ${right ? "text-right" : "text-left"}`}
+      className={`px-3 py-2 font-semibold cursor-pointer select-none group transition-colors hover:text-slate-300 ${right ? "text-right" : "text-left"} ${filterActive ? "bg-amber-500/10" : ""}`}
     >
       <span className={`inline-flex items-center gap-1 ${right ? "flex-row-reverse" : ""}`}>
-        {label}
-        <span className={`text-[10px] leading-none ${active ? "text-blue-400" : "text-slate-700 group-hover:text-slate-500"}`}>
+        <span>{label}</span>
+        <span className="text-[10px] leading-none text-slate-600 group-hover:text-slate-400">
           {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
         </span>
       </span>
@@ -1066,15 +1067,13 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 transition">Used in</button>
                 <button
                   onClick={() => setTransferLotTarget(l)}
                   disabled={l.status === "expired"}
-                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Transfer
-                </button>
-                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
+                  className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >Transfer</button>
+                <button onClick={() => setWriteOffLotTarget(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 transition">Write-off</button>
               </div>
             </div>
           ))}
@@ -1087,12 +1086,12 @@ export default function MaterialsPage() {
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Lot ID</th>
                 <SortTh label="Ingredient"  col="ingredient" activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
-                <SortTh label="Facility"    col="facility"   activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Facility"    col="facility"   activeCol={sortKey} dir={sortDir} onSort={handleIngSort} filterActive={facility !== "all"}/>
                 <SortTh label="Qty (kg)"    col="qty"        activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
                 <SortTh label="Expiry"      col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
-                <SortTh label="Days left"   col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right/>
-                <SortTh label="Storage"     col="storage"    activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
-                <SortTh label="Risk score"  col="risk"       activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
+                <SortTh label="Days left"   col="expiry"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort} right filterActive={daysFilter !== "All"}/>
+                <SortTh label="Storage"     col="storage"    activeCol={sortKey} dir={sortDir} onSort={handleIngSort} filterActive={storage !== "All"}/>
+                <SortTh label="Risk score"  col="risk"       activeCol={sortKey} dir={sortDir} onSort={handleIngSort} filterActive={risk !== "All"}/>
                 <SortTh label="Status"      col="status"     activeCol={sortKey} dir={sortDir} onSort={handleIngSort}/>
                 <th className="px-3 py-2 text-left font-semibold">Actions</th>
               </tr>
@@ -1115,16 +1114,14 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300">Used in</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 transition">Used in</button>
                       <button
                         onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
                         disabled={l.status === "expired"}
-                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Transfer
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300">Write-off</button>
-                      <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded text-red-500 hover:text-red-400 border border-red-500/30 hover:border-red-500/60">Delete</button>
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      >Transfer</button>
+                      <button onClick={e => { e.stopPropagation(); setWriteOffLotTarget(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 transition">Write-off</button>
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirmLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-red-500/30 hover:border-red-500/60 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition">Delete</button>
                     </div>
                   </td>
                 </tr>

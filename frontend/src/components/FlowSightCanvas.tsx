@@ -580,6 +580,8 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
   const [live, setLive] = useState(true);
   const [activePlant, setActivePlant] = useState<PlantData | null>(null);
   const [plantClosing, setPlantClosing] = useState(false);
+  const [suppliersCollapsed, setSuppliersCollapsed] = useState(false);
+  const [retailersCollapsed, setRetailersCollapsed] = useState(false);
   const setLayer = useCallback((id: string, on: boolean) => setLayers(s => ({ ...s, [id]: on })), []);
 
   const closePlant = useCallback(() => {
@@ -634,8 +636,18 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         <path d="M 250 200 Q 350 170, 480 200 T 700 180 T 920 200 L 980 320 Q 940 360, 850 360 L 700 380 Q 600 380, 480 360 L 320 340 Q 240 320, 220 280 Z"
               fill="url(#canadaTint)" stroke="#334155" strokeOpacity="0.4" strokeWidth="1" strokeDasharray="3 4"/>
         <text x={PLANT_CX} y="190" textAnchor="middle" fontSize="11" fill="#475569" fontFamily="ui-monospace, monospace" letterSpacing="0.2em">CANADA</text>
-        <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">SUPPLIERS ›</text>
-        <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="ui-monospace, monospace" letterSpacing="0.18em">‹ RETAILERS</text>
+        <g style={{ cursor: "pointer" }} onClick={() => setSuppliersCollapsed(c => !c)}>
+          <rect x={SUPPLIER_X - 52} y="68" width="104" height="18" rx="4" fill="#0c111c" stroke="#334155" strokeWidth="1"/>
+          <text x={SUPPLIER_X} y="80" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontFamily="ui-monospace, monospace" letterSpacing="0.14em">
+            SUPPLIERS {suppliersCollapsed ? "›" : "‹"}
+          </text>
+        </g>
+        <g style={{ cursor: "pointer" }} onClick={() => setRetailersCollapsed(c => !c)}>
+          <rect x={RETAILER_X - 52} y="346" width="104" height="18" rx="4" fill="#0c111c" stroke="#334155" strokeWidth="1"/>
+          <text x={RETAILER_X} y="358" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontFamily="ui-monospace, monospace" letterSpacing="0.14em">
+            {retailersCollapsed ? "›" : "‹"} RETAILERS
+          </text>
+        </g>
 
         {layers.procure && FLOWS.filter(f => f.kind === "inbound").map(f => (
           <path key={"a-" + f.id} d={arcPath(f.from, f.to, 0.18)} stroke="#3b82f6" strokeOpacity="0.25" strokeWidth="1" fill="none" strokeDasharray="3 4"/>
@@ -653,19 +665,41 @@ export function FlowSightCanvas({ openChatContext }: FlowSightCanvasProps) {
         {FLOWS.filter(f => f.kind === "outbound").map((f, idx) => <TruckSprite key={"to-" + f.id} flow={f} dur={14 + idx * 2}/>)}
         {layers.network && FLOWS.filter(f => f.kind === "transfer").map(f => <TruckSprite key={"tx-" + f.id} flow={f} dur={18}/>)}
 
-        {supplierPos.map(s => (
-          <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
-        ))}
+        {/* count bubble — pops in from center when collapsed */}
+        <g transform={`translate(${SUPPLIER_X}, 300)`}>
+          <g style={{ transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease", transform: suppliersCollapsed ? "scale(1)" : "scale(0)", transformOrigin: "0px 0px", opacity: suppliersCollapsed ? 1 : 0, pointerEvents: suppliersCollapsed ? "auto" : "none" }}>
+            <circle r="22" fill="#0c111c" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2"/>
+            <text textAnchor="middle" dy="-4" fontSize="18" fontWeight="700" fill="#94a3b8">{supplierPos.length}</text>
+            <text textAnchor="middle" dy="10" fontSize="8" fill="#64748b" fontFamily="ui-monospace, monospace">suppliers</text>
+          </g>
+        </g>
+        {/* nodes — collapse/expand by scaling toward column center */}
+        <g style={{ transition: "transform 0.3s cubic-bezier(0.4,0,0.6,1), opacity 0.22s ease", transform: suppliersCollapsed ? "scale(0)" : "scale(1)", transformOrigin: `${SUPPLIER_X}px 330px`, opacity: suppliersCollapsed ? 0 : 1, pointerEvents: suppliersCollapsed ? "none" : "auto" }}>
+          {supplierPos.map(s => (
+            <SupplierNode key={s.id} s={s} riskOn={layers.risk} onClick={() => openChatContext?.(`Supplier: ${s.name}`)}/>
+          ))}
+        </g>
         {PLANT_POS.map((p: PlantData) => (
           <PlantNode key={p.id} p={p} onClick={() => setActivePlant(p)}
             scheduleOn={layers.schedule} esgOn={layers.esg} yieldOn={layers.yield} shelfOn={layers.shelf}/>
         ))}
-        {retailerPos.map(rr => (
-          <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
-        ))}
+        {/* count bubble — pops in from center when collapsed */}
+        <g transform={`translate(${RETAILER_X}, 460)`}>
+          <g style={{ transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease", transform: retailersCollapsed ? "scale(1)" : "scale(0)", transformOrigin: "0px 0px", opacity: retailersCollapsed ? 1 : 0, pointerEvents: retailersCollapsed ? "auto" : "none" }}>
+            <circle r="22" fill="#0c111c" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2"/>
+            <text textAnchor="middle" dy="-4" fontSize="18" fontWeight="700" fill="#94a3b8">{retailerPos.length}</text>
+            <text textAnchor="middle" dy="10" fontSize="8" fill="#64748b" fontFamily="ui-monospace, monospace">retailers</text>
+          </g>
+        </g>
+        {/* nodes — collapse/expand by scaling toward column center */}
+        <g style={{ transition: "transform 0.3s cubic-bezier(0.4,0,0.6,1), opacity 0.22s ease", transform: retailersCollapsed ? "scale(0)" : "scale(1)", transformOrigin: `${RETAILER_X}px 482px`, opacity: retailersCollapsed ? 0 : 1, pointerEvents: retailersCollapsed ? "none" : "auto" }}>
+          {retailerPos.map(rr => (
+            <RetailerNode key={rr.id} r={rr} forecastOn={layers.forecast}/>
+          ))}
+        </g>
       </svg>
-      {/* Legend panel — top-left, theme-aware */}
-      <div className="absolute top-4 right-2 sm:right-4 z-10 flex flex-col gap-3">
+      {/* Legend panel — moves to left when FactoryView is open to avoid overlap */}
+      <div className={`absolute top-4 z-10 flex flex-col gap-3 transition-all duration-300 ${activePlant ? "left-2 sm:left-4" : "right-2 sm:right-4"}`}>
         <LayerToggles layers={layers} setLayer={setLayer}/>
         <FlowLegend />
       </div>

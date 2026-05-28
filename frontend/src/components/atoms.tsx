@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
 
 // ---------- Pill ----------
-type PillTone = "slate" | "blue" | "green" | "amber" | "red" | "redPulse" | "teal" | "ghost" | "purple";
+type PillTone = "slate" | "blue" | "green" | "amber" | "red" | "redPulse" | "teal" | "ghost" | "purple" | "darkRed";
 
 export function Pill({ tone = "slate", children, className = "", style }: { tone?: PillTone; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   const tones: Record<PillTone, string> = {
@@ -11,11 +11,12 @@ export function Pill({ tone = "slate", children, className = "", style }: { tone
     blue:     "bg-blue-500/10 text-blue-300 border-blue-500/30",
     green:    "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
     amber:    "bg-amber-500/10 text-amber-300 border-amber-500/30",
-    red:      "bg-red-500/10 text-red-300 border-red-500/30",
+    red:      "bg-red-400/10 text-red-400 border-red-400/30",
     redPulse: "bg-red-500/15 text-red-200 border-red-500/40 pulse-red",
     teal:     "bg-teal-500/10 text-teal-300 border-teal-500/30",
     ghost:    "bg-transparent text-slate-400 border-slate-700",
     purple:   "bg-purple-500/10 text-purple-300 border-purple-500/30",
+    darkRed:  "bg-red-900/50 text-red-200 border-red-800/60",
   };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-medium tracking-wide ${tones[tone]} ${className}`} style={style}>
@@ -256,10 +257,10 @@ export function YieldCounter({ actual, target, lostDollars, anomaly }: { actual:
 // ---------- StatusBadge ----------
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { tone: PillTone; label: string }> = {
-    ok:       { tone: "green", label: "OK" },
-    warn:     { tone: "amber", label: "At Risk" },
-    critical: { tone: "red",    label: "Critical" },
-    expired:  { tone: "purple", label: "Expired" },
+    ok:       { tone: "green",   label: "OK" },
+    warn:     { tone: "amber",   label: "At Risk" },
+    critical: { tone: "red",     label: "Critical" },
+    expired:  { tone: "darkRed", label: "Expired" },
   };
   const { tone, label } = map[status] || map.ok;
   return <Pill tone={tone}>{label}</Pill>;
