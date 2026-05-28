@@ -1048,14 +1048,14 @@ export default function MaterialsPage() {
                   { label: "Status",     right: false, active: risk !== "All" },
                   { label: "Actions",    right: false, active: false },
                 ].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-left font-semibold ${h.right ? "text-right" : ""} ${h.active ? "text-blue-400" : ""}`}>
-                    {h.label}{h.active && <span className="ml-1 text-blue-400">↑</span>}
+                  <th key={i} className={`px-3 py-2 text-left font-semibold ${h.right ? "text-right" : ""} ${h.active ? "text-blue-400 border-b-2 border-blue-500" : "border-b-2 border-transparent"}`}>
+                    {h.label}{h.active && <span className="ml-1">↑</span>}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(l => (
+              {filtered.slice(0, 200).map(l => (
                 <tr key={l.id} onClick={() => setActiveLot(l)} className="border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition">
                   <td className="px-3 py-2.5 font-mono text-slate-400 max-w-[120px]">
                     <span className="block truncate" title={l.id}>{l.id.slice(0, 12)}…</span>
@@ -1089,6 +1089,11 @@ export default function MaterialsPage() {
             </tbody>
           </table>
           </div>
+          {filtered.length > 200 && (
+            <div className="px-4 py-2 border-t border-slate-800 text-[11px] text-slate-500 font-mono">
+              Showing 200 of {filtered.length} lots — refine filters to see more
+            </div>
+          )}
         </div>
 
         <div className="mt-6">

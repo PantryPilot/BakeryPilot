@@ -56,6 +56,10 @@ const FALLBACK_USER: AppUserInfo = {
 const USER_CACHE_KEY = "bp:user";
 const NOTIF_PREFS_CACHE_KEY = "bp:notif_prefs";
 
+// In-memory set for this page session. Resets on hard refresh so toasts
+// reappear, but won't re-fire when navigating between pages.
+const seenThisSession = new Set<string>();
+
 export interface AppNotification {
   ref_id: string;
   kind: string;
@@ -272,10 +276,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     es.addEventListener("alert", (e: MessageEvent) => {
       try {
         const alert = JSON.parse(e.data as string);
+        const alreadySeen = seenThisSession.has(alert.ref_id as string);
         setNotifications(prev => {
           if (prev.some(n => n.ref_id === alert.ref_id)) return prev;
-          return [...prev, { ...alert, read: false }];
+          return [...prev, { ...alert, read: false, toastHidden: alreadySeen }];
         });
+        seenThisSession.add(alert.ref_id as string);
       } catch {}
     });
 

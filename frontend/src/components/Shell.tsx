@@ -133,19 +133,19 @@ const KIND_ICON: Record<string, string> = {
   yield_spike: "zap",
 };
 
-function NotificationPanel({ onClose }: { onClose: () => void }) {
+function NotificationPanel({ onClose, excludeRef }: { onClose: () => void; excludeRef: React.RefObject<HTMLElement | null> }) {
   const { notifications, dismissNotification, openChatContext } = useApp();
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    function handler(e: MouseEvent) {
+      if (excludeRef.current?.contains(e.target as Node)) return;
+      if (panelRef.current?.contains(e.target as Node)) return;
+      onClose();
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose, excludeRef]);
 
   const handleAskCopilot = (refId: string, action: string) => {
     dismissNotification(refId);
@@ -270,6 +270,7 @@ export function TopBar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const facilityRef = useRef<HTMLDivElement>(null);
+  const notifBellRef = useRef<HTMLButtonElement>(null);
   const { open: tourOpen, start: startTour, close: closeTour } = useTour();
 
   // Close facility dropdown on outside click
@@ -383,6 +384,7 @@ export function TopBar() {
         {/* Notification bell */}
         <div className="relative" data-tour="notifications">
           <button
+            ref={notifBellRef}
             onClick={handleNotifToggle}
             className="relative p-1.5 rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
             aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
@@ -394,7 +396,7 @@ export function TopBar() {
               </span>
             )}
           </button>
-          {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)}/>}
+          {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} excludeRef={notifBellRef}/>}
         </div>
 
         {/* User avatar */}
