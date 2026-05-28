@@ -27,6 +27,17 @@
   --bp-scrollbar: #1e293b;
   --bp-scrollbar-hover: #334155;
   --bp-toggle-off: #334155;
+  /* FlowSight Canada map */
+  --bp-map-bg-center: #0d1424;
+  --bp-map-bg-edge: #080b14;
+  --bp-map-land: #1c2540;
+  --bp-map-land-deep: #161d2e;
+  --bp-map-shadow: #0e1422;
+  --bp-map-stroke: #3a4868;
+  --bp-map-water: #0c121f;
+  --bp-map-water-stroke: #3a4868;
+  --bp-map-city: #94a3b8;
+  --bp-map-label: #475569;
 }
 
 :root[data-theme="light"] {
@@ -51,6 +62,17 @@
   --bp-scrollbar: #cfd8e6;
   --bp-scrollbar-hover: #a3b1c6;
   --bp-toggle-off: #d3dbe8;
+  /* FlowSight Canada map */
+  --bp-map-bg-center: #eaf0f8;
+  --bp-map-bg-edge: #dbe3ef;
+  --bp-map-land: #c7d2e3;
+  --bp-map-land-deep: #b3c0d4;
+  --bp-map-shadow: #aebac9;
+  --bp-map-stroke: #8fa0b7;
+  --bp-map-water: #e8eef6;
+  --bp-map-water-stroke: #b3c0d4;
+  --bp-map-city: #64748b;
+  --bp-map-label: #94a3b8;
 }
 
 :root,
