@@ -398,6 +398,17 @@ export async function createSchedule(
   });
 }
 
+export async function deleteSchedule(scheduleId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: "DELETE",
+    });
+    return res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchMoqTax(
   supplierId: string,
 ): Promise<BackendMoqTaxEntry[] | null> {

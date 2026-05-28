@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -109,6 +109,27 @@ async def create_schedule(
     await db.commit()
     await db.refresh(row)
     return _to_model(row)
+
+
+@router.delete("/{schedule_id}", status_code=204)
+async def delete_schedule(
+    schedule_id: str, db: AsyncSession = Depends(get_db)
+) -> Response:
+    """Remove a production_schedules row (manual planner delete)."""
+    try:
+        sid = uuid.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    row = await db.get(ScheduleORM, sid)
+    if not row:
+        raise HTTPException(404, _schedule_not_found_detail(schedule_id))
+    await db.execute(
+        text("UPDATE production_runs SET schedule_id = NULL WHERE schedule_id = :sid"),
+        {"sid": sid},
+    )
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{schedule_id}", response_model=ProductionSchedule)

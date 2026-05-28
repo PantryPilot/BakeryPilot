@@ -9,6 +9,7 @@ import {
   adaptActionCard,
   confirmActionCard,
   createSchedule,
+  deleteSchedule,
   fetchActionCard,
   fetchFacilities,
   fetchPendingScheduleChangeCard,
@@ -184,6 +185,55 @@ function RunHoverCard({
   );
 }
 
+type RunMenuState = { run: ProductionRun; x: number; y: number } | null;
+
+function RunContextMenu({
+  menu,
+  onClose,
+  onDelete,
+  deletingId,
+}: {
+  menu: RunMenuState;
+  onClose: () => void;
+  onDelete: (run: ProductionRun) => void;
+  deletingId: string | null;
+}) {
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => onClose();
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu, onClose]);
+
+  if (!menu) return null;
+  const sku = SKUS.find(s => s.id === menu.run.sku);
+  const busy = deletingId === menu.run.id;
+  return createPortal(
+    <div
+      className="fixed z-[10000] min-w-[148px] rounded-lg border border-[var(--bp-border)] bg-[var(--bp-surface)] py-1 shadow-xl ring-1 ring-white/[0.04]"
+      style={{ left: menu.x, top: menu.y }}
+      onClick={e => e.stopPropagation()}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <button
+        type="button"
+        disabled={busy}
+        className="w-full px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+        onClick={() => onDelete(menu.run)}
+      >
+        {busy ? "Deleting…" : `Delete ${sku?.name ?? menu.run.sku}`}
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function GanttLane({
   lane,
   hours,
@@ -191,6 +241,7 @@ function GanttLane({
   isFirst,
   showNowLine,
   rowIndex,
+  onRunContextMenu,
 }: {
   lane: { key: string; plant: string; line: number; runs: ProductionRun[] };
   hours: number[];
@@ -198,6 +249,7 @@ function GanttLane({
   isFirst: boolean;
   showNowLine: boolean;
   rowIndex: number;
+  onRunContextMenu: (e: React.MouseEvent, run: ProductionRun) => void;
 }) {
   const sku = (id: string) => SKUS.find(s => s.id === id);
   const [hoveredRun, setHoveredRun] = useState<{ run: ProductionRun; el: HTMLElement } | null>(null);
@@ -238,6 +290,7 @@ function GanttLane({
             style={{ left: `calc(${leftPct}% + 3px)`, width: `calc(${widthPct}% - 6px)` }}
             onMouseEnter={e => setHoveredRun({ run: r, el: e.currentTarget })}
             onMouseLeave={() => setHoveredRun(null)}
+            onContextMenu={e => onRunContextMenu(e, r)}
           >
             <span className="text-[12px] font-medium text-[var(--bp-text-primary)] truncate">{sku(r.sku)?.name || r.sku}</span>
             <span className="text-[11px] font-mono text-[var(--bp-text-muted)] tabular-nums shrink-0">
@@ -716,6 +769,8 @@ export default function SchedulePage() {
   const [showDiff, setShowDiff] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [runMenu, setRunMenu] = useState<RunMenuState>(null);
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<BackendFacility[]>([]);
   const [productionLines, setProductionLines] = useState<BackendProductionLine[]>([]);
   const [products, setProducts] = useState<BackendProduct[]>([]);
@@ -801,6 +856,23 @@ export default function SchedulePage() {
 
   const defaultFacilityForAdd =
     plant !== "all" ? (PLANT_TO_FACILITY[plant] ?? facilities[0]?.facility_id ?? "") : facilities[0]?.facility_id ?? "";
+
+  const handleRunContextMenu = useCallback((e: React.MouseEvent, run: ProductionRun) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRunMenu({ run, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleDeleteRun = useCallback(async (run: ProductionRun) => {
+    const skuName = SKUS.find(s => s.id === run.sku)?.name ?? run.sku;
+    if (!window.confirm(`Delete schedule run for ${skuName}?`)) return;
+    setDeletingRunId(run.id);
+    const ok = await deleteSchedule(run.id);
+    setDeletingRunId(null);
+    setRunMenu(null);
+    if (ok) bumpScheduleRefresh();
+    else window.alert("Could not delete schedule run.");
+  }, [bumpScheduleRefresh]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -990,6 +1062,7 @@ export default function SchedulePage() {
                     isFirst={i === 0}
                     showNowLine={activeDate === todayKey}
                     rowIndex={i}
+                    onRunContextMenu={handleRunContextMenu}
                   />
               ))}
             </div>
@@ -1023,6 +1096,12 @@ export default function SchedulePage() {
             onSuccess={() => bumpScheduleRefresh()}
           />
         )}
+        <RunContextMenu
+          menu={runMenu}
+          onClose={() => setRunMenu(null)}
+          onDelete={handleDeleteRun}
+          deletingId={deletingRunId}
+        />
       </div>
     </div>
   );

@@ -41,3 +41,8 @@ def test_create_schedule_validation(client):
         },
     )
     assert r.status_code == 422
+
+
+def test_delete_schedule_not_found(client):
+    r = client.delete("/api/schedules/nonexistent_sched")
+    assert r.status_code == 404
