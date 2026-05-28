@@ -1490,17 +1490,17 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
           </button>
         </div>
         <div className="overflow-x-auto">
-        <table className="bp-data-table w-full min-w-[860px] text-[13px]">
+        <table className="bp-data-table w-full text-[12px]">
           <thead className="bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-500">
             <tr>
-              {(["Supplier", "Tier", "On-time", "Fill", "Window", "Price vs bench", "MOQ-tax QTD", "Contract expiry", "Status", "Actions"] as const).map((h, i) => {
+              {(["Supplier", "Tier", "OT / Fill", "Price Δ", "MOQ-tax", "Expiry", "Status", "Actions"] as const).map((h, i) => {
                 const tierFiltered = h === "Tier" && supplierTierFilter !== "All";
                 const statusFiltered = h === "Status" && supplierStatusFilter !== "All";
                 const filtered = tierFiltered || statusFiltered;
                 return (
                   <th
                     key={i}
-                    className={`px-3 py-2 text-left font-semibold ${[2,3,4,5,6].includes(i) ? "text-right" : ""} ${filtered ? "bg-amber-500/10" : ""}`}
+                    className={`px-2 py-2 text-left font-semibold ${[2,3,4].includes(i) ? "text-right" : ""} ${filtered ? "bg-amber-500/10" : ""}`}
                   >
                     {h}
                   </th>
@@ -1513,53 +1513,49 @@ function SuppliersTab({ openChatContext }: { openChatContext?: (ctx: string) => 
               const rowTone = s.status === "disrupt" ? "bg-red-500/[0.06]" : s.status === "warn" ? "bg-amber-500/[0.04]" : "";
               return (
                 <tr key={s.id} onClick={() => setActiveSupplier(s)} className={`border-t border-slate-800/80 hover:bg-slate-800/40 cursor-pointer transition ${rowTone}`}>
-                  <td className="px-3 py-2.5 max-w-[200px]">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="shrink-0">
-                        <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={28}>
-                          <span className="text-[9px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
-                        </ReliabilityHalo>
-                      </div>
-                      <span className="text-slate-100 truncate">{s.name}</span>
+                  <td className="px-2 py-2 max-w-[160px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <ReliabilityHalo score={s.onTime} disrupt={s.status === "disrupt"} size={24}>
+                        <span className="text-[8px] font-mono font-bold text-slate-200">{s.name.split(" ").map(w => w[0]).join("").slice(0,2)}</span>
+                      </ReliabilityHalo>
+                      <span className="text-slate-100 truncate text-[12px]">{s.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <Pill tone={s.tier === 1 ? "blue" : "ghost"}>
-                      <span className="hidden md:inline">Tier </span>{s.tier}
-                    </Pill>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <Pill tone={s.tier === 1 ? "blue" : "ghost"}>T{s.tier}</Pill>
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.onTime * 100).toFixed(0)}%</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.fill * 100).toFixed(0)}%</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{(s.window * 100).toFixed(0)}%</td>
-                  <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${s.priceVsBench < 0 ? "text-emerald-300" : s.priceVsBench > 0.04 ? "text-red-300" : "text-amber-300"}`}>{(s.priceVsBench * 100).toFixed(1)}%</td>
-                  <td className="px-3 py-2.5 text-right">
-                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${Math.round(s.moqTaxQtd).toLocaleString()}</span> : <span className="text-slate-600">—</span>}
+                  <td className="px-2 py-2 text-right font-mono tabular-nums text-slate-200 whitespace-nowrap">
+                    {(s.onTime * 100).toFixed(0)}% / {(s.fill * 100).toFixed(0)}%
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-slate-300">{s.contractExpiry}</td>
-                  <td className="px-3 py-2.5">
+                  <td className={`px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap ${s.priceVsBench < 0 ? "text-emerald-300" : s.priceVsBench > 0.04 ? "text-red-300" : "text-amber-300"}`}>{(s.priceVsBench * 100).toFixed(1)}%</td>
+                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                    {s.moqTaxQtd > 0 ? <span className={`font-mono tabular-nums ${s.moqTaxQtd > 3000 ? "text-red-300" : "text-amber-300"}`}>${Math.round(s.moqTaxQtd / 1000).toFixed(1)}k</span> : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-2 py-2 font-mono text-slate-300 whitespace-nowrap">{s.contractExpiry}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
                     {s.status === "ok" && <Pill tone="green"><Dot tone="green"/>Healthy</Pill>}
                     {s.status === "warn" && <Pill tone="amber"><Dot tone="amber"/>Watch</Pill>}
                     {s.status === "disrupt" && <Pill tone="redPulse"><Dot tone="red" pulse/>Disrupted</Pill>}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1">
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-1 flex-nowrap">
                       {s.moqTaxQtd > 3000 && (
                         <button
                           onClick={e => { e.stopPropagation(); setActiveSupplier(s); }}
-                          className="px-1.5 py-0.5 text-[11px] rounded border border-red-500/40 bg-red-500/10 text-red-200"
+                          className="px-2.5 py-1 text-[11px] font-medium rounded border border-red-500/40 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-red-100 transition whitespace-nowrap"
                         >View draft</button>
                       )}
                       <button
                         onClick={e => { e.stopPropagation(); setPoContext(null); setPlacePOTarget(s); }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition shrink-0"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white transition whitespace-nowrap"
                       ><Icon name="truck" size={11}/>Place PO</button>
                       <button
                         onClick={e => { e.stopPropagation(); setEditTarget(s); }}
-                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-slate-500 text-slate-300"
+                        className="px-2.5 py-1 text-[11px] font-medium rounded border border-slate-700 hover:border-slate-500 hover:bg-slate-700/50 text-slate-300 transition whitespace-nowrap"
                       >Edit</button>
                       <button
                         onClick={e => { e.stopPropagation(); setDeleteConfirm(s); }}
-                        className="px-1.5 py-0.5 text-[11px] rounded text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60"
+                        className="px-2.5 py-1 text-[11px] font-medium rounded border border-red-500/30 hover:border-red-500/60 hover:bg-red-500/10 text-red-400 hover:text-red-300 transition whitespace-nowrap"
                       >Delete</button>
                     </div>
                   </td>

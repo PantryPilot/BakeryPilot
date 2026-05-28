@@ -67,7 +67,13 @@ export function useDraggable({
   const [position, setPosition] = useState<DragPosition | null>(() => {
     if (storageKey) {
       const stored = loadStored(storageKey);
-      if (stored) return stored;
+      if (stored) {
+        const clamped = clampToViewport(stored, width);
+        // If clamping moved the position substantially (stored was off-screen), reset it
+        const moved = Math.abs(clamped.x - stored.x) + Math.abs(clamped.y - stored.y);
+        if (moved > 40) return null; // fall back to CSS default
+        return clamped;
+      }
     }
     return initial ?? null;
   });

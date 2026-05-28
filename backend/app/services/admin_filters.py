@@ -88,6 +88,87 @@ TABLE_FILTER_DEFS: dict[str, tuple[TableFilterDef, ...]] = {
             },
         ),
     ),
+    # Additional tables
+    "allergen_changeovers": (
+        TableFilterDef("from_allergen", "From allergen"),
+        TableFilterDef("to_allergen", "To allergen"),
+    ),
+    "negotiation_drafts": (
+        TableFilterDef("supplier_id", "Supplier"),
+        TableFilterDef(
+            "status",
+            "Status",
+            {"pending": "Pending", "sent": "Sent", "discarded": "Discarded"},
+        ),
+        TableFilterDef("trigger_kind", "Trigger"),
+    ),
+    "production_runs": (
+        TableFilterDef("facility_id", "Facility"),
+        TableFilterDef("sku_id", "SKU"),
+        TableFilterDef(
+            "status",
+            "Status",
+            {"in_progress": "In progress", "complete": "Complete", "cancelled": "Cancelled"},
+        ),
+    ),
+    "finished_goods_pallets": (
+        TableFilterDef("facility_id", "Facility"),
+        TableFilterDef("sku_id", "SKU"),
+        TableFilterDef(
+            "status",
+            "Status",
+            {
+                "in_warehouse": "In warehouse",
+                "shipped": "Shipped",
+                "donated": "Donated",
+                "written_off": "Written off",
+            },
+        ),
+    ),
+    "retailer_orders": (
+        TableFilterDef("retailer_id", "Retailer"),
+        TableFilterDef(
+            "status",
+            "Status",
+            {"open": "Open", "scheduled": "Scheduled", "shipped": "Shipped", "cancelled": "Cancelled"},
+        ),
+    ),
+    "outbound_shipments": (
+        TableFilterDef("facility_id", "Facility"),
+        TableFilterDef(
+            "status",
+            "Status",
+            {"scheduled": "Scheduled", "in_transit": "In transit", "delivered": "Delivered"},
+        ),
+    ),
+    "suppliers": (
+        TableFilterDef(
+            "personality_tag",
+            "Personality",
+            {
+                "reliable": "Reliable",
+                "cheap_late": "Cheap / late",
+                "high_moq": "High MOQ",
+                "disrupted": "Disrupted",
+                "new": "New entrant",
+            },
+        ),
+    ),
+    "demand_forecasts": (
+        TableFilterDef("sku_id", "SKU"),
+        TableFilterDef("model_version", "Model version"),
+    ),
+    "inventory_events": (
+        TableFilterDef("facility_id", "Facility"),
+        TableFilterDef("event_type", "Event type"),
+    ),
+    "dock_schedules": (
+        TableFilterDef("facility_id", "Facility"),
+    ),
+    "moq_tax_ledger": (
+        TableFilterDef("supplier_id", "Supplier"),
+        TableFilterDef("facility_id", "Facility"),
+    ),
 }
 
 

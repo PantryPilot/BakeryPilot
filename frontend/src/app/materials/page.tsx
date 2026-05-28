@@ -1067,7 +1067,7 @@ export default function MaterialsPage() {
                 </div>
               </div>
               <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 transition">Used in</button>
+                <button onClick={() => setActiveLot(l)} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/15 hover:text-blue-300 text-slate-300 transition">Used in</button>
                 <button
                   onClick={() => setTransferLotTarget(l)}
                   disabled={l.status === "expired"}
@@ -1114,7 +1114,7 @@ export default function MaterialsPage() {
                   <td className="px-3 py-2.5"><StatusBadge status={l.status}/></td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-500 hover:bg-slate-800/40 text-slate-300 transition">Used in</button>
+                      <button onClick={e => { e.stopPropagation(); setActiveLot(l); }} className="px-1.5 py-0.5 text-[11px] rounded border border-slate-700 hover:border-blue-400 hover:bg-blue-500/15 hover:text-blue-300 text-slate-300 transition">Used in</button>
                       <button
                         onClick={e => { e.stopPropagation(); setTransferLotTarget(l); }}
                         disabled={l.status === "expired"}

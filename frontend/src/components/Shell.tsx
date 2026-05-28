@@ -39,7 +39,7 @@ export function Sidebar() {
     `}>
       <div className="h-14 flex items-center px-4 gap-2.5 border-b border-slate-800/80 shrink-0">
         <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-950">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
             <path d="M4 14c0-5 4-9 8-9s8 4 8 9c0 3-3 5-8 5s-8-2-8-5z"/>
             <path d="M9 11v-1M15 11v-1M12 11v-2"/>
           </svg>
@@ -95,9 +95,24 @@ export function Sidebar() {
           if (mobile) setMobileSidebarOpen(false);
           else setSidebarCollapsed(!sidebarCollapsed);
         }}
-        className="border-t border-slate-800/80 py-3 text-slate-500 hover:text-slate-300 text-[11px] font-mono transition-colors duration-150 shrink-0"
+        className="border-t border-slate-800/80 py-3 text-slate-500 hover:text-slate-300 text-[11px] font-mono transition-colors duration-150 shrink-0 flex items-center justify-center gap-1.5"
       >
-        {mobile ? `✕ ${t("btn.close")}` : sidebarCollapsed ? "›" : t("sidebar.collapse")}
+        {mobile ? (
+          <>✕ {t("btn.close")}</>
+        ) : (
+          <>
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.2" strokeLinecap="round"
+              className={`transition-transform duration-300 ${sidebarCollapsed ? "rotate-0" : "rotate-180"}`}
+            >
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+            <span className={`overflow-hidden transition-all duration-200 ${sidebarCollapsed ? "w-0 opacity-0" : "opacity-100"}`}>
+              {t("sidebar.collapse")}
+            </span>
+          </>
+        )}
       </button>
     </aside>
   );
@@ -364,6 +379,7 @@ export function TopBar() {
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
           aria-label={theme === "dark" ? t("topbar.toggle_theme_to_light") : t("topbar.toggle_theme_to_dark")}
+          title={theme === "dark" ? t("topbar.toggle_theme_to_light") : t("topbar.toggle_theme_to_dark")}
           suppressHydrationWarning
         >
           <span key={theme} className="theme-toggle-icon" suppressHydrationWarning>
@@ -391,6 +407,7 @@ export function TopBar() {
             onClick={handleNotifToggle}
             className="relative w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-800/60 text-slate-300 transition-colors"
             aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+            title={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
           >
             <Icon name="bell" size={18}/>
             {unreadCount > 0 && (
