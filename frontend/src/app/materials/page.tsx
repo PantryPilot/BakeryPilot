@@ -189,7 +189,7 @@ function TransferModal({ lot, onClose, onSuccess }: {
             </div>
             <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2.5">
               <div className="text-[10px] uppercase tracking-wider text-slate-500">From</div>
-              <div className="text-[16px] font-mono tabular-nums text-slate-100 mt-0.5">{lot.facility.toUpperCase()}</div>
+              <div className="text-[16px] font-mono tabular-nums text-slate-100 mt-0.5">{FACILITY_NAME[lot.facility] ?? lot.facility}</div>
             </div>
           </div>
           <div>
@@ -499,7 +499,7 @@ function LotSlideIn({
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: "Quantity",  value: `${lot.qty.toLocaleString()} kg` },
-            { label: "Facility",  value: lot.facility.toUpperCase() },
+            { label: "Facility",  value: FACILITY_NAME[lot.facility] ?? lot.facility },
             { label: "Expiry",    value: lot.expiry, tone: lot.daysLeft <= 2 ? "red" : lot.daysLeft <= 5 ? "amber" : null },
             { label: "Days left", value: `${lot.daysLeft}d`, tone: lot.daysLeft <= 2 ? "red" : lot.daysLeft <= 5 ? "amber" : null },
           ].map((c, i) => (
@@ -554,11 +554,14 @@ function LotSlideIn({
 
 // ── Finished Products Tab ─────────────────────────────────────────────────────
 
-const FACILITY_ID_TO_SHORT: Record<string, string> = {
-  "plant-toronto": "p1", "plant-mississauga": "p2", "plant-hamilton": "p3", "plant-montreal": "p4",
-};
 const FACILITY_SHORT_TO_ID: Record<string, string> = {
   p1: "plant-toronto", p2: "plant-mississauga", p3: "plant-hamilton", p4: "plant-montreal",
+};
+const FACILITY_ID_TO_NAME: Record<string, string> = {
+  "plant-toronto": "Toronto", "plant-mississauga": "Mississauga", "plant-hamilton": "Hamilton", "plant-montreal": "Montreal",
+};
+const FACILITY_NAME: Record<string, string> = {
+  p1: "Toronto", p2: "Mississauga", p3: "Hamilton", p4: "Montreal",
 };
 
 function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
@@ -660,7 +663,7 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-slate-100 truncate">{p.sku_name}</div>
-                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{p.sku_id} · {FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</div>
+                <div className="text-[10px] font-mono text-slate-500 mt-0.5">{p.sku_id} · {FACILITY_ID_TO_NAME[p.facility_id] ?? p.facility_id}</div>
               </div>
               <span className={`shrink-0 px-2 py-0.5 rounded-md border text-[10px] font-medium ${STATUS_COLOR[p.status] ?? STATUS_COLOR.in_warehouse}`}>
                 {p.status.replace(/_/g, " ")}
@@ -698,7 +701,7 @@ function FinishedProductsTab({ facilityFilter }: { facilityFilter: string }) {
                 <tr key={p.pallet_id} className="border-t border-slate-800/80 hover:bg-slate-800/40 transition">
                   <td className="px-4 py-2.5 text-slate-100 font-medium">{p.sku_name}</td>
                   <td className="px-4 py-2.5 text-slate-500 font-mono text-[12px]">{p.sku_id.replace("sku-", "")}</td>
-                  <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_SHORT[p.facility_id]?.toUpperCase() ?? p.facility_id}</td>
+                  <td className="px-4 py-2.5 text-slate-400">{FACILITY_ID_TO_NAME[p.facility_id] ?? p.facility_id}</td>
                   <td className="px-4 py-2.5 text-right font-mono text-slate-200">{p.quantity.toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-right font-mono">
                     <span className={p.days_remaining <= 1 ? "text-red-300" : p.days_remaining <= 3 ? "text-amber-300" : "text-slate-300"}>
@@ -785,7 +788,8 @@ export default function MaterialsPage() {
     setLotOverrides(m => new Map(m).set(updated.id, updated));
     setTransferLotTarget(null);
     setActiveLot(prev => prev?.id === updated.id ? updated : prev);
-    showToast(`Lot transferred to ${updated.facility.toUpperCase()}.`, "success");
+    setFacility("all");
+    showToast(`Lot transferred to ${FACILITY_NAME[updated.facility] ?? updated.facility}.`, "success");
   }, [showToast]);
 
   const suggestions = useMemo(() => {
@@ -1053,7 +1057,7 @@ export default function MaterialsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-semibold text-slate-100 truncate">{l.ingredient}</div>
-                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{l.id.slice(0, 12)}… · {l.facility.toUpperCase()}</div>
+                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{l.id.slice(0, 12)}… · {FACILITY_NAME[l.facility] ?? l.facility}</div>
                 </div>
                 <div className="shrink-0 text-right">
                   <StatusBadge status={l.status}/>
@@ -1099,7 +1103,7 @@ export default function MaterialsPage() {
                     <span className="block truncate" title={l.id}>{l.id.slice(0, 12)}…</span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-100">{l.ingredient}</td>
-                  <td className="px-3 py-2.5 font-mono text-slate-300">{l.facility.toUpperCase()}</td>
+                  <td className="px-3 py-2.5 text-slate-300">{FACILITY_NAME[l.facility] ?? l.facility}</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-slate-200">{l.qty.toLocaleString()}</td>
                   <td className="px-3 py-2.5 font-mono text-slate-400">{l.expiry}</td>
                   <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${l.daysLeft <= 2 ? "text-red-300" : l.daysLeft <= 5 ? "text-amber-300" : "text-slate-300"}`}>{l.daysLeft}d</td>

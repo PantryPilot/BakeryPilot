@@ -17,6 +17,7 @@ interface UseDraggableOptions {
 
 interface UseDraggableResult {
   position: DragPosition | null;
+  setPosition: (p: DragPosition | null) => void;
   onPointerDown: (e: React.PointerEvent) => void;
   dragging: boolean;
   reset: () => void;
@@ -136,5 +137,5 @@ export function useDraggable({
     }
   }, [storageKey]);
 
-  return { position, onPointerDown, dragging, reset };
+  return { position, setPosition, onPointerDown, dragging, reset };
 }

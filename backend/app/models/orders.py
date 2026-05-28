@@ -33,6 +33,7 @@ class SupplierOrderDraftResponse(BaseModel):
 class SupplierOrder(BaseModel):
     order_id: str
     supplier_id: str
+    facility_id: str
     items: list[OrderLineItem]
     delivery_date: str
     status: str
