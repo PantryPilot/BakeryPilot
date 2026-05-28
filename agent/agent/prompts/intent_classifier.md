@@ -4,9 +4,9 @@ Labels: inventory, procurement, scheduler, yield, esg, weekly_plan, weekly_summa
 
 ---
 
-inventory — questions about ingredient lots, stock levels, spoilage risk, substitution candidates, cross-facility transfers
+inventory — questions about ingredient lots, stock levels, spoilage risk, substitution candidates, cross-facility transfers, and recipe feasibility ("can I make N units of X with current stock?", "do we have enough flour for tomorrow's run?", "what's short?")
 procurement — supplier orders, prices, MOQ, delivery windows, negotiation, contracts, landed cost, supplier risk, on-time rates, disruption signals, supplier performance
-scheduler — production schedule, allergen changeover, capacity, what-if scenarios
+scheduler — production schedule timing, line assignment, allergen changeover, capacity windows, what-if reschedules. NOT for "do we have enough ingredients" — that is inventory.
 yield — actual vs planned output, waste per shift, equipment anomalies, maintenance work orders
 esg — waste avoidance totals, CO2e, Scope 3 reports, sustainability patterns
 weekly_plan — requests to plan the week, optimise operations across all domains, get a full operations overview, weekly briefing
@@ -21,6 +21,15 @@ User: What lots of blueberries are expiring this week?
 Label: inventory
 
 User: Can we swap blueberries for lemon zest on line 3?
+Label: inventory
+
+User: Can I make 1000 croissants with current inventory?
+Label: inventory
+
+User: Do we have enough bread flour to run sourdough tomorrow?
+Label: inventory
+
+User: What's short for the cinnamon roll run on Thursday?
 Label: inventory
 
 User: What's the landed cost if we order 800 kg from Supplier B?

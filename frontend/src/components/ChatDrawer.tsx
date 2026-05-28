@@ -106,7 +106,10 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
   const [sessionListVersion, setSessionListVersion] = useState(0);
   const [panelSize, setPanelSize] = useState({ w: 400, h: 560 });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const voiceWsRef = useRef<WebSocket | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceFinalRef = useRef<string>("");
+  const voiceBaseRef = useRef<string>("");
   const inflightRef = useRef(false);
   const cancelStreamRef = useRef<(() => void) | null>(null);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
@@ -369,35 +372,145 @@ function CopilotPopup({ onClose, isClosing }: { onClose: () => void; isClosing?:
     await sendMessage(u);
   };
 
+  const stopVoiceCapture = useCallback(() => {
+    try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+    try { voiceStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    try {
+      if (voiceWsRef.current?.readyState === WebSocket.OPEN) {
+        voiceWsRef.current.send(JSON.stringify({ type: "CloseStream" }));
+      }
+    } catch { /* ignore */ }
+    try { voiceWsRef.current?.close(); } catch { /* ignore */ }
+    mediaRecorderRef.current = null;
+    voiceStreamRef.current = null;
+    voiceWsRef.current = null;
+    setIsRecording(false);
+  }, []);
+
   const toggleRecording = useCallback(async () => {
     if (isRecording) {
-      mediaRecorderRef.current?.stop();
+      stopVoiceCapture();
       return;
     }
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      window.alert("Voice input is unavailable: this browser does not expose a microphone API.");
+      return;
+    }
+
+    // 1) Fetch a Deepgram access token from the backend.
+    let token = "";
+    let model = "nova-3";
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const form = new FormData();
-        form.append("file", blob, "voice.webm");
-        try {
-          const res = await fetch(`${BACKEND_URL}/api/voice/upload`, { method: "POST", body: form });
-          const data = await res.json() as { transcription?: string };
-          if (data.transcription) {
-            setInput(data.transcription);
-          }
-        } catch {}
-        setIsRecording(false);
+      const res = await fetch(`${BACKEND_URL}/api/voice/realtime_token`, { method: "POST" });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error("voice token http", res.status, detail);
+        window.alert(`Couldn't start voice (HTTP ${res.status}). Is the backend running and DEEPGRAM_API_KEY set?`);
+        return;
+      }
+      const data = (await res.json()) as { access_token?: string; model?: string };
+      token = data.access_token || "";
+      if (data.model) model = data.model;
+      if (!token) throw new Error("empty token");
+    } catch (err) {
+      console.error("voice token fetch failed:", err);
+      window.alert("Couldn't start voice. Is the backend reachable?");
+      return;
+    }
+
+    // 2) Get mic stream.
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      console.error("Microphone permission denied or unavailable:", err);
+      window.alert("Microphone access was denied. Allow it in your browser site settings and try again.");
+      return;
+    }
+    voiceStreamRef.current = stream;
+
+    // 3) Open the Deepgram streaming WebSocket. Auth via subprotocol so
+    //    the access token never leaks into the URL.
+    const params = new URLSearchParams({
+      model,
+      smart_format: "true",
+      interim_results: "true",
+      punctuate: "true",
+      language: "en",
+      encoding: "opus",
+    });
+    const ws = new WebSocket(
+      `wss://api.deepgram.com/v1/listen?${params.toString()}`,
+      ["token", token],
+    );
+    voiceWsRef.current = ws;
+
+    voiceBaseRef.current = (input ? input + " " : "");
+    voiceFinalRef.current = "";
+
+    ws.onopen = () => {
+      // Pick the best opus-bearing container MediaRecorder supports.
+      const candidates = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"];
+      const mimeType = candidates.find(
+        (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t),
+      ) ?? "";
+      let mr: MediaRecorder;
+      try {
+        mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch (err) {
+        console.error("MediaRecorder construction failed:", err);
+        window.alert("Voice recording is not supported in this browser.");
+        stopVoiceCapture();
+        return;
+      }
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+          ws.send(e.data);
+        }
       };
+      mr.onerror = (e) => console.error("MediaRecorder error:", e);
+      // 250 ms chunks → low-latency live transcription.
+      mr.start(250);
       mediaRecorderRef.current = mr;
-      mr.start();
       setIsRecording(true);
-    } catch {}
-  }, [isRecording]);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data as string) as {
+          channel?: { alternatives?: Array<{ transcript?: string }> };
+          is_final?: boolean;
+          speech_final?: boolean;
+        };
+        const transcript = msg.channel?.alternatives?.[0]?.transcript ?? "";
+        if (!transcript) return;
+        if (msg.is_final || msg.speech_final) {
+          voiceFinalRef.current = (voiceFinalRef.current + " " + transcript).trim();
+          setInput(voiceBaseRef.current + voiceFinalRef.current);
+        } else {
+          // Show interim hypothesis live without committing it to final state.
+          const live = (voiceFinalRef.current + " " + transcript).trim();
+          setInput(voiceBaseRef.current + live);
+        }
+      } catch (err) {
+        console.warn("Deepgram WS message parse error:", err);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error("Deepgram WS error:", e);
+    };
+
+    ws.onclose = () => {
+      // Ensure we tear down on remote close.
+      try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+      try { voiceStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      mediaRecorderRef.current = null;
+      voiceStreamRef.current = null;
+      voiceWsRef.current = null;
+      setIsRecording(false);
+    };
+  }, [isRecording, input, stopVoiceCapture]);
 
   const testPing = () => {
     setMessages(m => [...m, { role: "assistant", agent: "ping", text: "", time: nowTime(), thinking: true }]);
@@ -801,19 +914,27 @@ interface ChatBoxProps {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ChatBox({ value, setValue, onSend, compact, suggested, onVoice }: ChatBoxProps) {
   const handleSend = () => onSend();
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+  }, [value]);
   return (
     <div className="border-t border-slate-800 p-3 shrink-0">
       <div className="flex items-end gap-2 rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 focus-within:border-blue-500/60 transition">
         <textarea
+          ref={taRef}
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
           }}
-          placeholder="Ask anything…"
+          placeholder="Ask anything… (Shift+Enter for new line)"
           rows={1}
-          className="flex-1 bg-transparent resize-none outline-none text-[13px] text-slate-100 placeholder:text-slate-500 max-h-32"
-          style={{ minHeight: 24 }}
+          className="flex-1 bg-transparent resize-none outline-none text-[13px] leading-relaxed text-slate-100 placeholder:text-slate-500 py-1"
+          style={{ minHeight: 24, maxHeight: 240 }}
         />
         {onVoice && (
           <button onClick={onVoice} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">

@@ -85,6 +85,51 @@ def what_if_simulation(
 
 
 @tool
+@opik.track(name="draft_new_production_order")
+def draft_new_production_order(
+    facility_id: Annotated[str, "Facility id, e.g. plant-toronto / plant-mississauga / plant-hamilton / plant-montreal"],
+    line_id: Annotated[str, "Target line id, e.g. line-hamilton-1. Must belong to facility_id and be idle."],
+    sku_id: Annotated[str, "SKU id to produce, e.g. sku-ace-sourdough-bistro"],
+    quantity_units: Annotated[int, "Number of units to produce"],
+    planned_start_at: Annotated[
+        str | None,
+        "Optional ISO 8601 datetime for the planned start (e.g. 2026-05-29T08:00:00Z). Null means schedule now.",
+    ] = None,
+    notes: Annotated[str | None, "Optional one-line context the operator will see"] = None,
+) -> dict:
+    """Draft an action card to add a NEW production order on a specific line.
+
+    The order is NOT created until the operator confirms the card. The line
+    must currently be idle (or in maintenance) — if it isn't, the draft
+    endpoint returns 409 and you should call suggest_production_schedule
+    first to find an open line.
+
+    After success, include the returned action_card_id inside an
+    ```action_card JSON fenced block so the chat UI renders the approval.
+    """
+    body: dict = {
+        "facility_id": facility_id,
+        "line_id": line_id,
+        "sku_id": sku_id,
+        "quantity_units": int(quantity_units),
+    }
+    if planned_start_at:
+        body["planned_start_at"] = planned_start_at
+    if notes:
+        body["notes"] = notes
+    resp = httpx.post(
+        f"{BACKEND_URL}/api/production/orders/draft_new",
+        json=body,
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ToolException(
+            f"POST /api/production/orders/draft_new returned {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
+
+
+@tool
 @opik.track(name="draft_schedule_change")
 def draft_schedule_change(
     facility_id: Annotated[str, "Facility ID, e.g. plant-toronto"],

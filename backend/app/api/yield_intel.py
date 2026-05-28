@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,14 +20,36 @@ from app.services.yield_intel import compute_variance
 
 router = APIRouter(prefix="/api/yield", tags=["yield"])
 
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+_INVALID_RUN_TOKENS = {"", "null", "none", "undefined", "nan"}
+
 
 async def _resolve_run(run_id: str, db: AsyncSession) -> ProductionRun | None:
-    run = await db.get(ProductionRun, run_id)
-    if run:
-        return run
-    normalised = run_id.strip().lower().replace(" ", "-")
-    if not normalised.startswith("line-"):
+    """Resolve a run_id that may be either a UUID or a line-name alias.
+
+    Guards against bad inputs (e.g. literal 'null' coming in from the agent /
+    UI) so a malformed UUID never reaches asyncpg's UUID encoder — that
+    raises mid-transaction and aborts every subsequent query in the same
+    session with InFailedSQLTransactionError.
+    """
+    if run_id is None:
+        return None
+    cleaned = run_id.strip()
+    if cleaned.lower() in _INVALID_RUN_TOKENS:
+        return None
+    if _UUID_RE.match(cleaned):
+        run = await db.get(ProductionRun, cleaned)
+        if run:
+            return run
+    # Fallback: treat the value as a line id alias (e.g. "line 2" → "line-2").
+    normalised = cleaned.lower().replace(" ", "-")
+    if normalised and not normalised.startswith("line-"):
         normalised = normalised.replace("line", "line-", 1)
+    if not normalised:
+        return None
     q = (
         select(ProductionRun)
         .where(ProductionRun.line_id == normalised)
