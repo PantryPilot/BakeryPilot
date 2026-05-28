@@ -1,5 +1,7 @@
 """Tests for rule-based demo intent routing (no LLM)."""
 
+from unittest.mock import MagicMock
+
 from langchain_core.messages import HumanMessage
 
 from agent.agents.demo import DemoAgent, _format_summary, _parse_facility
@@ -41,17 +43,15 @@ def test_format_summary():
 
 
 def test_demo_agent_run_without_llm(monkeypatch):
-    def _fake_invoke(_input):
-        return {
-            "totals": {"retailer_orders": 2, "supplier_orders": 1, "schedules": 3},
-            "schedules": [],
-        }
+    mock_tool = MagicMock()
+    mock_tool.invoke.return_value = {
+        "totals": {"retailer_orders": 2, "supplier_orders": 1, "schedules": 3},
+        "schedules": [],
+    }
 
-    monkeypatch.setattr(
-        "agent.agents.demo.generate_demo_operations.invoke",
-        _fake_invoke,
-    )
+    monkeypatch.setattr("agent.agents.demo.generate_demo_operations", mock_tool)
     agent = DemoAgent()
     result = agent.run({"messages": [HumanMessage(content="Generate demo orders and schedules")]})
     assert result["messages"][-1].content
     assert "2" in result["messages"][-1].content
+    mock_tool.invoke.assert_called_once()
