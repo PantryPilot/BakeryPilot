@@ -246,8 +246,19 @@ export async function fetchSuppliers(): Promise<Supplier[] | null> {
   return data?.map(adaptSupplier) ?? null;
 }
 
-export async function fetchDisruptions(): Promise<Disruption[] | null> {
-  const data = await safeFetch<BackendDisruption[]>("/api/disruptions");
+export async function fetchDisruptions(params?: {
+  kinds?: string;
+  includeUnscoped?: boolean;
+  sinceDays?: number;
+  limit?: number;
+}): Promise<Disruption[] | null> {
+  const qs = new URLSearchParams();
+  if (params?.kinds) qs.set("kinds", params.kinds);
+  if (params?.includeUnscoped) qs.set("include_unscoped", "true");
+  if (params?.sinceDays != null) qs.set("since_days", String(params.sinceDays));
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  const data = await safeFetch<BackendDisruption[]>(`/api/disruptions${q ? `?${q}` : ""}`);
   return data?.map(adaptDisruption) ?? null;
 }
 
@@ -446,6 +457,11 @@ export async function fetchOrders(supplierId?: string): Promise<BackendOrder[] |
   if (!supplierId) return all;
   const backendId = supplierId.replace(/^s-/, "sup_");
   return all.filter((o) => o.supplier_id === backendId);
+}
+
+/** Supplier POs in flight (draft through confirmed — not yet received at plant). */
+export function isActiveSupplierOrder(order: BackendOrder): boolean {
+  return order.status !== "sent";
 }
 
 // ---------- Action cards ----------

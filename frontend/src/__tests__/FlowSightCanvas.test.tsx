@@ -9,8 +9,10 @@ jest.mock('../lib/hooks', () => ({
     ],
   }),
   useDisruptions: () => ({ data: [] }),
+  useNewsDisruptionFeed: () => ({ data: [], status: "live" }),
   useRetailers: () => ({ data: [] }),
   useFacilities: () => ({ data: [] }),
+  useAllSupplierOrders: () => ({ data: [], status: 'live' }),
   useFacilityUtilization: () => ({ data: null }),
   useActiveRuns: () => ({ data: [], status: 'idle' }),
   useYieldTelemetry: () => ({ data: [] }),
@@ -30,28 +32,22 @@ jest.mock('../lib/context', () => ({
 // ---------- Flow legend overlay ----------
 
 describe('Flow legend overlay', () => {
-  test('renders inbound label', () => {
+  test('renders confirmed PO label', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('inbound')).toBeInTheDocument()
+    expect(screen.getByText('confirmed')).toBeInTheDocument()
   })
 
-  test('renders outbound label', () => {
+  test('renders draft PO label', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('outbound')).toBeInTheDocument()
+    expect(screen.getByText('draft / pending')).toBeInTheDocument()
   })
 
-  test('renders transfer label', () => {
+  test('renders Supplier POs section header', () => {
     render(<FlowSightCanvas />)
     fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('transfer')).toBeInTheDocument()
-  })
-
-  test('renders Flow section header', () => {
-    render(<FlowSightCanvas />)
-    fireEvent.click(screen.getByText('Flow & ESG').closest('button')!)
-    expect(screen.getByText('Flow')).toBeInTheDocument()
+    expect(screen.getByText('Supplier POs')).toBeInTheDocument()
   })
 })
 

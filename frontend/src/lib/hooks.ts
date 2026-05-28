@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   fetchActiveRuns,
@@ -102,6 +102,58 @@ export function useSuppliers(): Result<Supplier[]> {
 
 export function useDisruptions(): Result<Disruption[]> {
   return useBackend(fetchDisruptions, []);
+}
+
+const NEWS_FEED_POLL_MS = 45_000;
+const NEWS_FEED_MAX_ITEMS = 24;
+
+/** Poll disruption_signals for news rows; surface only IDs not seen at first poll. */
+export function useNewsDisruptionFeed(): Result<Disruption[]> {
+  const [feed, setFeed] = useState<Disruption[]>([]);
+  const [status, setStatus] = useState<BackendStatus>("loading");
+  const seenRef = useRef<Set<string>>(new Set());
+  const baselineRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    const poll = async () => {
+      const rows = await fetchDisruptions({
+        kinds: "news",
+        includeUnscoped: true,
+        sinceDays: 14,
+        limit: 100,
+      });
+      if (!alive) return;
+      if (!rows) {
+        if (!baselineRef.current) setStatus("fallback");
+        return;
+      }
+
+      setStatus("live");
+
+      if (!baselineRef.current) {
+        rows.forEach(r => seenRef.current.add(r.id));
+        baselineRef.current = true;
+        return;
+      }
+
+      const fresh = rows.filter(r => !seenRef.current.has(r.id));
+      if (fresh.length === 0) return;
+
+      fresh.forEach(r => seenRef.current.add(r.id));
+      setFeed(prev => [...fresh, ...prev].slice(0, NEWS_FEED_MAX_ITEMS));
+    };
+
+    poll();
+    const id = window.setInterval(poll, NEWS_FEED_POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  return { data: feed, status };
 }
 
 export function useEsgCounter(): Result<Partial<Kpis>> {
@@ -219,6 +271,11 @@ export function useSupplierOrders(supplierId: string | null): {
   }, [supplierId, tick]);
 
   return { data, status, refetch: () => setTick((t) => t + 1) };
+}
+
+/** All supplier orders from the backend (for FlowSight inbound arcs). */
+export function useAllSupplierOrders(): Result<BackendOrder[]> {
+  return useBackend(() => fetchOrders(), []);
 }
 
 export function useWasteEvents(facilityId?: string): Result<BackendWasteEvent[]> {
