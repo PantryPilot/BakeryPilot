@@ -886,7 +886,7 @@ export default function MaterialsPage() {
                 <Icon name="chat" size={13}/> Ask copilot
               </button>
               {activeTab === "ingredients" && (
-                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-white font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
+                <button onClick={() => setAddLotOpen(true)} className="px-3 py-1.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[12px] flex items-center gap-2 whitespace-nowrap shrink-0">
                   + Add Lot
                 </button>
               )}

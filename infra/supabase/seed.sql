@@ -535,6 +535,23 @@ BEGIN
           'line-montreal-1'
         );
   END IF;
+
+  -- production_schedules: minimal rows for Schedule page + copilot optimizer.
+  -- Requires production_lines (from seed_synthetic / make schema.seed). CD re-applies
+  -- seed.sql but not seed_demo.py, so this keeps the walking skeleton green on deploy.
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'production_schedules')
+     AND (SELECT count(*) FROM production_lines) > 0
+     AND (SELECT count(*) FROM production_schedules) = 0 THEN
+
+    INSERT INTO production_schedules
+      (schedule_id, facility_id, line_id, sku_id, start_at, end_at, quantity_units, status, waste_avoided_kg, version)
+    VALUES
+      ('bbbb0001-0000-4000-8000-000000000001'::uuid, 'plant-toronto', 'line-toronto-1', 'sku-wonder-classic-white-loaf',
+       NOW() + INTERVAL '2 hours', NOW() + INTERVAL '6 hours', 1400, 'approved', 0, 1),
+      ('bbbb0001-0000-4000-8000-000000000002'::uuid, 'plant-toronto', 'line-toronto-2', 'sku-stonefire-original-naan-2pk',
+       NOW() + INTERVAL '1 day', NOW() + INTERVAL '1 day 4 hours', 800, 'suggested', 12.0, 1)
+    ON CONFLICT (schedule_id) DO NOTHING;
+  END IF;
 END $$;
 
 -- ============================================================================

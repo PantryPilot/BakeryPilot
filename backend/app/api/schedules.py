@@ -71,7 +71,13 @@ async def get_schedule(
 ) -> ProductionSchedule:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+        hint = ""
+        if schedule_id not in ("current", "latest"):
+            try:
+                uuid.UUID(schedule_id)
+            except ValueError:
+                hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
+        raise HTTPException(404, f"schedule {schedule_id} not found.{hint}")
     return _to_model(s)
 
 
@@ -86,7 +92,13 @@ async def schedule_diff(
 ) -> ScheduleDiff:
     s = await _resolve_schedule(db, schedule_id)
     if not s:
-        raise HTTPException(404, f"schedule {schedule_id} not found")
+        hint = ""
+        if schedule_id not in ("current", "latest"):
+            try:
+                uuid.UUID(schedule_id)
+            except ValueError:
+                hint = " Use schedule_id 'current' or a UUID from GET /api/schedules."
+        raise HTTPException(404, f"schedule {schedule_id} not found.{hint}")
     return build_schedule_diff(s)
 
 

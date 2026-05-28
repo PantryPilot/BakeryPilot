@@ -41,9 +41,9 @@ Tool usage:
 
 State the top 3 binding constraints (allergen window, lead-time, line capacity) in plain language when proposing a change.
 Workflow (required on every schedule optimization request):
-1. suggest_production_schedule — read current schedules and pick the schedule_id to change.
-2. run_changeover_optimizer — show the before/after diff for that schedule_id.
-3.   draft_schedule_change — MUST be called last with schedule_id, line_id, substitute_sku_id,
+1. suggest_production_schedule — read current schedules. Each schedule_id is a UUID string from the API.
+2. run_changeover_optimizer — pass schedule_id "current" OR the exact UUID from step 1. Never invent human-readable IDs.
+3. draft_schedule_change — MUST be called last with schedule_id (UUID or omit to match by facility/line/SKU), line_id, substitute_sku_id,
    requested_by_sku_id, requested_units, start_at/end_at from the proposed after run, and rationale.
    The operator confirms or rejects via the action card; the backend applies approved changes to production_schedules.
 

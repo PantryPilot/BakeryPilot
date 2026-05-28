@@ -500,8 +500,8 @@ export function FactoryView({ plant, onClose, onAskCopilot, isClosing }: { plant
         </div>
       </div>
       <div className="p-3 border-t border-slate-800">
-        <button onClick={onAskCopilot} className="w-full py-2.5 rounded-md bg-blue-500 hover:bg-blue-400 text-blue-950 font-semibold text-[13px] transition flex items-center justify-center gap-2">
-          <Icon name="chat" size={14}/> Ask copilot about {plant.name}
+        <button onClick={onAskCopilot} className="w-full py-2.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[13px] transition flex items-center justify-center gap-2">
+          <Icon name="chat" size={14} className="text-white"/> Ask copilot about {plant.name}
         </button>
       </div>
     </div>

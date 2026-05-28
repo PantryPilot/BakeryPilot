@@ -174,8 +174,8 @@ export function ActionCard({ card, onConfirm, onReject, onEdit, compact = false 
 
       {!confirmed && !rejected && !compact && (
         <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2 p-3 pt-2 border-t border-slate-800">
-          <button onClick={handleConfirm} disabled={busy} className="px-3 py-2 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-emerald-950 font-semibold text-sm transition">{busy ? "Applying…" : "Confirm"}</button>
-          <button onClick={onEdit} disabled={busy} className="px-3 py-2 rounded-md border border-slate-700 hover:border-slate-500 text-slate-200 text-sm transition">Edit</button>
+          <button onClick={handleConfirm} disabled={busy} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold text-sm transition">{busy ? "Applying…" : "Confirm"}</button>
+          <button onClick={onEdit} disabled={busy} className="px-3 py-2 rounded-md border border-slate-600 bg-slate-800/60 hover:border-slate-500 hover:bg-slate-800 text-slate-100 text-sm transition">Edit</button>
           <button onClick={handleReject} disabled={busy} className="px-3 py-2 rounded-md text-red-400 hover:text-red-300 text-sm transition">Reject</button>
         </div>
       )}

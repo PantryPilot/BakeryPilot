@@ -515,8 +515,8 @@ function WhatIfPanel({ onClose }: { onClose: () => void }) {
             {b.content}
           </div>
         ))}
-        <button className="w-full py-2.5 rounded-md bg-purple-500 hover:bg-purple-400 text-purple-950 font-semibold text-[13px] flex items-center justify-center gap-2">
-          <Icon name="zap" size={14}/> Run simulation
+        <button className="w-full py-2.5 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[13px] flex items-center justify-center gap-2">
+          <Icon name="zap" size={14} className="text-white"/> Run simulation
         </button>
         <div className="pt-3 border-t border-slate-800">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Stack (compare runs)</div>
