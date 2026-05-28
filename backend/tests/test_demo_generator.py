@@ -144,7 +144,7 @@ def test_generate_demo_operations_creates_entities():
         assert result.totals["supplier_orders"] == 1
         assert result.totals["schedules"] == 1
         assert len(added) >= 4
-        await db.commit.assert_called_once()
+        db.commit.assert_called_once()
 
     asyncio.run(_run())
 

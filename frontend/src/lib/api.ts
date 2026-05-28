@@ -595,19 +595,37 @@ export function adaptActionCard(b: BackendActionCard) {
 
   if (b.kind === "outbound_shipment") {
     const window = formatScheduleWindow(p.start_at, p.end_at);
+    const skuName = String(p.sku_name ?? shortSku(p.sku_id));
+    const retailerName = String(
+      p.retailer_name ??
+        (p.retailer_order_id
+          ? `PO ${String(p.retailer_order_id).slice(0, 8)}`
+          : "—"),
+    );
+    const units = p.quantity_units ?? "—";
+    const deliveryDate = p.requested_delivery_date ?? "—";
+    const defaultTitle = `Ship ${units} × ${skuName} → ${retailerName}`;
+
     return {
       kind: "Outbound Shipment",
       agent: String(p.agent ?? "SchedulerAgent"),
       icon: ACTION_CARD_ICONS.outbound_shipment,
-      title: String(p.title ?? `Ship ${shortSku(p.sku_id)} to retailer`),
+      title: String(p.title ?? defaultTitle),
       summary: [
         { label: "Ship window", value: window },
-        { label: "SKU", value: shortSku(p.sku_id) },
-        { label: "Units", value: String(p.quantity_units ?? "—") },
+        { label: "Units", value: String(units) },
+        { label: "Delivery due", value: String(deliveryDate) },
       ],
       details: [
-        { label: "Warehouse", value: String(p.facility_id ?? "—") },
-        { label: "Retailer PO", value: String(p.retailer_order_id ?? "—").slice(0, 8) + "…" },
+        { label: "SKU", value: skuName },
+        { label: "Retailer", value: retailerName },
+        { label: "Warehouse", value: String(p.facility_name ?? p.facility_id ?? "—") },
+        {
+          label: "Retailer PO",
+          value: p.retailer_order_id
+            ? `${String(p.retailer_order_id).slice(0, 8)}…`
+            : "—",
+        },
       ],
       flags: p.rationale
         ? [{ text: String(p.rationale), tone: "amber" as const }]

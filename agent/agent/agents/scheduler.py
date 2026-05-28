@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 
 from agent.llm import cached_react_agent
 from agent.prompts.store import get_prompt_store
@@ -87,6 +87,11 @@ Use identify_stakeholders and send_confirmation_email when a schedule change nee
 """
 
 _ACTION_CARD_RE = re.compile(r"```action_card\s*(\{.*?\})\s*```", re.DOTALL)
+_DRAFT_TOOL_NAMES = frozenset({
+    "draft_outbound_shipment",
+    "draft_schedule_change",
+    "draft_new_production_order",
+})
 
 
 def _extract_action_card(message: AIMessage) -> dict | None:
@@ -98,6 +103,25 @@ def _extract_action_card(message: AIMessage) -> dict | None:
             return json.loads(match.group(1))
         except json.JSONDecodeError:
             return None
+    return None
+
+
+def _recover_card_from_tool_messages(messages: list[BaseMessage]) -> dict | None:
+    """Fallback when the LLM skips the ```action_card fence but a draft tool ran."""
+    for msg in reversed(messages):
+        if not isinstance(msg, ToolMessage) or msg.name not in _DRAFT_TOOL_NAMES:
+            continue
+        if not isinstance(msg.content, str):
+            continue
+        try:
+            payload = json.loads(msg.content)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        card_id = payload.get("action_card_id")
+        if card_id:
+            return {"action_card_id": card_id}
     return None
 
 
@@ -117,6 +141,8 @@ class SchedulerAgent:
         last_msg = result["messages"][-1] if result.get("messages") else None
         if isinstance(last_msg, AIMessage):
             card = _extract_action_card(last_msg)
+            if not card:
+                card = _recover_card_from_tool_messages(result.get("messages", []))
             if card:
                 existing = state.get("action_cards", [])
                 result["action_cards"] = existing + [card]
