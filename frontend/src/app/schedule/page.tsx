@@ -20,6 +20,7 @@ import {
   fetchScheduleDiff,
   formatScheduleWindow,
   rejectActionCard,
+  scheduleDiffFromActionCardPayload,
   type UpdateScheduleInput,
   type BackendFacility,
   type BackendProduct,
@@ -71,25 +72,26 @@ const DRAG_SNAP_HOURS = 0.25;
 const DRAG_THRESHOLD_PX = 4;
 
 function toDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
 function shiftDateKey(dateKey: string, days: number): string {
   const [y, m, day] = dateKey.split("-").map(Number);
-  const d = new Date(y, m - 1, day);
-  d.setDate(d.getDate() + days);
+  const d = new Date(Date.UTC(y, m - 1, day));
+  d.setUTCDate(d.getUTCDate() + days);
   return toDateKey(d);
 }
 
+/** Gantt timeline uses UTC hours to match backend ISO timestamps. */
 function timelineHour(d: Date): number {
-  return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  return d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
 }
 
 function formatClockLabel(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 function quickDatesAround(anchorDate: string): string[] {
@@ -202,7 +204,7 @@ function skuLabel(skuId: string, productNames?: Map<string, string>): string {
 function isoFromDateAndTime(dateKey: string, time: string): string {
   const [hh, mm] = time.split(":").map(v => parseInt(v, 10));
   const [y, m, day] = dateKey.split("-").map(Number);
-  return new Date(y, m - 1, day, hh || 0, mm || 0, 0, 0).toISOString();
+  return new Date(Date.UTC(y, m - 1, day, hh || 0, mm || 0, 0, 0)).toISOString();
 }
 
 function RunHoverCard({
@@ -751,10 +753,14 @@ function ScheduleProposalPanel({
     setLoading(true);
     setError(null);
     try {
-      const [diffRes, cardRes] = await Promise.all([
-        fetchScheduleDiff("current"),
-        cardId ? fetchActionCard(cardId) : fetchPendingScheduleChangeCard(),
-      ]);
+      const cardRes = cardId ? await fetchActionCard(cardId) : await fetchPendingScheduleChangeCard();
+      let diffRes: BackendScheduleDiff | null = null;
+      if (cardRes?.payload) {
+        diffRes = scheduleDiffFromActionCardPayload(cardRes.payload as Record<string, unknown>);
+      }
+      if (!diffRes) {
+        diffRes = await fetchScheduleDiff("current");
+      }
       if (!diffRes) {
         setError("No schedule diff available. Ask copilot to optimize first.");
         setDiff(null);
@@ -1494,7 +1500,7 @@ export default function SchedulePage() {
                 className={`flex items-center justify-center text-center px-3 uppercase tracking-wide ${GANTT_HEADER}`}
                 style={{ height: GANTT_HEADER_H }}
               >
-                Line
+                Line <span className="text-[9px] font-normal normal-case tracking-normal text-[var(--bp-text-subtle)]">(UTC)</span>
               </div>
               {lanes.map((ln, i) => (
                 <div

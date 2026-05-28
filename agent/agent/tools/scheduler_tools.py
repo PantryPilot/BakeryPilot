@@ -149,11 +149,11 @@ def draft_schedule_change(
 ) -> dict:
     """Draft a schedule_change action card for human review.
 
-    The line swap is NOT applied until the operator confirms the card. On
-    confirmation the backend supersedes the matching production_schedules row
-    (status complete) and inserts an approved replacement, and updates
-    production_orders on the line. After success, surface the returned
-    action_card_id inside an ```action_card JSON fenced block.
+    The change is NOT applied until the operator confirms the card. On
+    confirmation the backend updates the matching production_schedules row
+    in place (same schedule_id) when schedule_id is provided, and updates
+    production_orders on the line for SKU swaps. After success, surface the
+    returned action_card_id inside an ```action_card JSON fenced block.
     """
     body: dict = {
         "facility_id": facility_id,

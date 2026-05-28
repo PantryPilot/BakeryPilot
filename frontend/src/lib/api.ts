@@ -124,6 +124,41 @@ export interface BackendScheduleDiff {
   changes: { kind: string; narration: string; affected_run_ids: string[] }[];
 }
 
+/** Build a before/after diff from a confirmed schedule_change action card payload. */
+export function scheduleDiffFromActionCardPayload(
+  payload: Record<string, unknown>,
+): BackendScheduleDiff | null {
+  const afterStart = payload.start_at;
+  const afterEnd = payload.end_at;
+  if (!afterStart || !afterEnd) return null;
+  const scheduleId = String(payload.schedule_id ?? "");
+  const beforeStart = payload.before_start_at ?? afterStart;
+  const beforeEnd = payload.before_end_at ?? afterEnd;
+  return {
+    before: [{
+      run_id: scheduleId || "before",
+      sku_id: String(payload.requested_by_sku_id ?? ""),
+      start_at: String(beforeStart),
+      end_at: String(beforeEnd),
+      quantity: Number(payload.requested_units ?? 0),
+      lot_assignments: [],
+    }],
+    after: [{
+      run_id: scheduleId || "after",
+      sku_id: String(payload.substitute_sku_id ?? payload.requested_by_sku_id ?? ""),
+      start_at: String(afterStart),
+      end_at: String(afterEnd),
+      quantity: Number(payload.requested_units ?? 0),
+      lot_assignments: [],
+    }],
+    changes: [{
+      kind: "move",
+      affected_run_ids: scheduleId ? [scheduleId] : [],
+      narration: String(payload.change_summary ?? payload.rationale ?? "Schedule change"),
+    }],
+  };
+}
+
 // ---------- Adapters: backend -> frontend shapes ----------
 
 const FACILITY_MAP: Record<string, string> = {

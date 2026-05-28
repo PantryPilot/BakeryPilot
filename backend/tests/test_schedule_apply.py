@@ -1,8 +1,52 @@
+import asyncio
+import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 from app.db.models import ProductionSchedule
-from app.services.schedule_apply import parse_iso_dt, resolve_schedule_window
+from app.services.schedule_apply import apply_schedule_change, parse_iso_dt, resolve_schedule_window
 
+
+def test_apply_schedule_change_updates_row_in_place():
+    original_id = uuid.uuid4()
+    original = ProductionSchedule(
+        schedule_id=original_id,
+        facility_id="plant-toronto",
+        line_id="line-toronto-1",
+        sku_id="sku-a",
+        start_at=datetime(2026, 6, 1, 9, tzinfo=timezone.utc),
+        end_at=datetime(2026, 6, 1, 13, tzinfo=timezone.utc),
+        quantity_units=1000,
+        status="approved",
+        version=2,
+    )
+
+    async def _run():
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=original)
+        db.flush = AsyncMock()
+        payload = {
+            "schedule_id": str(original_id),
+            "start_at": "2026-06-01T14:00:00Z",
+            "end_at": "2026-06-01T18:00:00Z",
+        }
+        result = await apply_schedule_change(
+            db,
+            payload=payload,
+            card_id=str(uuid.uuid4()),
+            facility_id="plant-toronto",
+            line_id="line-toronto-1",
+            substitute_sku_id="sku-a",
+            requested_units=1000,
+        )
+        assert result.schedule_id == original_id
+        assert result.start_at == parse_iso_dt("2026-06-01T14:00:00Z")
+        assert result.end_at == parse_iso_dt("2026-06-01T18:00:00Z")
+        assert result.version == 3
+        assert result.status == "approved"
+        db.add.assert_not_called()
+
+    asyncio.run(_run())
 
 def test_resolve_schedule_window_from_payload_times():
     original = ProductionSchedule(

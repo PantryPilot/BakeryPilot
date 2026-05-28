@@ -103,6 +103,7 @@ async def list_schedules(db: AsyncSession = Depends(get_db)) -> list[ProductionS
         await db.execute(
             select(ScheduleORM)
             .options(_schedule_load_options())
+            .where(ScheduleORM.status.in_(("suggested", "approved")))
             .order_by(ScheduleORM.start_at.desc())
         )
     ).scalars().all()

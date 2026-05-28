@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,7 @@ from app.db.models import (
     NotificationDraft,
     ProductionLine,
     ProductionOrder,
+    ProductionSchedule,
     Sku,
     SupplierOrder,
     SupplierOrderItem,
@@ -304,8 +306,13 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
     if substitute is None:
         return
 
+    schedule_id_raw = payload.get("schedule_id")
+    is_reschedule_only = (
+        substitute_sku_id == requested_by_sku_id and bool(schedule_id_raw)
+    )
+
     retailer_order_id = payload.get("retailer_order_id")
-    if retailer_order_id:
+    if retailer_order_id and not is_reschedule_only:
         po = await validate_schedule_fulfillment(
             db,
             retailer_order_id=str(retailer_order_id),
@@ -323,6 +330,32 @@ async def _execute_schedule_change_card(payload: dict[str, Any], card_id: str, d
             quantity_units=requested_units,
         )
         mark_po_scheduled(po)
+
+    line_id: str | None = payload.get("line_id")
+    if is_reschedule_only:
+        if not line_id and schedule_id_raw:
+            try:
+                sched = await db.get(ProductionSchedule, uuid.UUID(str(schedule_id_raw)))
+            except ValueError:
+                sched = None
+            if sched is not None:
+                line_id = sched.line_id
+                facility_id = sched.facility_id
+        if line_id:
+            updated = await apply_schedule_change(
+                db,
+                payload=payload,
+                card_id=card_id,
+                facility_id=facility_id,
+                line_id=line_id,
+                substitute_sku_id=substitute_sku_id,
+                requested_units=requested_units,
+                retailer_order_id=str(retailer_order_id) if retailer_order_id else None,
+                now=now,
+            )
+            payload["executed_at"] = now.isoformat()
+            payload["new_schedule_id"] = str(updated.schedule_id)
+            return
 
     # Find the most recent active order matching the original SKU at this facility.
     candidates = (

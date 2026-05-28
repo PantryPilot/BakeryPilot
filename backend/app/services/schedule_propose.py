@@ -91,11 +91,12 @@ def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
     )
     after_run = ScheduleRun(
         run_id=str(s.schedule_id),
-        sku_id="sku-ace-sourdough-bistro",
+        sku_id=s.sku_id,
         start_at=utc_iso(s.start_at + timedelta(hours=1)),
         end_at=utc_iso(s.end_at + timedelta(hours=1)),
         quantity=s.quantity_units,
         lot_assignments=[],
+        **retailer_fields,
     )
     before_window = format_schedule_window(before_run.start_at, before_run.end_at)
     after_window = format_schedule_window(after_run.start_at, after_run.end_at)
@@ -108,7 +109,7 @@ def build_schedule_diff(s: ScheduleORM) -> ScheduleDiff:
                 affected_run_ids=[str(s.schedule_id)],
                 narration=(
                     f"Reschedule run on {s.line_id}: {before_window} → {after_window} "
-                    f"(product swap to sku-ace-sourdough-bistro, +1h start)."
+                    f"(+1h start, same SKU)."
                     f"{retailer_note}"
                 ),
             )
