@@ -1,8 +1,32 @@
 # BakeryPilot
 
 > An agentic AI operations copilot for FGF Brands' production floors and supply network.
-> No cameras. No hardware. Intelligence layered on top of data FGF already has --
+> No cameras. No hardware. Intelligence layered on top of data FGF already has,
 > rendered as a live, strategy-game cockpit.
+
+**Demo video:** [BakeryPilot walkthrough on YouTube](https://youtu.be/xRnEM6mPpQk)
+
+## What it does
+
+BakeryPilot is a web application that helps bakery operations teams see, plan, and act on their supply chain in one place. It connects ingredient inventory, production lines, supplier orders, retailer POs, and outbound shipments into a single cockpit, with an AI copilot that answers questions and drafts changes you approve before anything is saved.
+
+**FlowSight map** (`/facilities`) is a live PixiJS map of suppliers, plants, and retailers. Toggle layers for disruption risk, procurement arcs, production schedules, outbound shipments, yield variance, shelf-life, and demand forecast bands.
+
+**Inventory** (`/materials`) tracks ingredient lots across facilities with spoilage risk and expiry. The copilot can suggest substitutions and draft cross-facility lot transfers.
+
+**Production** (`/production`) shows active and completed runs with actual-vs-planned yield variance and anomaly drill-down.
+
+**Retailers** (`/retailers`) captures firm retailer purchase orders. A new PO triggers a production schedule proposal on the Schedule page.
+
+**Suppliers** (`/scorecard`) is a risk scorecard: on-time rate, lead time, MOQ exposure, and live disruption signals. The copilot can draft negotiation emails when risk spikes.
+
+**Schedule** (`/schedule`) is an MES-style view for production runs, allergen-aware changeovers, and outbound warehouse-to-retailer shipments, with optimizer suggestions and human-in-the-loop confirm.
+
+**AI Copilot** (chat drawer) routes requests to specialist agents (Inventory, Procurement, Scheduler, Yield, ESG) via LangGraph. Ask in plain English or French. Every write (order, schedule change, transfer, shipment) surfaces as an **action card** you confirm; the agent never commits silently.
+
+**Admin** (`/admin`) refreshes live data sources (weather, news, commodity prices), switches the copilot LLM model, and browses or edits database tables for demo operations.
+
+The stack is **Next.js 15** (frontend), **FastAPI** (backend), **PostgreSQL + pgvector**, **LangGraph** agents (embedded in the backend), and **Redis** for event streaming. Run locally with Docker Compose or try the deployed demo at [bakerypilot.ca](https://bakerypilot.ca).
 
 ---
 

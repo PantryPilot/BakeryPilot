@@ -19,7 +19,7 @@ const NAV: Array<{ id: string; route: string; labelKey: TranslationKey; icon: st
   { id: "suppliers",  route: "/scorecard?tab=suppliers", labelKey: "sidebar.suppliers",  icon: "truck",    tour: "nav-suppliers"     },
   { id: "schedule",   route: "/schedule",                labelKey: "sidebar.schedule",   icon: "calendar", tour: "nav-schedule"      },
   { id: "settings",  route: "/settings",                 labelKey: "sidebar.settings",   icon: "settings", tour: ""                  },
-  { id: "admin",      route: "/admin",                   labelKey: "sidebar.admin",      icon: "database", tour: ""                  },
+  { id: "admin",      route: "/admin",                   labelKey: "sidebar.admin",      icon: "database", tour: "nav-admin"         },
 ];
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 
 const TOUR_KEY = "bp-tour-v1";
+const DEMO_VIDEO_URL = "https://youtu.be/xRnEM6mPpQk";
 
 interface Step {
   id: string;
@@ -10,13 +11,14 @@ interface Step {
   body: string;
   target?: string;
   side?: "right" | "bottom" | "left" | "top" | "center";
+  videoUrl?: string;
 }
 
 const STEPS: Step[] = [
   {
     id: "welcome",
     title: "Welcome to BakeryPilot",
-    body: "BakeryPilot is your AI-powered operations copilot for industrial bakery supply chains. This tour walks you through every module in under two minutes.",
+    body: "BakeryPilot is your AI-powered operations copilot for industrial bakery supply chains. This tour walks you through every module in a few minutes.",
     side: "center",
   },
   {
@@ -48,6 +50,13 @@ const STEPS: Step[] = [
     side: "right",
   },
   {
+    id: "retailers",
+    title: "Retailers — Customer POs",
+    body: "Enter firm purchase orders from retailers (Costco, Walmart, Loblaws, etc.). Each new PO triggers a production schedule proposal you can review and confirm on the Schedule page.",
+    target: "[data-tour='nav-retailers']",
+    side: "right",
+  },
+  {
     id: "suppliers",
     title: "Suppliers — Risk scorecard",
     body: "Every supplier's on-time rate, lead time, MOQ exposure, and live disruption signals in one place. The agent can draft negotiation emails when risk spikes.",
@@ -59,6 +68,13 @@ const STEPS: Step[] = [
     title: "Schedule — Production planning",
     body: "View and manage the MES production schedule. The OR-Tools optimizer suggests changeover sequences that minimise allergen cross-contact and downtime.",
     target: "[data-tour='nav-schedule']",
+    side: "right",
+  },
+  {
+    id: "admin",
+    title: "Admin — Data & copilot config",
+    body: "Operator tooling: refresh live data sources (weather, news, commodity prices), switch the copilot LLM model, and browse or edit any database table when you need to inspect or fix seed data.",
+    target: "[data-tour='nav-admin']",
     side: "right",
   },
   {
@@ -82,10 +98,18 @@ const STEPS: Step[] = [
     target: "[data-tour='copilot-button']",
     side: "top",
   },
+  {
+    id: "demo-video",
+    title: "Want a deeper walkthrough?",
+    body: "This tour covers the basics. For a full feature demo with narration, watch the video walkthrough on YouTube.",
+    side: "center",
+    videoUrl: DEMO_VIDEO_URL,
+  },
 ];
 
 const PAD = 8;
 const TOOLTIP_W = 340;
+const TOOLTIP_W_WIDE = 380;
 
 interface Rect { top: number; left: number; width: number; height: number }
 
@@ -97,38 +121,39 @@ function getRect(selector: string): Rect | null {
   return { top: r.top, left: r.left, width: r.width, height: r.height };
 }
 
-function tooltipStyle(rect: Rect | null, side: Step["side"]): React.CSSProperties {
+function tooltipStyle(rect: Rect | null, side: Step["side"], wide = false): React.CSSProperties {
+  const width = wide ? TOOLTIP_W_WIDE : TOOLTIP_W;
   if (!rect || side === "center") {
     return {
       position: "fixed",
       top: "50%",
       left: "50%",
       transform: "translate(-50%, -50%)",
-      width: TOOLTIP_W,
+      width,
     };
   }
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
   if (side === "right") {
-    const left = Math.min(rect.left + rect.width + PAD + 12, vw - TOOLTIP_W - 16);
+    const left = Math.min(rect.left + rect.width + PAD + 12, vw - width - 16);
     const top = Math.max(16, Math.min(rect.top + rect.height / 2 - 80, vh - 220));
-    return { position: "fixed", left, top, width: TOOLTIP_W };
+    return { position: "fixed", left, top, width };
   }
   if (side === "left") {
-    const left = Math.max(16, rect.left - TOOLTIP_W - 12);
+    const left = Math.max(16, rect.left - width - 12);
     const top = Math.max(16, Math.min(rect.top + rect.height / 2 - 80, vh - 220));
-    return { position: "fixed", left, top, width: TOOLTIP_W };
+    return { position: "fixed", left, top, width };
   }
   if (side === "bottom") {
-    const left = Math.max(16, Math.min(rect.left + rect.width / 2 - TOOLTIP_W / 2, vw - TOOLTIP_W - 16));
+    const left = Math.max(16, Math.min(rect.left + rect.width / 2 - width / 2, vw - width - 16));
     const top = rect.top + rect.height + PAD + 12;
-    return { position: "fixed", left, top, width: TOOLTIP_W };
+    return { position: "fixed", left, top, width };
   }
   // top
-  const left = Math.max(16, Math.min(rect.left + rect.width / 2 - TOOLTIP_W / 2, vw - TOOLTIP_W - 16));
+  const left = Math.max(16, Math.min(rect.left + rect.width / 2 - width / 2, vw - width - 16));
   const top = Math.max(16, rect.top - PAD - 180);
-  return { position: "fixed", left, top, width: TOOLTIP_W };
+  return { position: "fixed", left, top, width };
 }
 
 function spotlightStyle(rect: Rect | null): React.CSSProperties {
@@ -182,14 +207,15 @@ function TourGuideInner({ onClose }: TourGuideProps) {
   }, [step, onClose]);
 
   const isLast = step === STEPS.length - 1;
+  const isCenterOverlay = !current.target;
 
   return (
     <>
-      {/* Backdrop — clickable only on welcome (no spotlight) */}
+      {/* Backdrop: dim full screen on center steps (welcome + demo video) */}
       <div
         className="fixed inset-0 z-[9997]"
-        style={{ background: rect ? "transparent" : "rgba(0,0,0,0.72)" }}
-        onClick={rect ? undefined : onClose}
+        style={{ background: isCenterOverlay ? "rgba(0,0,0,0.72)" : "transparent" }}
+        onClick={isCenterOverlay ? onClose : undefined}
       />
 
       {/* Spotlight cutout */}
@@ -198,7 +224,8 @@ function TourGuideInner({ onClose }: TourGuideProps) {
       {/* Tooltip card */}
       <div
         className="z-[9999] rounded-xl border border-slate-700 bg-slate-900 shadow-2xl"
-        style={tooltipStyle(rect, current.side)}
+        style={tooltipStyle(rect, current.side, !!current.videoUrl)}
+        onClick={e => e.stopPropagation()}
       >
         {/* Progress dots */}
         <div className="flex items-center gap-1.5 px-4 pt-3">
@@ -223,6 +250,19 @@ function TourGuideInner({ onClose }: TourGuideProps) {
           <p className="text-[13px] text-slate-400 leading-relaxed">
             {current.body}
           </p>
+          {current.videoUrl && (
+            <a
+              href={current.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-[13px] font-medium transition-colors"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.75 15.02V8.98L15.5 12l-5.75 3.02z"/>
+              </svg>
+              Watch demo on YouTube
+            </a>
+          )}
         </div>
 
         {/* Navigation */}
