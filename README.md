@@ -1,9 +1,5 @@
 # BakeryPilot
 
-> An agentic AI operations copilot for FGF Brands' production floors and supply network.
-> No cameras. No hardware. Intelligence layered on top of data FGF already has,
-> rendered as a live, strategy-game cockpit.
-
 **Demo video:** [BakeryPilot walkthrough on YouTube](https://youtu.be/xRnEM6mPpQk)
 
 ## What it does
